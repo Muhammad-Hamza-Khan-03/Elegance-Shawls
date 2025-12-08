@@ -1,0 +1,33 @@
+{
+  "name": "elegance-shawls",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "version": "1.0.0",
+  "description": "Production grade Ecommerce application (NEXTJS + FASTAPI + SUPABASE)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls/issues"
+  },
+  "homepage": "https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls#readme",
+  "devDependencies": {
+    "turbo": "^2.6.3"
+  }
+}

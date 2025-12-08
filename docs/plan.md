@@ -16,7 +16,7 @@
 
 **Tasks:**
 
-1. Create monorepo using pnpm workspaces or turbo
+1. Create monorepo using turbo
 2. Create folders:
 
    ```
@@ -31,7 +31,7 @@
 
 **Testing Checklist:**
 
-* Frontend runs: `pnpm dev`
+* Frontend runs: `npm run dev`
 * Backend runs: `uvicorn main:app --reload`
 
 ---
