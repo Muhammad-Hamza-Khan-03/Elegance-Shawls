@@ -12,7 +12,6 @@
 
 * Monorepo initialized
 * Frontend + Backend skeleton
-* Shared `.env.example` files
 
 **Tasks:**
 
