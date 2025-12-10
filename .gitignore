@@ -3,3 +3,5 @@ venv/
 .turbo/
 .env
 Website.md
+__pycache__/
+*.pyc

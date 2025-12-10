@@ -1,12 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from config import settings
+from .config import settings
 
 # Create SQLAlchemy engine
 # The pool settings ensure efficient connection management
 engine = create_engine(
-    settings.DATABASE_URL,
+    settings.SUPABASE_URL,
     pool_pre_ping=True,  # Verify connections before using them
     pool_size=10,
     max_overflow=20

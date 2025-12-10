@@ -1,0 +1,107 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from ..core.database import get_db
+from ..core.security import get_current_user, get_current_admin
+from ..schemas import OrderCreate, OrderUpdateStatus, OrderResponse
+from ..services.order_service import OrderService
+
+router = APIRouter(prefix="/orders", tags=["Orders"])
+
+@router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+def create_order(
+    order: OrderCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Optional: can allow guest checkout
+):
+    """Create a new order"""
+    user_id = current_user.id if current_user else None
+    
+    db_order = OrderService.create_order(db, order, user_id)
+    if not db_order:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create order. Check product availability and stock."
+        )
+    
+    # TODO: Send email notification
+    # TODO: Send WhatsApp notification
+    
+    return db_order
+
+@router.post("/guest", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+def create_guest_order(order: OrderCreate, db: Session = Depends(get_db)):
+    """Create order without authentication (guest checkout)"""
+    db_order = OrderService.create_order(db, order, user_id=None)
+    if not db_order:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create order. Check product availability and stock."
+        )
+    
+    return db_order
+
+@router.get("/", response_model=List[OrderResponse])
+def get_orders(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(pending|confirmed|shipped|delivered)$"),
+    db: Session = Depends(get_db),
+    current_admin = Depends(get_current_admin)
+):
+    """Get all orders (admin only)"""
+    orders = OrderService.get_orders(db, skip=skip, limit=limit, status=status)
+    return orders
+
+@router.get("/my-orders", response_model=List[OrderResponse])
+def get_my_orders(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get current user's orders"""
+    orders = OrderService.get_orders(db, skip=skip, limit=limit, user_id=current_user.id)
+    return orders
+
+@router.get("/{order_id}", response_model=OrderResponse)
+def get_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get single order by ID"""
+    order = OrderService.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Check authorization: user can only see their own orders, admin can see all
+    if current_user.role != "admin" and order.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this order"
+        )
+    
+    return order
+
+@router.put("/{order_id}/status", response_model=OrderResponse)
+def update_order_status(
+    order_id: int,
+    status_update: OrderUpdateStatus,
+    db: Session = Depends(get_db),
+    current_admin = Depends(get_current_admin)
+):
+    """Update order status (admin only)"""
+    db_order = OrderService.update_order_status(db, order_id, status_update)
+    if not db_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # TODO: Send status update notification to customer
+    
+    return db_order

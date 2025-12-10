@@ -1,51 +1,53 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
 
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    This centralizes all configuration and makes the app easy to deploy.
     """
-    
+
     # Application
-    APP_NAME: str = os.getenv("APP_NAME","")
-    APP_VERSION: str = os.getenv("APP_VERSION","1.0.0")
-    DEBUG: bool = os.getenv("DEBUG","False").lower() in ("true", "1", "t")
-    
-    # Security
-    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY","abc") # Used for JWT token generation
+    APP_NAME: str = "Elegance-Shawls API"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = False
+
+    # Security (your env uses JWT_SECRET_KEY)
+    JWT_SECRET_KEY: str  # maps to JWT_SECRET_KEY automatically
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    
-    # Supabase Database
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
-    DATABASE_URL: str = os.getenv("SUPABASE_URL","") 
-    
+
+    # Supabase database (your env had these)
+    HOST: str
+    SUPABASE_PORT: int
+    SUPABASE_DB: str
+    SUPABASE_USER: str
+    SUPABASE_PASSWORD: str
+
+    # Full database URL if needed
+    SUPABASE_URL: str | None = None
+    SUPABASE_KEY: str | None = None
+    DATABASE_URL: str | None = None
+
     # Cloudinary
-    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME","")
-    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY","")
-    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET","")
-    
+    CLOUDINARY_CLOUD_NAME: str | None = None
+    CLOUDINARY_API_KEY: str | None = None
+    CLOUDINARY_API_SECRET: str | None = None
+
     # Resend Email
-    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY","")
-    FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL","")
-    
+    RESEND_API_KEY: str | None = None
+    FROM_EMAIL: str | None = None
+
     # CORS
-    MY_DOMAIN: str = os.getenv("FRONTEND_PRODUCTION_URL","")
-    ALLOWED_ORIGINS: str = "http://localhost:3000" + f",{MY_DOMAIN}"
-    
-    # Business
-    SUPPORT_WHATSAPP: str = os.getenv("SUPPORT_WHATSAPP","")
-    SUPPORT_EMAIL: str = os.getenv("SUPPORT_EMAIL","")
-    
+    FRONTEND_URL: str  # you had it in env
+    MY_DOMAIN: str | None = None
+    ALLOWED_ORIGINS: str | None = None
+
+    # Business Info
+    SUPPORT_WHATSAPP: str | None = None
+    SUPPORT_EMAIL: str | None = None
+
     class Config:
         env_file = ".env"
         case_sensitive = True
 
-# Create a global settings instance
+
 settings = Settings()
