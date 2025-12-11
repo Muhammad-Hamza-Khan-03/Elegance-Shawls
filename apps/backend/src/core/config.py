@@ -33,7 +33,15 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str | None = None
 
     # Resend Email
-    RESEND_API_KEY: str | None = None
+    # RESEND_API_KEY: str | None = None
+    # FROM_EMAIL: str | None = None
+
+    # SMTP Email
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int | None = None
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_TLS: bool | None = None
     FROM_EMAIL: str | None = None
 
     # CORS
@@ -45,6 +53,11 @@ class Settings(BaseSettings):
     SUPPORT_WHATSAPP: str | None = None
     SUPPORT_EMAIL: str | None = None
 
+    REDIS_DB_NAME:str | None = None
+    REDIS_HOST:str | None = None
+    REDIS_PASSWORD:str | None = None
+    REDIS_PORT:str | None = None
+    REDIS_USERNAME:str | None = None
     class Config:
         env_file = ".env"
         case_sensitive = True

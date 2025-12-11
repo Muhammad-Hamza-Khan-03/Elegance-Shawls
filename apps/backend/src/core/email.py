@@ -1,10 +1,43 @@
-import resend
 from .config import settings
 from typing import Optional
-
-resend.api_key = settings.RESEND_API_KEY
+import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 class EmailService:
+
+    @staticmethod
+    def _send_smtp_email(to_email: str, subject: str, html_content: str) -> bool:
+        try:
+            message = MIMEMultipart("alternative")
+            message["Subject"] = subject
+            message["From"] = settings.FROM_EMAIL
+            message["To"] = to_email
+
+            html_part = MIMEText(html_content, "html")
+            message.attach(html_part)
+
+            use_tls = str(settings.SMTP_TLS).lower() == "true"
+
+            if use_tls:
+                context = ssl.create_default_context()
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                    server.starttls(context=context)
+                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                    server.sendmail(settings.FROM_EMAIL, to_email, message.as_string())
+            else:
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                    server.sendmail(settings.FROM_EMAIL, to_email, message.as_string())
+
+            return True
+
+        except Exception as e:
+            print(f"SMTP Error: {str(e)}")
+            return False
+
     @staticmethod
     def send_order_confirmation(
         to_email: str,
@@ -89,15 +122,17 @@ class EmailService:
             </html>
             """
             
-            params = {
-                "from": settings.FROM_EMAIL,
-                "to": [to_email],
-                "subject": f"Order Confirmation - Order #{order_id}",
-                "html": html_content,
-            }
+            # params = {
+            #     "from": settings.FROM_EMAIL,
+            #     "to": [to_email],
+            #     "subject": f"Order Confirmation - Order #{order_id}",
+            #     "html": html_content,
+            # }
             
-            resend.Emails.send(params)
-            return True
+            # resend.Emails.send(params)
+
+            subject = f"Order Confirmation - Order #{order_id}"
+            return EmailService._send_smtp_email(to_email, subject, html_content)
             
         except Exception as e:
             print(f"Error sending email: {str(e)}")
@@ -146,15 +181,19 @@ class EmailService:
             </html>
             """
             
-            params = {
-                "from": settings.FROM_EMAIL,
-                "to": [settings.SUPPORT_EMAIL],
-                "subject": f"New Order #{order_id} - Rs. {total_amount:,.2f}",
-                "html": html_content,
-            }
+            # params = {
+            #     "from": settings.FROM_EMAIL,
+            #     "to": [settings.SUPPORT_EMAIL],
+            #     "subject": f"New Order #{order_id} - Rs. {total_amount:,.2f}",
+            #     "html": html_content,
+            # }
             
-            resend.Emails.send(params)
-            return True
+            # resend.Emails.send(params)
+
+            subject = f"New Order #{order_id} - Rs. {total_amount:,.2f}"
+            admin_email = settings.SUPPORT_EMAIL
+
+            return EmailService._send_smtp_email(admin_email, subject, html_content)
             
         except Exception as e:
             print(f"Error sending admin notification: {str(e)}")
@@ -207,15 +246,17 @@ class EmailService:
             </html>
             """
             
-            params = {
-                "from": settings.FROM_EMAIL,
-                "to": [to_email],
-                "subject": f"Order #{order_id} - Status Updated",
-                "html": html_content,
-            }
+            # params = {
+            #     "from": settings.FROM_EMAIL,
+            #     "to": [to_email],
+            #     "subject": f"Order #{order_id} - Status Updated",
+            #     "html": html_content,
+            # }
             
-            resend.Emails.send(params)
-            return True
+            # resend.Emails.send(params)
+
+            subject = f"Order #{order_id} - Status Updated"
+            return EmailService._send_smtp_email(to_email, subject, html_content)
             
         except Exception as e:
             print(f"Error sending status update email: {str(e)}")

@@ -5,6 +5,7 @@ from ..core.database import get_db
 from ..core.security import get_current_user, get_current_admin
 from ..schemas import OrderCreate, OrderUpdateStatus, OrderResponse
 from ..services.order_service import OrderService
+from ..core.email import EmailService
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -24,9 +25,32 @@ def create_order(
             detail="Failed to create order. Check product availability and stock."
         )
     
-    # TODO: Send email notification
+    # TODO: Send email notification with queue mechanism
+
+    EmailService.send_order_confirmation(
+        to_email=order.email,
+        customer_name=order.email.split("@")[0],
+        order_id=db_order.id,
+        total_amount=db_order.total_amount,
+        order_items=[{
+            "product_name": i.product_name,
+            "color": i.color,
+            "size": i.size,
+            "quantity": i.quantity,
+            "price": i.price
+        } for i in db_order.items]
+    )
+
+    EmailService.send_admin_notification(
+        order_id=db_order.id,
+        customer_name=order.email.split("@")[0],
+        customer_email=order.email,
+        customer_whatsapp=order.whatsapp,
+        total_amount=db_order.total_amount,
+        location=order.location
+    )
+
     # TODO: Send WhatsApp notification
-    
     return db_order
 
 @router.post("/guest", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
@@ -38,7 +62,39 @@ def create_guest_order(order: OrderCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to create order. Check product availability and stock."
         )
-    
+    print("db_order_items:")
+    print(db_order)
+    print("order_items:")
+    print(order)
+
+    items = []
+    for item in db_order.order_items:
+        variant = item.product_variant
+        items.append({
+            "product_name": getattr(variant, "name", "Product"),  # fallback
+            "color": variant.color,
+            "size": variant.size,
+            "quantity": item.quantity,
+            "price": float(item.price)
+        })
+
+    EmailService.send_order_confirmation(
+        to_email=db_order.email,
+        customer_name=db_order.email.split("@")[0],  # You have no name field
+        order_id=db_order.id,
+        total_amount=float(db_order.total_amount),
+        order_items=items
+    )
+
+    EmailService.send_admin_notification(
+    order_id=db_order.id,
+        customer_name=db_order.email.split("@")[0],
+        customer_email=db_order.email,
+        customer_whatsapp=db_order.whatsapp,
+        total_amount=float(db_order.total_amount),
+        location=db_order.location
+    )
+
     return db_order
 
 @router.get("/", response_model=List[OrderResponse])
@@ -103,5 +159,10 @@ def update_order_status(
         )
     
     # TODO: Send status update notification to customer
-    
+    EmailService.send_status_update(
+        to_email=db_order.email,
+        customer_name=db_order.email.split("@")[0],
+        order_id=db_order.id,
+        new_status=status_update.status
+    )
     return db_order
