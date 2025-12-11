@@ -25,18 +25,22 @@ def create_order(
             detail="Failed to create order. Check product availability and stock."
         )
     
+    # Use persisted order_items relationship; eager load will avoid extra queries if configured.
     EmailService.send_order_confirmation(
         to_email=order.email,
         customer_name=order.email.split("@")[0],
         order_id=db_order.id,
         total_amount=db_order.total_amount,
-        order_items=[{
-            "product_name": i.product_name,
-            "color": i.color,
-            "size": i.size,
-            "quantity": i.quantity,
-            "price": i.price
-        } for i in db_order.items]
+        order_items=[
+            {
+                "product_name": getattr(item.product_variant.product, "name", "Product"),
+                "color": item.product_variant.color,
+                "size": item.product_variant.size,
+                "quantity": item.quantity,
+                "price": float(item.price),
+            }
+            for item in db_order.order_items
+        ],
     )
 
     EmailService.send_admin_notification(
@@ -159,3 +163,35 @@ def update_order_status(
         new_status=status_update.status
     )
     return db_order
+
+@router.delete("/{order_id}", status_code=status.HTTP_200_OK)
+def delete_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    # current_admin = Depends(get_current_admin)
+):
+# TODO: Add Admin auth if necessary
+    """Delete an order"""
+    order_data = OrderService.delete_order(db, order_id)
+    if not order_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Send email notification to admin
+    EmailService.send_order_deletion_notification(
+        order_id=order_data["id"],
+        customer_name=order_data["email"].split("@")[0],
+        customer_email=order_data["email"],
+        customer_whatsapp=order_data["whatsapp"],
+        total_amount=order_data["total_amount"],
+        location=order_data["location"],
+        order_status=order_data["status"],
+        order_items=order_data["order_items"]
+    )
+    
+    return {
+        "message": "Order deleted successfully",
+        "order_id": order_data["id"]
+    }

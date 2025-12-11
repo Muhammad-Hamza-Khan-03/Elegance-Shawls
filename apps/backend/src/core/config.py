@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     REDIS_PASSWORD:str | None = None
     REDIS_PORT:str | None = None
     REDIS_USERNAME:str | None = None
+    REDIS_DECODE_RESPONSES:bool | None = None
+
     
     class Config:
         env_file = ".env"

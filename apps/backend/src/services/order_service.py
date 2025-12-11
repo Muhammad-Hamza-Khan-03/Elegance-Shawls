@@ -116,6 +116,44 @@ class OrderService:
         return db_order
     
     @staticmethod
+    def delete_order(db: Session, order_id: int) -> Optional[dict]:
+        """Delete an order and restore stock"""
+        db_order = OrderService.get_order_by_id(db, order_id)
+        if not db_order:
+            return None
+        
+        # Store order data for email notification before deletion
+        order_data = {
+            "id": db_order.id,
+            "email": db_order.email,
+            "whatsapp": db_order.whatsapp,
+            "total_amount": float(db_order.total_amount),
+            "location": db_order.location,
+            "status": db_order.status.value,
+            "order_items": []
+        }
+        
+        # Restore stock for all order items
+        for item in db_order.order_items:
+            variant = item.product_variant
+            variant.stock += item.quantity
+            
+            # Store item data for email
+            order_data["order_items"].append({
+                "product_name": getattr(variant.product, "name", "Product"),
+                "color": variant.color,
+                "size": variant.size,
+                "quantity": item.quantity,
+                "price": float(item.price)
+            })
+        
+        # Delete the order (cascade will delete order_items)
+        db.delete(db_order)
+        db.commit()
+        
+        return order_data
+    
+    @staticmethod
     def get_dashboard_stats(db: Session) -> dict:
         """Get dashboard statistics"""
         total_orders = db.query(func.count(Order.id)).scalar()

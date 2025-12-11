@@ -236,3 +236,95 @@ class EmailService:
         except Exception as e:
             print(f"Error sending status update email: {str(e)}")
             return False
+    
+    @staticmethod
+    def send_order_deletion_notification(
+        order_id: int,
+        customer_name: str,
+        customer_email: str,
+        customer_whatsapp: str,
+        total_amount: float,
+        location: str,
+        order_status: str,
+        order_items: list
+    ) -> bool:
+        """Send order deletion notification to admin"""
+        try:
+            # Build order items HTML
+            items_html = ""
+            for item in order_items:
+                items_html += f"""
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                        {item['product_name']} - {item['color']}/{item['size']}
+                    </td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
+                        {item['quantity']}
+                    </td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">
+                        Rs. {item['price']:,.2f}
+                    </td>
+                </tr>
+                """
+            
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Order Deleted</title>
+            </head>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #F44336;">⚠️ Order Deleted</h2>
+                    
+                    <div style="background-color: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f44336;">
+                        <h3 style="margin-top: 0; color: #c62828;">Order #{order_id} has been deleted</h3>
+                        <p><strong>Total Amount:</strong> Rs. {total_amount:,.2f}</p>
+                        <p><strong>Status at deletion:</strong> <span style="text-transform: capitalize;">{order_status}</span></p>
+                    </div>
+                    
+                    <h3>Customer Information</h3>
+                    <ul>
+                        <li><strong>Name:</strong> {customer_name}</li>
+                        <li><strong>Email:</strong> {customer_email}</li>
+                        <li><strong>WhatsApp:</strong> {customer_whatsapp}</li>
+                        <li><strong>Location:</strong> {location}</li>
+                    </ul>
+                    
+                    <h3>Order Items (Stock Restored)</h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Item</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Quantity</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items_html}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" style="padding: 15px; text-align: right; font-weight: bold;">Total:</td>
+                                <td style="padding: 15px; text-align: right; font-weight: bold;">Rs. {total_amount:,.2f}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    
+                    <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                        <strong>Note:</strong> Stock quantities have been automatically restored for all items in this order.
+                    </p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            subject = f"Order #{order_id} Deleted - Rs. {total_amount:,.2f}"
+            admin_email = settings.SUPPORT_EMAIL
+            
+            return EmailService._send_smtp_email(admin_email, subject, html_content)
+            
+        except Exception as e:
+            print(f"Error sending order deletion notification: {str(e)}")
+            return False
