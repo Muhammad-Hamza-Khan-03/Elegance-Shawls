@@ -5,6 +5,14 @@ from ..core.security import get_password_hash, verify_password
 from typing import Optional
 
 class AuthService:
+    # REGEX
+    EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+    WHATSAPP_REGEX = r"^\+?\d{6,15}$" 
+
+    # Password rules
+    PASSWORD_MIN_LENGTH = 8
+    PASSWORD_REGEX = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+    
     @staticmethod
     def get_user_by_email(db: Session, email: str) -> Optional[User]:
         """Get user by email"""
@@ -14,23 +22,74 @@ class AuthService:
     def create_user(db: Session, user: UserCreate) -> User:
         """Create a new user (customer or admin)"""
 
-        # TODO: Add email,password,... validations
-
-        hashed_password = None
-        if user.password:
-            hashed_password = get_password_hash(user.password)
+        if not user.name or len(user.name.strip())<5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name must be at least 5 characters long"
+            )
         
-        db_user = User(
-            name=user.name,
-            email=user.email,
-            whatsapp=user.whatsapp,
-            password=hashed_password,
-            role=UserRole(user.role) if user.role else UserRole.CUSTOMER
+        if not user.email or not re.match(EMAIL_REGEX, user.email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email format."
         )
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        return db_user
+
+        # Sanitize input
+        name = user.name
+        email = user.email
+        
+        # --- Validate WhatsApp ---
+        whatsapp = None
+        if user.whatsapp:
+            if not re.match(WHATSAPP_REGEX, user.whatsapp):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid WhatsApp number format. Include country code."
+            )
+        whatsapp = user.whatsapp
+
+        # --- Validate password ---
+        if not user.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password is required."
+            )
+        if len(user.password) < PASSWORD_MIN_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Password must be at least {PASSWORD_MIN_LENGTH} characters long."
+            )
+        if not re.match(PASSWORD_REGEX, user.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character."
+            )
+
+        # hashed password
+        hashed_password = get_password_hash(user.password)
+        
+        # validate role
+        role = UserRole(user.role) if user.role else UserRole.CUSTOMER
+
+        # Create User
+        db_user = User(
+            name=name,
+            email=email,
+            whatsapp=whatsapp,
+            password=hashed_password,
+            role=role
+        )
+        try:
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            return db_user
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
     
     @staticmethod
     def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:

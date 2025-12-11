@@ -122,14 +122,6 @@ class EmailService:
             </html>
             """
             
-            # params = {
-            #     "from": settings.FROM_EMAIL,
-            #     "to": [to_email],
-            #     "subject": f"Order Confirmation - Order #{order_id}",
-            #     "html": html_content,
-            # }
-            
-            # resend.Emails.send(params)
 
             subject = f"Order Confirmation - Order #{order_id}"
             return EmailService._send_smtp_email(to_email, subject, html_content)
@@ -181,14 +173,6 @@ class EmailService:
             </html>
             """
             
-            # params = {
-            #     "from": settings.FROM_EMAIL,
-            #     "to": [settings.SUPPORT_EMAIL],
-            #     "subject": f"New Order #{order_id} - Rs. {total_amount:,.2f}",
-            #     "html": html_content,
-            # }
-            
-            # resend.Emails.send(params)
 
             subject = f"New Order #{order_id} - Rs. {total_amount:,.2f}"
             admin_email = settings.SUPPORT_EMAIL
@@ -246,15 +230,6 @@ class EmailService:
             </html>
             """
             
-            # params = {
-            #     "from": settings.FROM_EMAIL,
-            #     "to": [to_email],
-            #     "subject": f"Order #{order_id} - Status Updated",
-            #     "html": html_content,
-            # }
-            
-            # resend.Emails.send(params)
-
             subject = f"Order #{order_id} - Status Updated"
             return EmailService._send_smtp_email(to_email, subject, html_content)
             

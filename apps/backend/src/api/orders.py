@@ -25,8 +25,6 @@ def create_order(
             detail="Failed to create order. Check product availability and stock."
         )
     
-    # TODO: Send email notification with queue mechanism
-
     EmailService.send_order_confirmation(
         to_email=order.email,
         customer_name=order.email.split("@")[0],
@@ -62,11 +60,7 @@ def create_guest_order(order: OrderCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to create order. Check product availability and stock."
         )
-    print("db_order_items:")
-    print(db_order)
-    print("order_items:")
-    print(order)
-
+    
     items = []
     for item in db_order.order_items:
         variant = item.product_variant
@@ -158,7 +152,6 @@ def update_order_status(
             detail="Order not found"
         )
     
-    # TODO: Send status update notification to customer
     EmailService.send_status_update(
         to_email=db_order.email,
         customer_name=db_order.email.split("@")[0],

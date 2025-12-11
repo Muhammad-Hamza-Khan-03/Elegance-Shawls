@@ -10,32 +10,22 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    # Security (your env uses JWT_SECRET_KEY)
-    JWT_SECRET_KEY: str  # maps to JWT_SECRET_KEY automatically
+    # JWT
+    JWT_SECRET_KEY: str  
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # Supabase database (your env had these)
+    # Supabase database
     HOST: str
     SUPABASE_PORT: int
     SUPABASE_DB: str
     SUPABASE_USER: str
     SUPABASE_PASSWORD: str
 
-    # Full database URL if needed
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None
-    DATABASE_URL: str | None = None
 
-    # Cloudinary
-    CLOUDINARY_CLOUD_NAME: str | None = None
-    CLOUDINARY_API_KEY: str | None = None
-    CLOUDINARY_API_SECRET: str | None = None
-
-    # Resend Email
-    # RESEND_API_KEY: str | None = None
-    # FROM_EMAIL: str | None = None
-
+    
     # SMTP Email
     SMTP_HOST: str | None = None
     SMTP_PORT: int | None = None
@@ -45,7 +35,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str | None = None
 
     # CORS
-    FRONTEND_URL: str  # you had it in env
+    FRONTEND_URL: str 
     MY_DOMAIN: str | None = None
     ALLOWED_ORIGINS: str | None = None
 
@@ -58,6 +48,7 @@ class Settings(BaseSettings):
     REDIS_PASSWORD:str | None = None
     REDIS_PORT:str | None = None
     REDIS_USERNAME:str | None = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
