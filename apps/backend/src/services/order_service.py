@@ -19,7 +19,15 @@ class OrderService:
         query = db.query(Order)
         
         if user_id:
-            query = query.filter(Order.user_id == user_id)
+            # If user_id is provided, try to find user's email to include orders made as guest with same email
+            from ..services.auth_service import AuthService
+            user = AuthService.get_user_by_id(db, user_id)
+            if user:
+                # Filter by user_id OR email match
+                from sqlalchemy import or_
+                query = query.filter(or_(Order.user_id == user_id, Order.email == user.email))
+            else:
+                 query = query.filter(Order.user_id == user_id)
         
         if status:
             query = query.filter(Order.status == OrderStatus(status))
@@ -46,8 +54,17 @@ class OrderService:
             if cast(int,variant.stock) < item.quantity:
                 return None  # Insufficient stock
             
-            # Use variant price or fall back to item price
-            price = variant.price if cast(int,variant.price) else item.price
+            # Use variant price, fallback to product price, then item price
+            price = variant.price
+            if price is None:
+                price = variant.product.price
+                
+            if price is None:
+                price = item.price
+                
+            if price is None:
+                return None  # Price information missing
+                
             total_amount += price * item.quantity
             
             order_items_data.append({
@@ -93,7 +110,7 @@ class OrderService:
         if not db_order:
             return None
         
-        db_order.__dict__['stock'] = OrderStatus(status_update.status)
+        db_order.status = OrderStatus(status_update.status)
         db.commit()
         db.refresh(db_order)
         return db_order

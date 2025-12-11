@@ -39,6 +39,7 @@ def create_product(
 ):
     """Create a new product (admin only)"""
    
+#    TODO: CLOUDINARY
     db_product = ProductService.create_product(db, product)
     return db_product
 
@@ -50,6 +51,8 @@ def update_product(
     current_admin = Depends(get_current_admin)
 ):
     """Update an existing product (admin only)"""
+
+    # TODO: CLOUDINARY
     db_product = ProductService.update_product(db, product_id, product)
     if not db_product:
         raise HTTPException(

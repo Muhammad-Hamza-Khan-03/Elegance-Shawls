@@ -16,7 +16,7 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nullable for guest checkout
     total_amount = Column(DECIMAL(10, 2), nullable=False)
-    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
+    status = Column(Enum(OrderStatus, values_callable=lambda obj: [e.value for e in obj]), default=OrderStatus.PENDING, nullable=False)
     location = Column(String(255), nullable=False)
     address = Column(Text, nullable=False)
     email = Column(String(255), nullable=False)

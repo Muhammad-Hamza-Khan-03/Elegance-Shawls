@@ -7,14 +7,14 @@ from .productVariant import ProductVariantResponse
 class OrderItemBase(BaseModel):
     product_variant_id: int
     quantity: int = Field(..., ge=1)
-    price: Decimal = Field(..., ge=0)
 
 class OrderItemCreate(OrderItemBase):
-    pass
+    price: Optional[Decimal] = None
 
 class OrderItemResponse(OrderItemBase):
     id: int
     order_id: int
+    price: Decimal
     product_variant: Optional[ProductVariantResponse] = None
     
     model_config = ConfigDict(from_attributes=True)
