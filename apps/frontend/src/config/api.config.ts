@@ -15,7 +15,8 @@ export const API_ENDPOINTS = {
     DELETE_PRODUCT: `${API_URL}/products/{id}`,
 
     // Orders:
-    GET_ORDERS: `${API_URL}/orders/my-orders`,
+    GET_ALL_ORDERS: `${API_URL}/orders/`, 
+    GET_MY_ORDERS: `${API_URL}/orders/my-orders`,
     GET_ORDER_BY_ID: `${API_URL}/orders/{id}`,
     CREATE_GUEST_ORDER: `${API_URL}/orders/guest`,
     CREATE_ORDER: `${API_URL}/orders`,

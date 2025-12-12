@@ -108,7 +108,7 @@ def get_orders(
     return orders
 
 @router.get("/my-orders", response_model=List[OrderResponse])
-def get_my_orders(
+def get_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),

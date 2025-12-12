@@ -28,6 +28,11 @@
   },
   "homepage": "https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls#readme",
   "devDependencies": {
+    "tailwindcss": "^3.4.19",
     "turbo": "^2.6.3"
+  },
+  "dependencies": {
+    "lucide-react": "^0.560.0",
+    "zustand": "^5.0.9"
   }
 }
