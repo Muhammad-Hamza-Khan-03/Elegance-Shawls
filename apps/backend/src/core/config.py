@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
+    # API Prefix
+    API_PREFIX: str = "/api"
+
     # JWT
     JWT_SECRET_KEY: str  
     ALGORITHM: str = "HS256"

@@ -12,6 +12,7 @@ print("Database Initialized")
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    description="API for the Fashion Fusion e-commerce platform",
     debug=settings.DEBUG
 )
 
@@ -25,12 +26,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router)
-app.include_router(products.router)
-app.include_router(variants.router)
-app.include_router(orders.router)
-app.include_router(admin.router)
-app.include_router(cart.router)
+app.include_router(auth.router,prefix=settings.API_PREFIX)
+app.include_router(products.router,prefix=settings.API_PREFIX)
+app.include_router(variants.router,prefix=settings.API_PREFIX)
+app.include_router(orders.router,prefix=settings.API_PREFIX)
+app.include_router(admin.router,prefix=settings.API_PREFIX)
+app.include_router(cart.router,prefix=settings.API_PREFIX)
 
 @app.get("/")
 def root():
