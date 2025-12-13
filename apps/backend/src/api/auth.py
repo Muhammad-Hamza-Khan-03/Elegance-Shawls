@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Response
 from sqlalchemy.orm import Session
 from ..core.database import get_db
 from ..core.security import create_access_token, get_current_user
@@ -28,6 +29,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 def login(
+    response: Response,
     user_credentials: UserLoginWithCart,
     db: Session = Depends(get_db),
     redis_client=Depends(get_redis),
@@ -48,7 +50,16 @@ def login(
         data={"sub": str(user.id), "role": user.role.value},
         expires_delta=access_token_expires
     )
-
+    if user.role.value == "admin":
+        response.set_cookie(
+            key="admin_token",
+            value=access_token,
+            httponly=True,
+            secure=settings.SECURE_COOKIES,
+            samesite="lax",
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            path="/"
+        )
     # Merge guest cart; this is fast and keeps cart consistency at login time.
     if user_credentials.guest_cart_items:
         cart_service = CartService(redis_client)

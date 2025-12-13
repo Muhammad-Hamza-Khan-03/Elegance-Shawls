@@ -5,10 +5,11 @@ import { ShoppingCart, Package, AlertTriangle } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/adminLayout';
 import { OrdersTable } from '@/components/admin/ordersTable';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api, BackendOrder, BackendProduct, DashboardStatsResponse } from '@/lib/api';
-import { Order, Product } from '@/types/index';
+import { api, BackendOrder, DashboardStatsResponse } from '@/lib/api';
+import { Order } from '@/types/index';
 import { useRouter } from 'next/navigation';
 import { useAdminStore } from '@/store/adminStore';
+import { OrdersTableSkeleton } from '@/components/admin/LoadingTable';
 
 const AdminDashboardPage = () => {
   const router = useRouter();
@@ -19,7 +20,9 @@ const AdminDashboardPage = () => {
     pendingOrders: 0,
     lowStock: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
 
   const normalizeStatus = (status: string): Order['status'] => {
@@ -53,80 +56,54 @@ const AdminDashboardPage = () => {
     updatedAt: order.updated_at ?? order.created_at,
   });
 
-  const mapBackendProduct = (product: BackendProduct): Product => {
-    const category = product.category?.toLowerCase().includes('shawl') ? 'shawls' : 'stoles';
-    return {
-      id: String(product.id),
-      name: product.name,
-      slug: `product-${product.id}`,
-      description: product.description ?? '',
-      price: Number(product.price ?? 0),
-      category,
-      images: product.variants?.map((v) => v.image_url ?? '').filter(Boolean),
-      variants:
-        product.variants?.map((v) => ({
-          id: String(v.id),
-          color: v.color ?? '',
-          size: v.size ?? '',
-          stock: v.stock ?? 0,
-        })) ?? [],
-      stock: product.stock ?? 0,
-      status: (product.stock ?? 0) > 0 ? 'active' : 'out_of_stock',
-      createdAt: product.created_at,
-      updatedAt: product.updated_at ?? product.created_at,
-    };
-  };
+ 
 
   const deriveKpis = (
     stats: DashboardStatsResponse | null,
     ordersData: Order[],
-    productsData: Product[]
   ) => {
     const todayStr = new Date().toDateString();
-    const ordersToday =
-      stats?.total_orders ??
-      ordersData.filter((o) => new Date(o.createdAt).toDateString() === todayStr).length;
-    const pendingOrders =
-      stats?.pending_orders ?? ordersData.filter((o) => o.status === 'pending').length;
-    const lowStock =
-      stats?.low_stock_products ?? productsData.filter((p) => p.stock < 5).length;
+    const ordersToday = stats?.total_orders ?? ordersData.filter((o) => new Date(o.createdAt).toDateString() === todayStr).length;
+    const pendingOrders = stats?.pending_orders ?? 0;
+    const lowStock = stats?.low_stock_products ?? 0;
 
     return { ordersToday, pendingOrders, lowStock };
   };
 
-  const fetchDashboardData = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+  const fetchDashboardData = useCallback(async (signal?: AbortSignal) => {
+    if (!token) {
+      setLoadingOrders(false);
+      setLoadingStats(false);
+      return;
+    }
 
-      setLoading(true);
-      setError(null);
+    setError(null);
 
-      try {
-        const [dashboardStats, backendOrders, backendProducts] = await Promise.all([
-          api.getDashboardStats({ token, signal }).catch(() => null),
-          api.getOrders({ token, signal }),
-          api.getProducts({ token, signal }),
-        ]);
+    try {
+      setLoadingStats(true);
+      setLoadingOrders(true);
 
-        const ordersData = backendOrders.map(mapBackendOrder);
-        const productsData = backendProducts.map(mapBackendProduct);
-        const derived = deriveKpis(dashboardStats, ordersData, productsData);
+      const [dashboardStats, backendOrders] = await Promise.all([
+        api.getDashboardStats({ token, signal }).catch(() => null),
+        api.getOrders({ token, signal }).finally(() => setLoadingOrders(false))
+      ]);
 
-        setOrders(ordersData);
-        setKpiCounts(derived);
-      } catch (err) {
-        if ((err as any)?.name === 'AbortError') return;
-        console.error('Failed to fetch dashboard data', err);
-        setError('Unable to load dashboard data. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [token]
-  );
+      setLoadingStats(false);
+
+      const ordersData = backendOrders.map(mapBackendOrder);
+      const derived = deriveKpis(dashboardStats, ordersData);
+
+      setOrders(ordersData);
+      setKpiCounts(derived);
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') return;
+      console.error('Failed to fetch dashboard data', err);
+      setError('Unable to load dashboard data. Please try again.');
+
+      setLoadingOrders(false);
+      setLoadingStats(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
@@ -142,14 +119,14 @@ const AdminDashboardPage = () => {
 
   const sortedOrders = useMemo(() => {
     const weight = (status: Order['status']) =>
-      status === 'pending' ? 0 : 1; // pending first, others next
+      status === 'pending' ? 0 : 1;
 
     return orders
       .slice()
       .sort((a, b) => {
         const weightDiff = weight(a.status) - weight(b.status);
         if (weightDiff !== 0) return weightDiff;
-        return a.createdAt < b.createdAt ? 1 : -1; // newest first within group
+        return a.createdAt < b.createdAt ? 1 : -1;
       });
   }, [orders]);
 
@@ -189,7 +166,7 @@ const AdminDashboardPage = () => {
         )}
 
         {/* KPI Cards */}
-        {loading ? (
+        {loadingStats ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {kpis.map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-lg" />
@@ -198,14 +175,13 @@ const AdminDashboardPage = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {kpis.map((kpi) => (
-              <div
-                key={kpi.label}
-                className="bg-card rounded-lg p-6 shadow-soft"
-              >
+              <div key={kpi.label} className="bg-card rounded-lg p-6 shadow-soft">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">{kpi.label}</p>
-                    <p className="font-heading text-3xl font-bold mt-1">{kpi.value}</p>
+                    <p className="font-heading text-3xl font-bold mt-1">
+                      {kpi.value}
+                    </p>
                   </div>
                   <div className={`p-3 rounded-lg ${kpi.color}`}>
                     <kpi.icon className="h-6 w-6" />
@@ -219,12 +195,13 @@ const AdminDashboardPage = () => {
         {/* Recent Orders */}
         <div>
           <h2 className="font-heading text-xl font-semibold mb-4">Recent Orders</h2>
-          {loading ? (
-            <Skeleton className="h-64 rounded-lg" />
+          {loadingOrders ? (
+            <OrdersTableSkeleton />
+
           ) : (
-            <OrdersTable 
-              orders={sortedOrders} 
-              onRowClick={(order:any) => router.push(`/admin/orders/${order.id}`)}
+            <OrdersTable
+              orders={sortedOrders}
+              onRowClick={(order: any) => router.push(`/admin/orders/${order.id}`)}
             />
           )}
         </div>

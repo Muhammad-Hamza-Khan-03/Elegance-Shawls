@@ -58,7 +58,13 @@ export const useAdminStore = create<AdminStore>()(
           }
 
           const user = await userResponse.json();
-          if (!user || user.role !== 'admin') {
+          if(!user){
+            return {
+              success: false,
+              message: 'Guest user.',
+            };
+          }
+          if (user.role !== 'admin') {
             return {
               success: false,
               message: 'You are not authorized to access the admin dashboard.',

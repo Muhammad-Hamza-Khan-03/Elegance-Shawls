@@ -26,7 +26,7 @@ const AdminLoginPage = () => {
         title: 'Welcome back!',
         description: 'You have successfully logged in.',
       });
-      router.push('/dashboard');
+      router.push('/admin/dashboard');
     } else {
       toast({
         title: 'Login failed',
