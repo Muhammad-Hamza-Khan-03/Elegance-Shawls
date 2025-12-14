@@ -13,6 +13,9 @@ class ProductVariantBase(BaseModel):
 class ProductVariantCreate(ProductVariantBase):
     product_id: int
 
+class ProductVariantUpsert(ProductVariantBase):
+    id: Optional[int] = None
+
 class ProductVariantUpdate(BaseModel):
     color: Optional[str] = None
     size: Optional[str] = None

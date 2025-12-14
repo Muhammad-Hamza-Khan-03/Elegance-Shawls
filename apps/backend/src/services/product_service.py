@@ -72,10 +72,48 @@ class ProductService:
             return None
         
         update_data = product.model_dump(exclude_unset=True)
+        
+        # Handle variants update if present
+        variants_data = update_data.pop('variants', None)
+        
         for field, value in update_data.items():
             if field == "category" and value:
                 value = ProductCategory(value)
             setattr(db_product, field, value)
+            
+        if variants_data is not None:
+            # Get existing variants mapped by ID
+            existing_variants = {v.id: v for v in db_product.variants}
+            
+            # Keep track of variant IDs present in the update payload
+            updated_variant_ids = set()
+            
+            for variant_payload in variants_data:
+                variant_id = variant_payload.get('id')
+                
+                if variant_id and variant_id in existing_variants:
+                    # Update existing variant
+                    existing_variant = existing_variants[variant_id]
+                    for key, value in variant_payload.items():
+                        if key != 'id':
+                            setattr(existing_variant, key, value)
+                    updated_variant_ids.add(variant_id)
+                else:
+                    # Create new variant
+                    new_variant_data = variant_payload.copy()
+                    if 'id' in new_variant_data:
+                        del new_variant_data['id']
+                    
+                    new_variant = ProductVariant(
+                        product_id=db_product.id,
+                        **new_variant_data
+                    )
+                    db.add(new_variant)
+            
+            # Delete variants not present in the payload
+            for variant_id, variant in existing_variants.items():
+                if variant_id not in updated_variant_ids:
+                    db.delete(variant)
         
         db.commit()
         db.refresh(db_product)

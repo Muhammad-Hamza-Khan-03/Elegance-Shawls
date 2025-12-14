@@ -17,8 +17,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { api, BackendProduct } from '@/lib/api';
 import { uploadToCloudinary, validateImageFile, isValidImageUrl } from '@/lib/cloudinary';
+import { APP_CONFIG } from '@/config/app.config';
 
 interface VariantFormData {
+  id?: number;
   color: string;
   size: string;
   stock: number;
@@ -41,7 +43,7 @@ const AdminProductFormPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    category: 'shawl' as 'shawl' | 'stole',
+    category: 'SHAWL' as 'SHAWL' | 'STOLE',
     price: '',
     stock: '',
     image_url: '',
@@ -66,7 +68,7 @@ const AdminProductFormPage = () => {
         setFormData({
           name: product.name || '',
           description: product.description || '',
-          category: (product.category === 'stole' ? 'stole' : 'shawl') as 'shawl' | 'stole',
+          category: (product.category === 'stole' ? 'STOLE' : 'SHAWL') as 'SHAWL' | 'STOLE',
           price: product.price || '0',
           stock: String(product.stock || 0),
           // Use first variant's image_url or empty string
@@ -77,6 +79,7 @@ const AdminProductFormPage = () => {
         if (product.variants && product.variants.length > 0) {
           setVariants(
             product.variants.map((v) => ({
+              id: v.id,
               color: v.color || '',
               size: v.size || '',
               stock: v.stock || 0,
@@ -115,7 +118,7 @@ const AdminProductFormPage = () => {
     setUploading(true);
     try {
       const result = await uploadToCloudinary(file, {
-        folder: 'elegance-shawls/products',
+        folder: APP_CONFIG.cloudinaryFolder,
         transformation: {
           quality: 'auto',
           format: 'auto',
@@ -179,7 +182,7 @@ const AdminProductFormPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.name.trim()) {
       toast({
@@ -216,9 +219,12 @@ const AdminProductFormPage = () => {
     }
 
     // Validate variants
-    const validVariants = variants.filter(
-      (v) => v.color.trim() && v.size.trim() && v.stock >= 0
-    );
+    const validVariants = variants.map(v => ({
+      ...v,
+      color: v.color.trim(),
+      size: v.size.trim(),
+    }));
+
 
     if (validVariants.length === 0) {
       toast({
@@ -235,11 +241,12 @@ const AdminProductFormPage = () => {
       const productData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        category: formData.category,
+        category: formData.category.toLowerCase() as 'shawl' | 'stole',
         price: price,
         stock: stock,
-        image_url: formData.image_url.trim() || undefined,
+        image_url: formData.image_url,
         variants: validVariants.map((v) => ({
+          id: v.id,
           color: v.color.trim(),
           size: v.size.trim(),
           stock: v.stock,
@@ -249,6 +256,8 @@ const AdminProductFormPage = () => {
       };
 
       if (isEditing) {
+        console.log(productData);
+        productData.image_url = productData.variants[0]?.image_url || '';
         await api.updateProduct(id!, productData);
         toast({
           title: 'Product updated',
@@ -347,11 +356,11 @@ const AdminProductFormPage = () => {
 
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
+                <Label htmlFor="category">Category</Label>
                 <Select
-                  value={formData.category}
+                  value={formData.category.toLowerCase()}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, category: value as 'shawl' | 'stole' })
+                    setFormData({ ...formData, category: value.toUpperCase() as 'SHAWL' | 'STOLE' })
                   }
                 >
                   <SelectTrigger>
@@ -365,15 +374,15 @@ const AdminProductFormPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="price">Price (₹) *</Label>
+                <Label htmlFor="price">Price</Label>
                 <Input
                   id="price"
                   type="number"
-                  step="0.01"
-                  min="0"
+                  step="1"
+                  min="50"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="12500"
+                  placeholder="0000"
                   required
                 />
               </div>
@@ -394,7 +403,7 @@ const AdminProductFormPage = () => {
           </div>
 
           {/* Main Product Image */}
-          <div className="bg-card rounded-lg p-6 shadow-soft space-y-4">
+          {/* <div className="bg-card rounded-lg p-6 shadow-soft space-y-4">
             <h2 className="font-heading text-lg font-semibold">Product Image</h2>
             <p className="text-sm text-muted-foreground">
               Upload an image or enter a Cloudinary/image URL
@@ -454,7 +463,7 @@ const AdminProductFormPage = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Variants */}
           <div className="bg-card rounded-lg p-6 shadow-soft space-y-4">
@@ -498,12 +507,19 @@ const AdminProductFormPage = () => {
                   </div>
                   <div className="space-y-2">
                     <Label>Size *</Label>
-                    <Input
+                    <Select
                       value={variant.size}
-                      onChange={(e) => updateVariant(index, 'size', e.target.value)}
-                      placeholder="Large"
-                      required
-                    />
+                      onValueChange={(value) => updateVariant(index, 'size', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Small">Small</SelectItem>
+                        <SelectItem value="Medium">Medium</SelectItem>
+                        <SelectItem value="Large">Large</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Stock *</Label>
@@ -520,12 +536,12 @@ const AdminProductFormPage = () => {
 
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Price (₹) - Optional</Label>
+                    <Label>Price</Label>
                     <Input
                       type="number"
-                      step="0.01"
-                      min="0"
-                      value={variant.price ?? ''}
+                      step="1"
+                      min="50"
+                      value={variant.price ? formData.price : variant.price}
                       onChange={(e) => {
                         const value = e.target.value;
                         if (value) {
@@ -540,20 +556,20 @@ const AdminProductFormPage = () => {
                           setVariants(updated);
                         }
                       }}
-                      placeholder="Variant specific price"
+                      placeholder={formData.price}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Variant Image URL - Optional</Label>
+                  <Label>Variant Image URL</Label>
                   <div className="flex gap-2">
                     <Input
                       type="file"
                       ref={(el) => {
                         variantFileInputRefs.current[index] = el;
                       }}
-                      accept="image/*"
+                      accept=".image/*"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];

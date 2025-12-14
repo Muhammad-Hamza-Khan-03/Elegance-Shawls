@@ -63,7 +63,7 @@ const http = async <T>(
         (typeof errorData?.detail === 'string' ? errorData.detail : undefined) ||
         (typeof errorData?.message === 'string' ? errorData.message : undefined) ||
         `Request failed with status ${response.status}`;
-      
+
       // Handle authentication errors
       if (response.status === 401 || response.status === 403) {
         if (typeof window !== 'undefined') {
@@ -71,7 +71,7 @@ const http = async <T>(
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       throw new Error(message);
     }
 
@@ -166,6 +166,7 @@ export interface ProductUpdatePayload {
   stock?: number;
   image_url?: string;
   variants?: Array<{
+    id?: number;
     color: string;
     size: string;
     price?: number;

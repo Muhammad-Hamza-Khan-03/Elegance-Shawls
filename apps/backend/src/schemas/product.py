@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
-from .productVariant import ProductVariantBase, ProductVariantResponse
+from .productVariant import ProductVariantBase, ProductVariantResponse, ProductVariantUpsert
 
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
@@ -20,6 +20,7 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     price: Optional[Decimal] = None
     stock: Optional[int] = None
+    variants: Optional[List[ProductVariantUpsert]] = None
 
 class ProductResponse(ProductBase):
     id: int
