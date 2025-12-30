@@ -1,3 +1,4 @@
+"use server"
 import { API_ENDPOINTS } from '@/config/api.config';
 import { useAdminStore } from '@/store/adminStore';
 
