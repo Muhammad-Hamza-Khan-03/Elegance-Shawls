@@ -1,235 +1,153 @@
-"use server"
-import { API_ENDPOINTS } from '@/config/api.config';
-import { useAdminStore } from '@/store/adminStore';
+import { Product, Order } from '@/types/types';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-type RequestOptions = {
-  method?: HttpMethod;
-  body?: unknown;
-  token?: string | null;
-  signal?: AbortSignal;
-};
-
-const withId = (template: string, id: string) =>
-  template.replace('{id}', encodeURIComponent(id));
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
-
-const getToken = (): string | null => {
-  // Get token from store - works in both client and server contexts
-  if (typeof window !== 'undefined') {
-    const state = useAdminStore.getState();
-    return state.token;
+// Helper to handle API responses
+const handleResponse = async (response: Response) => {
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
+    throw new Error(error.detail || `API Error: ${response.statusText}`);
   }
-  return null;
+  return response.json();
 };
 
-const buildHeaders = (token?: string | null, hasBody?: boolean) => {
-  const headers: Record<string, string> = {};
-  if (hasBody) headers['Content-Type'] = 'application/json';
-  const authToken = token ?? getToken();
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  return headers;
+// Mapper: Backend Product -> Frontend Product
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapBackendProduct = (bp: any): Product => {
+  const variants = bp.variants?.map((v: any) => ({
+    id: v._id || v.id || 'unknown',
+    color: v.name, // Mapping variant name to color
+    size: 'Free Size',
+    stock: v.stock_status === 'In stock' ? 10 : 0
+  })) || [];
+
+  const price = variants.length > 0 ? variants[0].price : 0;
+
+  // Collect all images: cover + variant images
+  const images = [bp.cover_image_url];
+  variants.forEach((v: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vImg = (bp.variants || []).find((bv: any) => (bv._id || bv.id) === v.id)?.image_url;
+    if (vImg && !images.includes(vImg)) {
+      images.push(vImg);
+    }
+  });
+
+  return {
+    id: bp._id || bp.id,
+    name: bp.name,
+    slug: bp.slug,
+    description: bp.main_description || '',
+    price: price,
+    category: 'shawls', // Default category
+    images: images,
+    variants: variants,
+    stock: variants.reduce((acc: number, v: any) => acc + v.stock, 0),
+    status: bp.is_active ? 'active' : 'draft',
+    createdAt: bp.created_at,
+    updatedAt: bp.updated_at
+  };
 };
-
-const http = async <T>(
-  url: string,
-  { method = 'GET', body, token, signal }: RequestOptions = {}
-): Promise<T> => {
-  try {
-    const response = await fetch(url, {
-      method,
-      cache: 'no-store',
-      headers: buildHeaders(token, body !== undefined),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
-    });
-
-    const text = await response.text();
-    let data: unknown = null;
-
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-
-    if (!response.ok) {
-      const errorData = isRecord(data) ? data : undefined;
-      const message =
-        (typeof errorData?.detail === 'string' ? errorData.detail : undefined) ||
-        (typeof errorData?.message === 'string' ? errorData.message : undefined) ||
-        `Request failed with status ${response.status}`;
-
-      // Handle authentication errors
-      if (response.status === 401 || response.status === 403) {
-        if (typeof window !== 'undefined') {
-          useAdminStore.getState().logout();
-        }
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      throw new Error(message);
-    }
-
-    return data as T;
-  } catch (error) {
-    // Re-throw if it's already an Error
-    if (error instanceof Error) {
-      throw error;
-    }
-    // Handle network errors
-    throw new Error('Network error. Please check your connection and try again.');
-  }
-};
-
-export interface DashboardStatsResponse {
-  total_orders?: number;
-  total_revenue?: string;
-  pending_orders?: number;
-  total_products?: number;
-  low_stock_products?: number;
-}
-
-export interface BackendProductVariant {
-  id: number;
-  product_id: number;
-  color: string | null;
-  size: string | null;
-  price: string;
-  stock: number;
-  image_url: string | null;
-  created_at: string;
-  updated_at: string | null;
-}
-
-export interface BackendProduct {
-  id: number;
-  name: string;
-  description: string;
-  category: string;
-  price: string;
-  stock: number;
-  created_at: string;
-  updated_at: string;
-  variants: BackendProductVariant[];
-}
-
-export interface BackendOrderItem {
-  id: number;
-  order_id: number;
-  product_variant_id: number;
-  quantity: number;
-  price: string;
-  product_variant?: BackendProductVariant;
-}
-
-export interface BackendOrder {
-  id: number;
-  user_id?: number;
-  email?: string;
-  whatsapp?: string;
-  location?: string;
-  address?: string;
-  status: string;
-  total_amount: string;
-  created_at: string;
-  updated_at: string | null;
-  order_items?: BackendOrderItem[];
-}
-
-// Product creation/update types matching backend
-export interface ProductCreatePayload {
-  name: string;
-  description: string;
-  price: number;
-  category: 'shawl' | 'stole';
-  stock: number;
-  image_url?: string;
-  variants?: Array<{
-    color: string;
-    size: string;
-    price?: number;
-    stock: number;
-    image_url?: string;
-  }>;
-}
-
-export interface ProductUpdatePayload {
-  name?: string;
-  description?: string;
-  price?: number;
-  category?: 'shawl' | 'stole';
-  stock?: number;
-  image_url?: string;
-  variants?: Array<{
-    id?: number;
-    color: string;
-    size: string;
-    price?: number;
-    stock: number;
-    image_url?: string;
-  }>;
-}
 
 export const api = {
-  // Dashboard
-  getDashboardStats: (options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<DashboardStatsResponse>(API_ENDPOINTS.GET_DASHBOARD_STATS, options),
+  // GET /products
+  getProducts: async (): Promise<Product[]> => {
+    try {
+      const data = await handleResponse(await fetch(`${API_URL}/products/`));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return data.map((p: any) => mapBackendProduct(p));
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+      return [];
+    }
+  },
 
-  // Products
-  getProducts: (options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<BackendProduct[]>(API_ENDPOINTS.GET_PRODUCTS, options),
+  // GET /products/:id
+  getProductById: async (id: string): Promise<Product | undefined> => {
+    try {
+      // Since backend strictly uses slug for details, we try to fetch all and find by ID locally.
+      // This is a temporary fallback until backend supports GET /products/{id}
+      const products = await api.getProducts();
+      return products.find(p => p.id === id);
+    } catch (error) {
+      console.error(`Failed to fetch product by id ${id}:`, error);
+      return undefined;
+    }
+  },
 
-  getProductById: (id: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<BackendProduct>(withId(API_ENDPOINTS.GET_PRODUCT_BY_ID, id), options),
+  // GET /products/slug/:slug
+  getProductBySlug: async (slug: string): Promise<Product | undefined> => {
+    try {
+      const data = await handleResponse(await fetch(`${API_URL}/products/slug/${slug}`));
+      return mapBackendProduct(data);
+    } catch (e) {
+      console.error(`Failed to fetch product by slug ${slug}:`, e);
+      return undefined;
+    }
+  },
 
-  createProduct: (
-    product: ProductCreatePayload,
-    options?: Omit<RequestOptions, 'method' | 'body'>
-  ) =>
-    http<BackendProduct>(API_ENDPOINTS.CREATE_PRODUCT, {
+  // GET /products/category/:category
+  getProductsByCategory: async (category: 'shawls' | 'stoles'): Promise<Product[]> => {
+    const products = await api.getProducts();
+    return products.filter(p => p.category === category);
+  },
+
+  // GET /products/featured
+  getFeaturedProducts: async (): Promise<Product[]> => {
+    const products = await api.getProducts();
+    return products.slice(0, 4);
+  },
+
+  // POST /products
+  createProduct: async (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> => {
+    const payload = {
+      name: product.name,
+      slug: product.slug,
+      cover_image_url: product.images[0] || 'https://placehold.co/600x400',
+      main_description: product.description,
+      variants: product.variants.map((v: any) => ({
+        name: v.color,
+        image_url: v.image_url || product.images[0] || '',
+        price: product.price,
+        currency: "PKR",
+        stock_status: v.stock > 0 ? "In stock" : "Out of stock",
+        description: ""
+      }))
+    };
+
+    const data = await handleResponse(await fetch(`${API_URL}/products/`, {
       method: 'POST',
-      body: product,
-      ...options,
-    }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }));
 
-  updateProduct: (
-    id: string,
-    product: ProductUpdatePayload,
-    options?: Omit<RequestOptions, 'method' | 'body'>
-  ) =>
-    http<BackendProduct>(withId(API_ENDPOINTS.UPDATE_PRODUCT, id), {
-      method: 'PUT',
-      body: product,
-      ...options,
-    }),
+    return mapBackendProduct(data);
+  },
 
-  deleteProduct: (id: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<{ message?: string }>(withId(API_ENDPOINTS.DELETE_PRODUCT, id), {
-      method: 'DELETE',
-      ...options,
-    }),
+  // PUT /products/:id
+  updateProduct: async (id: string, product: Partial<Product>): Promise<Product> => {
+    throw new Error("Update product endpoint not implemented in backend.");
+  },
 
-  // Orders
-  getOrders: (options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<BackendOrder[]>(API_ENDPOINTS.GET_ALL_ORDERS, options),
+  // DELETE /products/:id
+  deleteProduct: async (id: string): Promise<void> => {
+    throw new Error("Delete product endpoint not implemented in backend.");
+  },
 
-  getOrderById: (id: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
-    http<BackendOrder>(withId(API_ENDPOINTS.GET_ORDER_BY_ID, id), options),
+  // Orders API (Mocked placeholder)
+  getOrders: async (): Promise<Order[]> => {
+    return [];
+  },
 
-  updateOrderStatus: (
-    id: string,
-    status: string,
-    options?: Omit<RequestOptions, 'method'>
-  ) =>
-    http<BackendOrder>(withId(API_ENDPOINTS.UPDATE_ORDER_STATUS, id), {
-      method: 'PATCH',
-      body: { status },
-      ...options,
-    }),
+  getOrderById: async (id: string): Promise<Order | undefined> => {
+    return undefined;
+  },
+
+  createOrder: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Promise<Order> => {
+    throw new Error("Order creation not connected to backend.");
+  },
+
+  updateOrder: async (id: string, updates: Partial<Order>): Promise<Order> => {
+    throw new Error("Order update not connected to backend.");
+  },
 };

@@ -5,3 +5,4 @@ venv/
 Website.md
 __pycache__/
 *.pyc
+apps/backend/.venv
