@@ -18,6 +18,8 @@ export interface ProductVariant {
   color: string;
   size: string;
   stock: number;
+  price: number;
+  image_url?: string;
 }
 
 export interface CartItem {
