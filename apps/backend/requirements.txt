@@ -1,7 +1,7 @@
-fastapi
-motor
-pydantic
-pymongo
-python-dotenv
-uvicorn
-pydantic-settings
+fastapi==0.124.0
+motor==3.7.1
+pydantic==2.12.5
+pymongo==4.15.5
+python-dotenv==1.2.1
+uvicorn==0.38.0
+pydantic-settings==2.12.0
