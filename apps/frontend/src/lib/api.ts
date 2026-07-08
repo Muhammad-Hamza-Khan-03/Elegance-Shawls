@@ -19,42 +19,73 @@ const handleResponse = async (response: Response) => {
   return response.json();
 };
 
-// Mapper: Backend Product -> Frontend Product
+const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
+  const raw =
+    typeof category === 'object' && category !== null && 'name' in category
+      ? String((category as { name?: string }).name || '')
+      : String(category || '');
+
+  return raw.toLowerCase().includes('stole') ? 'stoles' : 'shawls';
+};
+
+// Mapper: Backend/Quill Product -> Storefront Product
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapBackendProduct = (bp: any): Product => {
-  const variants = bp.variants?.map((v: any) => ({
-    id: v._id || v.id || 'unknown',
-    color: v.name, // Mapping variant name to color
-    size: 'Free Size',
-    stock: v.stock_status === 'In stock' ? 10 : 0,
-    price: Number(v.price ?? 0),
-    image_url: v.image_url
-  })) || [];
+  const rawVariations = bp.variations || bp.variants || [];
+  const productPrice = Number(bp.price?.amount ?? bp.price ?? 0);
+  const currency = bp.price?.currency || bp.currency || 'PKR';
 
-  const price = variants.length > 0 ? variants[0].price : 0;
+  const variants = rawVariations.map((v: any, index: number) => ({
+    id: v._id || v.id || `${bp._id || bp.id || bp.slug}-variant-${index}`,
+    color: v.color || v.name || 'Default',
+    size: v.size || bp.sizing || 'Free Size',
+    stock: v.stock ?? (v.stock_status === 'Out of stock' ? 0 : 10),
+    price: Number(v.price?.amount ?? v.price ?? productPrice),
+    image_url: v.image_url || v.imageUrl || undefined,
+  }));
 
-  // Collect all images: cover + variant images
-  const images = [bp.cover_image_url].filter(Boolean);
-  variants.forEach((v: any) => {
-    if (v.image_url && !images.includes(v.image_url)) {
-      images.push(v.image_url);
+  const images = [bp.cover_image_url, bp.image_url, bp.imageUrl]
+    .filter(Boolean) as string[];
+
+  variants.forEach((variant: any) => {
+    if (variant.image_url && !images.includes(variant.image_url)) {
+      images.push(variant.image_url);
     }
   });
+
+  if (images.length === 0) {
+    images.push('https://placehold.co/600x800/fbf7f0/2f241f?text=Elegance+Shawls');
+  }
+
+  const status = bp.status || (bp.is_active === false ? 'draft' : 'active');
 
   return {
     id: bp._id || bp.id,
     name: bp.name,
     slug: bp.slug,
-    description: bp.main_description || '',
-    price: price,
-    category: bp.category || 'shawls', // Default category until backend stores category
-    images: images,
-    variants: variants,
-    stock: variants.reduce((acc: number, v: any) => acc + v.stock, 0),
-    status: bp.is_active ? 'active' : 'draft',
-    createdAt: bp.created_at,
-    updatedAt: bp.updated_at
+    description: bp.description || bp.main_description || '',
+    price: variants[0]?.price || productPrice,
+    currency,
+    category: normalizeCategory(bp.category || bp.type),
+    images,
+    variants,
+    stock: variants.reduce((acc: number, v: any) => acc + Number(v.stock || 0), 0),
+    status,
+    material: bp.material,
+    sizing: bp.sizing,
+    weight: bp.weight,
+    itemNumber: bp.item_number,
+    type: bp.type,
+    createdAt: bp.created_at || bp.createdAt || '',
+    updatedAt: bp.updated_at || bp.updatedAt || '',
   };
+};
+
+const extractItems = (data: any) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.products)) return data.products;
+  return [];
 };
 
 export const api = {
@@ -62,8 +93,9 @@ export const api = {
   getProducts: async (): Promise<Product[]> => {
     try {
       const data = await handleResponse(await fetch(`${getApiUrl()}/products/`));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return data.map((p: any) => mapBackendProduct(p));
+      return extractItems(data)
+        .map((p: any) => mapBackendProduct(p))
+        .filter((p: Product) => p.status === 'active');
     } catch (error) {
       console.error('Failed to fetch products:', error);
       return [];
@@ -73,8 +105,6 @@ export const api = {
   // GET /products/:id
   getProductById: async (id: string): Promise<Product | undefined> => {
     try {
-      // Since backend strictly uses slug for details, we try to fetch all and find by ID locally.
-      // This is a temporary fallback until backend supports GET /products/{id}
       const products = await api.getProducts();
       return products.find(p => p.id === id);
     } catch (error) {
@@ -90,7 +120,8 @@ export const api = {
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
-      return undefined;
+      const products = await api.getProducts();
+      return products.find(p => p.slug === slug);
     }
   },
 
@@ -106,56 +137,33 @@ export const api = {
     return products.slice(0, 4);
   },
 
-  // POST /products
-  createProduct: async (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> => {
-    const payload = {
-      name: product.name,
-      slug: product.slug,
-      cover_image_url: product.images[0] || 'https://placehold.co/600x400',
-      main_description: product.description,
-      variants: product.variants.map((v) => ({
-        name: v.color,
-        image_url: v.image_url || product.images[0] || '',
-        price: v.price || product.price,
-        currency: 'PKR',
-        stock_status: v.stock > 0 ? 'In stock' : 'Out of stock',
-        description: ''
-      }))
-    };
-
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }));
-
-    return mapBackendProduct(data);
+  // Product writes are owned by Quill Panel, not the storefront.
+  createProduct: async (): Promise<Product> => {
+    throw new Error('Product creation is handled in Quill Panel.');
   },
 
-  // PUT /products/:id
-  updateProduct: async (id: string, product: Partial<Product>): Promise<Product> => {
-    throw new Error('Update product endpoint not implemented in backend.');
+  updateProduct: async (): Promise<Product> => {
+    throw new Error('Product updates are handled in Quill Panel.');
   },
 
-  // DELETE /products/:id
-  deleteProduct: async (id: string): Promise<void> => {
-    throw new Error('Delete product endpoint not implemented in backend.');
+  deleteProduct: async (): Promise<void> => {
+    throw new Error('Product deletion is handled in Quill Panel.');
   },
 
-  // Orders API (Mocked placeholder)
+  // Orders are intentionally handled through WhatsApp for launch.
   getOrders: async (): Promise<Order[]> => {
     return [];
   },
 
-  getOrderById: async (id: string): Promise<Order | undefined> => {
+  getOrderById: async (): Promise<Order | undefined> => {
     return undefined;
   },
 
-  createOrder: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Promise<Order> => {
-    throw new Error('Order creation not connected to backend.');
+  createOrder: async (): Promise<Order> => {
+    throw new Error('Orders are submitted through WhatsApp checkout.');
   },
 
-  updateOrder: async (id: string, updates: Partial<Order>): Promise<Order> => {
-    throw new Error('Order update not connected to backend.');
+  updateOrder: async (): Promise<Order> => {
+    throw new Error('Orders are managed manually through WhatsApp.');
   },
 };
