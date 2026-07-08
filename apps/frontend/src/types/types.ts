@@ -4,11 +4,17 @@ export interface Product {
   slug: string;
   description: string;
   price: number;
+  currency: string;
   category: 'shawls' | 'stoles';
   images: string[];
   variants: ProductVariant[];
   stock: number;
-  status: 'active' | 'draft' | 'out_of_stock';
+  status: 'active' | 'draft' | 'out_of_stock' | 'archived';
+  material?: string;
+  sizing?: string;
+  weight?: string;
+  itemNumber?: string | number;
+  type?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,10 +36,18 @@ export interface CartItem {
   selectedSize: string;
 }
 
+export interface CustomerDetails {
+  name: string;
+  phone: string;
+  city: string;
+  address: string;
+  notes?: string;
+}
+
 export interface Order {
   id: string;
   customerName: string;
-  email: string;
+  email?: string;
   whatsappNumber: string;
   city: string;
   address: string;
