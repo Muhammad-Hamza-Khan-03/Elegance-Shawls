@@ -2,6 +2,14 @@ import { Product, Order } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+const getApiUrl = () => {
+  if (!API_URL) {
+    throw new Error('NEXT_PUBLIC_API_URL is not configured.');
+  }
+
+  return API_URL.replace(/\/$/, '');
+};
+
 // Helper to handle API responses
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -18,18 +26,18 @@ const mapBackendProduct = (bp: any): Product => {
     id: v._id || v.id || 'unknown',
     color: v.name, // Mapping variant name to color
     size: 'Free Size',
-    stock: v.stock_status === 'In stock' ? 10 : 0
+    stock: v.stock_status === 'In stock' ? 10 : 0,
+    price: Number(v.price ?? 0),
+    image_url: v.image_url
   })) || [];
 
   const price = variants.length > 0 ? variants[0].price : 0;
 
   // Collect all images: cover + variant images
-  const images = [bp.cover_image_url];
+  const images = [bp.cover_image_url].filter(Boolean);
   variants.forEach((v: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const vImg = (bp.variants || []).find((bv: any) => (bv._id || bv.id) === v.id)?.image_url;
-    if (vImg && !images.includes(vImg)) {
-      images.push(vImg);
+    if (v.image_url && !images.includes(v.image_url)) {
+      images.push(v.image_url);
     }
   });
 
@@ -39,7 +47,7 @@ const mapBackendProduct = (bp: any): Product => {
     slug: bp.slug,
     description: bp.main_description || '',
     price: price,
-    category: 'shawls', // Default category
+    category: bp.category || 'shawls', // Default category until backend stores category
     images: images,
     variants: variants,
     stock: variants.reduce((acc: number, v: any) => acc + v.stock, 0),
@@ -53,7 +61,7 @@ export const api = {
   // GET /products
   getProducts: async (): Promise<Product[]> => {
     try {
-      const data = await handleResponse(await fetch(`${API_URL}/products/`));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/`));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return data.map((p: any) => mapBackendProduct(p));
     } catch (error) {
@@ -78,7 +86,7 @@ export const api = {
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
-      const data = await handleResponse(await fetch(`${API_URL}/products/slug/${slug}`));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`));
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
@@ -105,17 +113,17 @@ export const api = {
       slug: product.slug,
       cover_image_url: product.images[0] || 'https://placehold.co/600x400',
       main_description: product.description,
-      variants: product.variants.map((v: any) => ({
+      variants: product.variants.map((v) => ({
         name: v.color,
         image_url: v.image_url || product.images[0] || '',
-        price: product.price,
-        currency: "PKR",
-        stock_status: v.stock > 0 ? "In stock" : "Out of stock",
-        description: ""
+        price: v.price || product.price,
+        currency: 'PKR',
+        stock_status: v.stock > 0 ? 'In stock' : 'Out of stock',
+        description: ''
       }))
     };
 
-    const data = await handleResponse(await fetch(`${API_URL}/products/`, {
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -126,12 +134,12 @@ export const api = {
 
   // PUT /products/:id
   updateProduct: async (id: string, product: Partial<Product>): Promise<Product> => {
-    throw new Error("Update product endpoint not implemented in backend.");
+    throw new Error('Update product endpoint not implemented in backend.');
   },
 
   // DELETE /products/:id
   deleteProduct: async (id: string): Promise<void> => {
-    throw new Error("Delete product endpoint not implemented in backend.");
+    throw new Error('Delete product endpoint not implemented in backend.');
   },
 
   // Orders API (Mocked placeholder)
@@ -144,10 +152,10 @@ export const api = {
   },
 
   createOrder: async (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Promise<Order> => {
-    throw new Error("Order creation not connected to backend.");
+    throw new Error('Order creation not connected to backend.');
   },
 
   updateOrder: async (id: string, updates: Partial<Order>): Promise<Order> => {
-    throw new Error("Order update not connected to backend.");
+    throw new Error('Order update not connected to backend.');
   },
 };
