@@ -31,6 +31,8 @@ The included Mongo container is suitable for a controlled single-host deployment
 
 Quill must use the documented `/products/admin/*` routes and send `X-Admin-Key` over HTTPS. It must not call public routes for writes or put the key in query strings, logs or browser code. Validate the exact payload contract against backend OpenAPI at `/docs` in a non-public staging environment.
 
+The currently accessible `quill-panel` does not yet meet this contract and must not be connected to production. See `LAUNCH_RUNBOOK.md` for the verified incompatibilities and acceptance procedure.
+
 ## Rollback
 
 Keep the previous immutable frontend/backend image tags. If post-deployment checks fail, restore both previous application image tags, redeploy, verify readiness, and only then investigate. Database rollback requires a tested restore procedure; do not delete or rewrite production product data during an application rollback.

@@ -1,5 +1,7 @@
 # Operations runbook
 
+The step-by-step release procedure and current external blocker are maintained in `LAUNCH_RUNBOOK.md`.
+
 ## Launch gate
 
 - CI is green for the exact commit being deployed.
