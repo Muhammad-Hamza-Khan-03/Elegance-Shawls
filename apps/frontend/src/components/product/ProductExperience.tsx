@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Minus, Plus } from 'lucide-react';
 import { Product } from '@/types/types';
 import {
@@ -73,16 +74,14 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
           <Link href="/products" className="text-sm font-medium text-[#9a6b3f] hover:underline">
             ← Back to collection
           </Link>
-          <div className="overflow-hidden rounded-3xl border border-[#e7dac8] bg-[#efe5d5] shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={activeImage} alt={`${product.name}${selected ? ` in ${selected.color}` : ''}`} className="h-full max-h-[760px] w-full object-cover" />
+          <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-[#e7dac8] bg-[#efe5d5] shadow-sm">
+            <Image src={activeImage} alt={`${product.name}${selected ? ` in ${selected.color}` : ''}`} fill priority sizes="(max-width: 1024px) 100vw, 55vw" className="object-cover" />
           </div>
           {gallery.length > 1 && (
             <div className="grid grid-cols-4 gap-3" aria-label="Product images">
               {gallery.slice(0, 8).map((image, index) => (
-                <button key={image} type="button" onClick={() => setActiveImage(image)} aria-label={`View product image ${index + 1}`} aria-pressed={activeImage === image} className={`aspect-square overflow-hidden rounded-2xl border bg-[#efe5d5] ${activeImage === image ? 'border-[#2f241f] ring-2 ring-[#2f241f]/20' : 'border-[#e7dac8]'}`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image} alt="" className="h-full w-full object-cover" />
+                <button key={image} type="button" onClick={() => setActiveImage(image)} aria-label={`View product image ${index + 1}`} aria-pressed={activeImage === image} className={`relative aspect-square overflow-hidden rounded-2xl border bg-[#efe5d5] ${activeImage === image ? 'border-[#2f241f] ring-2 ring-[#2f241f]/20' : 'border-[#e7dac8]'}`}>
+                  <Image src={image} alt="" fill sizes="(max-width: 1024px) 25vw, 12vw" className="object-cover" />
                 </button>
               ))}
             </div>
