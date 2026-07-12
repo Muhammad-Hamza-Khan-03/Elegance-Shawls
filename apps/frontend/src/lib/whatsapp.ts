@@ -1,4 +1,4 @@
-import { CustomerDetails, Product } from '@/types/types';
+import { CustomerDetails, Product, ProductVariant } from '@/types/types';
 
 const DEFAULT_WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
 
@@ -6,21 +6,41 @@ export const formatCurrency = (amount: number, currency = 'PKR') => {
   return `${currency} ${Number(amount || 0).toLocaleString()}`;
 };
 
-export const getWhatsAppNumber = () => DEFAULT_WHATSAPP_NUMBER.replace(/[^0-9]/g, '');
+export const getWhatsAppNumber = (value = DEFAULT_WHATSAPP_NUMBER) =>
+  value.replace(/[^0-9]/g, '');
 
-export const buildSingleProductMessage = (product: Product, quantity = 1) => {
-  const total = product.price * quantity;
+export interface SingleProductOrder {
+  variant: ProductVariant;
+  quantity: number;
+  productUrl: string;
+}
+
+export const validateSingleProductOrder = ({ variant, quantity, productUrl }: SingleProductOrder) => {
+  if (!Number.isInteger(quantity) || quantity < 1) return 'Quantity must be at least 1.';
+  if (variant.stock < 1) return 'This option is currently out of stock.';
+  if (quantity > variant.stock) return `Only ${variant.stock} item${variant.stock === 1 ? '' : 's'} available.`;
+  if (!/^https?:\/\//.test(productUrl)) return 'Storefront URL is not configured.';
+  return null;
+};
+
+export const buildSingleProductMessage = (product: Product, order: SingleProductOrder) => {
+  const error = validateSingleProductOrder(order);
+  if (error) throw new Error(error);
+  const { variant, quantity, productUrl } = order;
+  const total = variant.price * quantity;
 
   return [
     'Assalam o Alaikum, I want to place an order from Elegance Shawls.',
     '',
     `Product: ${product.name}`,
     `SKU/Item: ${product.itemNumber || product.slug}`,
+    `Color: ${variant.color}`,
+    `Size: ${variant.size}`,
     `Quantity: ${quantity}`,
-    `Price: ${formatCurrency(product.price, product.currency)}`,
+    `Unit price: ${formatCurrency(variant.price, product.currency)}`,
     `Total: ${formatCurrency(total, product.currency)}`,
     '',
-    `Product link: ${typeof window !== 'undefined' ? window.location.href : `/product/${product.slug}`}`,
+    `Product link: ${productUrl}`,
     '',
     'Please confirm availability and delivery details.',
   ].join('\n');
@@ -56,8 +76,10 @@ export const buildCartMessage = (
   ].filter(Boolean).join('\n');
 };
 
-export const buildWhatsAppUrl = (message: string) => {
-  const number = getWhatsAppNumber();
-  const baseUrl = number ? `https://wa.me/${number}` : 'https://wa.me/';
-  return `${baseUrl}?text=${encodeURIComponent(message)}`;
+export const buildWhatsAppUrl = (message: string, configuredNumber = DEFAULT_WHATSAPP_NUMBER) => {
+  const number = getWhatsAppNumber(configuredNumber);
+  if (!/^\d{10,15}$/.test(number)) {
+    throw new Error('WhatsApp ordering is not configured.');
+  }
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 };
