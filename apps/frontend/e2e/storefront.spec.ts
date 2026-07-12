@@ -11,7 +11,7 @@ test('customer can browse, search and filter the collection', async ({ page }) =
   await page.getByLabel('Sort by').selectOption('price_desc');
   await expect(page.getByRole('link').filter({ hasText: 'Classic Wool Shawl' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Product pages' })).toBeVisible();
-  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByText('Page 2 of 2')).toBeVisible();
   await page.getByLabel('Category').selectOption('shawls');
   await expect(page.getByText('1 product found')).toBeVisible();
