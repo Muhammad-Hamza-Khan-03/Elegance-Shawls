@@ -6,3 +6,7 @@ Website.md
 __pycache__/
 *.pyc
 apps/backend/.venv
+playwright-report/
+test-results/
+.pytest_cache/
+.next/
