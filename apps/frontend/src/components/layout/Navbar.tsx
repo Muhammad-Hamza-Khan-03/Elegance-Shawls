@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -37,7 +36,7 @@ export const Navbar = () => {
         </Button>
       </div>
 
-      <div id="mobile-navigation" className={cn('overflow-hidden transition-all duration-300 md:hidden', isMenuOpen ? 'max-h-72 border-t border-border/40' : 'max-h-0')}>
+      {isMenuOpen && <div id="mobile-navigation" className="border-t border-border/40 md:hidden">
         <nav aria-label="Mobile navigation" className="mx-auto max-w-6xl space-y-1 px-6 py-3">
           {navLinks.map((link) => (
             <Link key={link.href} href={link.href} className="block rounded-lg px-2 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-primary" onClick={() => setIsMenuOpen(false)}>
@@ -45,7 +44,7 @@ export const Navbar = () => {
             </Link>
           ))}
         </nav>
-      </div>
+      </div>}
     </header>
   );
 };

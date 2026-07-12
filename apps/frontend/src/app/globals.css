@@ -124,7 +124,28 @@
     @apply bg-background text-foreground;
     text-rendering: optimizeLegibility;
   }
+  :focus-visible {
+    outline: 3px solid #9a6b3f;
+    outline-offset: 3px;
+  }
   .font-heading {
     font-family: var(--font-heading);
   }
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: 9999px;
+  background: #2f241f;
+  color: white;
+  padding: 0.75rem 1rem;
+}
+.skip-link:focus { transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }

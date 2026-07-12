@@ -68,7 +68,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   ].filter(Boolean))) as string[];
 
   return (
-    <main className="min-h-screen bg-[#fbf7f0] px-6 pb-28 pt-12 text-[#2f241f] md:pb-12">
+    <main id="main-content" className="min-h-screen bg-[#fbf7f0] px-6 pb-28 pt-12 text-[#2f241f] md:pb-12">
       <section className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-4">
           <Link href="/products" className="text-sm font-medium text-[#9a6b3f] hover:underline">
@@ -109,7 +109,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
 
           <fieldset className="space-y-3">
             <legend className="font-semibold">Choose color and size</legend>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div role="radiogroup" aria-label="Available product options" className="grid gap-2 sm:grid-cols-2">
               {product.variants.map((variant) => (
                 <button key={variant.id} type="button" role="radio" aria-checked={selectedId === variant.id} disabled={variant.stock < 1} onClick={() => selectVariant(variant.id)} className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${selectedId === variant.id ? 'border-[#2f241f] bg-[#2f241f] text-white' : 'border-[#e7dac8] bg-[#fbf7f0]'} disabled:cursor-not-allowed disabled:opacity-45`}>
                   <span className="block font-semibold">{variant.color}</span>
@@ -123,7 +123,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
             <label htmlFor="quantity" className="font-semibold">Quantity</label>
             <div className="flex w-fit items-center overflow-hidden rounded-full border border-[#e7dac8] bg-[#fbf7f0]">
               <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1} className="p-3 disabled:opacity-35"><Minus className="h-4 w-4" /></button>
-              <input id="quantity" value={quantity} onChange={(event) => setQuantity(clampQuantity(Number(event.target.value), selected?.stock || 0))} inputMode="numeric" aria-label="Quantity" className="w-12 bg-transparent text-center font-semibold outline-none" />
+              <input id="quantity" type="number" min={1} max={selected?.stock || 1} value={quantity} onChange={(event) => setQuantity(clampQuantity(Number(event.target.value), selected?.stock || 0))} inputMode="numeric" className="w-14 bg-transparent text-center font-semibold outline-none" />
               <button type="button" aria-label="Increase quantity" onClick={() => setQuantity((value) => Math.min(selected?.stock || 1, value + 1))} disabled={!selected || quantity >= selected.stock} className="p-3 disabled:opacity-35"><Plus className="h-4 w-4" /></button>
             </div>
           </div>

@@ -2,13 +2,16 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/whatsapp';
+import { Metadata } from 'next';
+import { absoluteUrl } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { alternates: absoluteUrl('/') ? { canonical: absoluteUrl('/')! } : undefined };
 
 export default async function Home() {
   const featured = await api.getFeaturedProducts().catch(() => []);
 
-  return <main className="overflow-hidden bg-[#fbf7f0] text-[#2f241f]">
+  return <main id="main-content" className="overflow-hidden bg-[#fbf7f0] text-[#2f241f]">
     <section className="relative border-b border-[#e7dac8]">
       <div aria-hidden="true" className="absolute -right-24 -top-32 h-96 w-96 rounded-full bg-[#c99a67]/20 blur-3xl" />
       <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">

@@ -1,14 +1,17 @@
 import Link from 'next/link';
 import { ProductBrowser } from '@/components/product/ProductBrowser';
 import { CatalogCategory } from '@/lib/catalog';
+import { Metadata } from 'next';
+import { absoluteUrl } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Shop shawls and stoles', description: 'Search, filter and browse available shawls and stoles.', alternates: absoluteUrl('/products') ? { canonical: absoluteUrl('/products')! } : undefined };
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
   const { category } = await searchParams;
   const initialCategory: CatalogCategory = category === 'shawls' || category === 'stoles' ? category : 'all';
 
-  return <main className="min-h-screen bg-[#fbf7f0] px-6 py-12 text-[#2f241f]">
+  return <main id="main-content" className="min-h-screen bg-[#fbf7f0] px-6 py-12 text-[#2f241f]">
     <section className="mx-auto max-w-6xl space-y-10">
       <div>
         <Link href="/" className="text-sm font-medium text-[#9a6b3f] hover:underline">← Back home</Link>
