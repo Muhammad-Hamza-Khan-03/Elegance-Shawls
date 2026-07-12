@@ -28,47 +28,10 @@ export interface ProductVariant {
   image_url?: string;
 }
 
-export interface CartItem {
-  productId: string;
-  product: Product;
-  quantity: number;
-  selectedColor: string;
-  selectedSize: string;
-}
-
 export interface CustomerDetails {
   name: string;
   phone: string;
   city: string;
   address: string;
   notes?: string;
-}
-
-export interface Order {
-  id: string;
-  customerName: string;
-  email?: string;
-  whatsappNumber: string;
-  city: string;
-  address: string;
-  items: OrderItem[];
-  total: number;
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface OrderItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  price: number;
-  color: string;
-  size: string;
-}
-
-export interface FilterState {
-  colors: string[];
-  sizes: string[];
-  sortBy: 'price_asc' | 'price_desc' | 'newest' | 'name';
 }

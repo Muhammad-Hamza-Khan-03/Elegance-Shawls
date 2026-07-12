@@ -46,6 +46,20 @@ def test_admin_routes_require_authentication(monkeypatch):
     assert client.get("/products/admin/").status_code == 401
 
 
+def test_every_admin_mutation_rejects_missing_and_invalid_credentials(monkeypatch):
+    client, _ = make_client(monkeypatch)
+    product_id = "507f1f77bcf86cd799439011"
+    requests = [
+        ("put", f"/products/admin/{product_id}", {"json": payload()}),
+        ("patch", f"/products/admin/{product_id}/status", {"json": {"status": "draft"}}),
+        ("patch", f"/products/admin/{product_id}/stock", {"json": {"variant_id": product_id, "stock": 0}}),
+        ("delete", f"/products/admin/{product_id}", {}),
+    ]
+    for method, path, kwargs in requests:
+        assert getattr(client, method)(path, **kwargs).status_code == 401
+        assert getattr(client, method)(path, headers={"X-Admin-Key": "wrong"}, **kwargs).status_code == 401
+
+
 def test_create_duplicate_and_public_active_isolation(monkeypatch):
     client, _ = make_client(monkeypatch)
     created = client.post("/products/admin/", json=payload(), headers=headers())

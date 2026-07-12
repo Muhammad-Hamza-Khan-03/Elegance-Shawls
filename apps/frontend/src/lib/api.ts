@@ -1,4 +1,4 @@
-import { Product, Order } from '@/types/types';
+import { Product } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -149,17 +149,6 @@ export const api = {
       .filter((p: Product) => p.status === 'active');
   },
 
-  // GET /products/:id
-  getProductById: async (id: string): Promise<Product | undefined> => {
-    try {
-      const products = await api.getProducts();
-      return products.find(p => p.id === id);
-    } catch (error) {
-      console.error(`Failed to fetch product by id ${id}:`, error);
-      return undefined;
-    }
-  },
-
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
@@ -176,45 +165,10 @@ export const api = {
     }
   },
 
-  // GET /products/category/:category
-  getProductsByCategory: async (category: 'shawls' | 'stoles'): Promise<Product[]> => {
-    const products = await api.getProducts();
-    return products.filter(p => p.category === category);
-  },
-
   // GET /products/featured
   getFeaturedProducts: async (): Promise<Product[]> => {
     const products = await api.getProducts();
     return products.slice(0, 4);
   },
 
-  // Product writes are owned by Quill Panel, not the storefront.
-  createProduct: async (): Promise<Product> => {
-    throw new Error('Product creation is handled in Quill Panel.');
-  },
-
-  updateProduct: async (): Promise<Product> => {
-    throw new Error('Product updates are handled in Quill Panel.');
-  },
-
-  deleteProduct: async (): Promise<void> => {
-    throw new Error('Product deletion is handled in Quill Panel.');
-  },
-
-  // Orders are intentionally handled through WhatsApp for launch.
-  getOrders: async (): Promise<Order[]> => {
-    return [];
-  },
-
-  getOrderById: async (): Promise<Order | undefined> => {
-    return undefined;
-  },
-
-  createOrder: async (): Promise<Order> => {
-    throw new Error('Orders are submitted through WhatsApp checkout.');
-  },
-
-  updateOrder: async (): Promise<Order> => {
-    throw new Error('Orders are managed manually through WhatsApp.');
-  },
 };
