@@ -67,7 +67,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   ].filter(Boolean))) as string[];
 
   return (
-    <main className="min-h-screen bg-[#fbf7f0] px-6 py-12 text-[#2f241f]">
+    <main className="min-h-screen bg-[#fbf7f0] px-6 pb-28 pt-12 text-[#2f241f] md:pb-12">
       <section className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-4">
           <Link href="/products" className="text-sm font-medium text-[#9a6b3f] hover:underline">
@@ -143,6 +143,11 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
           <p className="text-center text-xs leading-6 text-[#6f625a]">WhatsApp will open with your selected product details. Availability and delivery are confirmed manually.</p>
         </div>
       </section>
+      {whatsappUrl && (
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="fixed inset-x-4 bottom-4 z-40 rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white shadow-xl md:hidden">
+          Order on WhatsApp
+        </a>
+      )}
     </main>
   );
 }

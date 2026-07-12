@@ -143,15 +143,10 @@ const extractItems = (data: unknown): BackendProduct[] => {
 export const api = {
   // GET /products
   getProducts: async (): Promise<Product[]> => {
-    try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/`));
-      return extractItems(data)
-        .map((p) => mapBackendProduct(p))
-        .filter((p: Product) => p.status === 'active');
-    } catch (error) {
-      console.error('Failed to fetch products:', error);
-      return [];
-    }
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`));
+    return extractItems(data)
+      .map((p) => mapBackendProduct(p))
+      .filter((p: Product) => p.status === 'active');
   },
 
   // GET /products/:id
@@ -172,8 +167,12 @@ export const api = {
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
-      const products = await api.getProducts();
-      return products.find(p => p.slug === slug);
+      try {
+        const products = await api.getProducts();
+        return products.find(p => p.slug === slug);
+      } catch {
+        return undefined;
+      }
     }
   },
 
