@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from configuration.config import settings
-from database.db import connect_to_mongo, close_mongo_connection
+from database.db import connect_to_mongo, close_mongo_connection, database_is_ready
 from routes.product_routes import router as product_router
+from security.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RateLimitMiddleware)
 
     # Routers
     app.include_router(product_router)
@@ -40,6 +42,13 @@ def create_app() -> FastAPI:
     @app.get("/health/", tags=["Health"])
     async def health_check():
         return {"status": "ok"}
+
+    @app.get("/ready/", tags=["Health"])
+    async def readiness_check(response: Response):
+        if not await database_is_ready():
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"status": "not_ready", "database": "unavailable"}
+        return {"status": "ready", "database": "connected"}
 
     return app
 

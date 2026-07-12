@@ -12,6 +12,8 @@ class settings(BaseSettings):
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
     admin_api_key: str = ""
+    public_rate_limit_per_minute: int = 120
+    admin_rate_limit_per_minute: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

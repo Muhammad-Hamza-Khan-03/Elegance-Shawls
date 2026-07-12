@@ -72,3 +72,19 @@ class ProductResponseSchema(ProductCreateSchema):
     updated_at: datetime
 
     variants: List[VariantResponseSchema]
+
+
+class ProductListResponse(BaseModel):
+    items: List[ProductResponseSchema]
+    next_cursor: Optional[str] = None
+
+
+class ProductStatusUpdateSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ProductStatus
+
+
+class VariantStockUpdateSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    variant_id: PyObjectId
+    stock: int = Field(..., ge=0)
