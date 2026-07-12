@@ -2,6 +2,56 @@ import { Product, Order } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+type BackendVariant = {
+  _id?: string;
+  id?: string;
+  color?: string;
+  name?: string;
+  size?: string;
+  stock?: number;
+  stock_status?: string;
+  price?: number | { amount?: number };
+  image_url?: string;
+  imageUrl?: string;
+};
+
+type BackendProduct = {
+  _id?: string;
+  id?: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  main_description?: string;
+  price?: number | { amount?: number; currency?: string };
+  currency?: string;
+  category?: string | { name?: string };
+  type?: string;
+  cover_image_url?: string;
+  image_url?: string;
+  imageUrl?: string;
+  images?: string[];
+  variations?: BackendVariant[];
+  variants?: BackendVariant[];
+  status?: Product['status'];
+  is_active?: boolean;
+  material?: string;
+  sizing?: string;
+  weight?: string;
+  item_number?: string | number;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+};
+
+const amountFrom = (price: number | { amount?: number } | undefined, fallback = 0) =>
+  typeof price === 'number' ? price : Number(price?.amount ?? fallback);
+
+const currencyFrom = (
+  price: number | { currency?: string } | undefined,
+  fallback = 'PKR',
+) => (typeof price === 'object' ? price.currency || fallback : fallback);
+
 const getApiUrl = () => {
   if (!API_URL) {
     throw new Error('NEXT_PUBLIC_API_URL is not configured.');
@@ -29,25 +79,24 @@ const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
 };
 
 // Mapper: Backend/Quill Product -> Storefront Product
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapBackendProduct = (bp: any): Product => {
+const mapBackendProduct = (bp: BackendProduct): Product => {
   const rawVariations = bp.variations || bp.variants || [];
-  const productPrice = Number(bp.price?.amount ?? bp.price ?? 0);
-  const currency = bp.price?.currency || bp.currency || 'PKR';
+  const productPrice = amountFrom(bp.price);
+  const currency = currencyFrom(bp.price, bp.currency || 'PKR');
 
-  const variants = rawVariations.map((v: any, index: number) => ({
+  const variants = rawVariations.map((v: BackendVariant, index: number) => ({
     id: v._id || v.id || `${bp._id || bp.id || bp.slug}-variant-${index}`,
     color: v.color || v.name || 'Default',
     size: v.size || bp.sizing || 'Free Size',
     stock: v.stock ?? (v.stock_status === 'Out of stock' ? 0 : 10),
-    price: Number(v.price?.amount ?? v.price ?? productPrice),
+    price: amountFrom(v.price, productPrice),
     image_url: v.image_url || v.imageUrl || undefined,
   }));
 
-  const images = [bp.cover_image_url, bp.image_url, bp.imageUrl]
+  const images = [...(bp.images || []), bp.cover_image_url, bp.image_url, bp.imageUrl]
     .filter(Boolean) as string[];
 
-  variants.forEach((variant: any) => {
+  variants.forEach((variant) => {
     if (variant.image_url && !images.includes(variant.image_url)) {
       images.push(variant.image_url);
     }
@@ -60,16 +109,16 @@ const mapBackendProduct = (bp: any): Product => {
   const status = bp.status || (bp.is_active === false ? 'draft' : 'active');
 
   return {
-    id: bp._id || bp.id,
-    name: bp.name,
-    slug: bp.slug,
+    id: bp._id || bp.id || bp.slug || '',
+    name: bp.name || 'Untitled product',
+    slug: bp.slug || '',
     description: bp.description || bp.main_description || '',
     price: variants[0]?.price || productPrice,
     currency,
     category: normalizeCategory(bp.category || bp.type),
     images,
     variants,
-    stock: variants.reduce((acc: number, v: any) => acc + Number(v.stock || 0), 0),
+    stock: variants.reduce((acc: number, v) => acc + Number(v.stock || 0), 0),
     status,
     material: bp.material,
     sizing: bp.sizing,
@@ -81,10 +130,13 @@ const mapBackendProduct = (bp: any): Product => {
   };
 };
 
-const extractItems = (data: any) => {
+const extractItems = (data: unknown): BackendProduct[] => {
   if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.products)) return data.products;
+  if (typeof data === 'object' && data !== null) {
+    const payload = data as { items?: unknown; products?: unknown };
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.products)) return payload.products;
+  }
   return [];
 };
 
@@ -94,7 +146,7 @@ export const api = {
     try {
       const data = await handleResponse(await fetch(`${getApiUrl()}/products/`));
       return extractItems(data)
-        .map((p: any) => mapBackendProduct(p))
+        .map((p) => mapBackendProduct(p))
         .filter((p: Product) => p.status === 'active');
     } catch (error) {
       console.error('Failed to fetch products:', error);

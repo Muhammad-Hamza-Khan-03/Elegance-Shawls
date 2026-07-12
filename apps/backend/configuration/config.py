@@ -11,6 +11,7 @@ class settings(BaseSettings):
     app_name: str = "Products API"
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
+    admin_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

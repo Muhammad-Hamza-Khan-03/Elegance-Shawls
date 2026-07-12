@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from schemas.product_schema import ProductCreateSchema, ProductResponseSchema
 from models.product_model import build_product_document
 from database.db import get_db
+from security.admin_auth import require_admin_api_key
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/products", tags=["Products"])
 )
 async def create_product(
     payload: ProductCreateSchema,
+    _: None = Depends(require_admin_api_key),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     # Enforce slug uniqueness (production critical)
@@ -24,7 +26,7 @@ async def create_product(
             detail="Product with this slug already exists",
         )
 
-    document = build_product_document(payload.model_dump())
+    document = build_product_document(payload.model_dump(mode="json"))
 
     await db.products.insert_one(document)
 
@@ -129,10 +131,10 @@ async def get_products(
 )
 async def get_all_products(
     limit:int=10,
+    _: None = Depends(require_admin_api_key),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     products_cursor = db.products.find().limit(limit).sort("created_at", -1)
     products = await products_cursor.to_list(length=limit)
 
     return products
-
