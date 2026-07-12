@@ -53,10 +53,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-          cache-dependency-path: requirements*.txt
+          cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install -r requirements-dev.txt
       - name: Run tests with mock database
         run: |
@@ -108,13 +109,13 @@ jobs:
       - name: Build backend container
         uses: docker/build-push-action@v6
         with:
-          context: apps/backend
+          context: ./apps/backend
           push: false
           tags: elegance-backend:ci
       - name: Build frontend container
         uses: docker/build-push-action@v6
         with:
-          context: apps/frontend
+          context: ./apps/frontend
           push: false
           tags: elegance-frontend:ci
           build-args: |
