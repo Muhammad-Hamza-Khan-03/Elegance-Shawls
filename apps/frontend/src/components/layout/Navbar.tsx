@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Menu, X } from 'lucide-react';
+import { Menu, ShoppingBag, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useCart } from '@/components/cart/CartProvider';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -14,6 +15,7 @@ const navLinks = [
 
 export const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { itemCount } = useCart();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -29,11 +31,22 @@ export const Navbar = () => {
               {link.label}
             </Link>
           ))}
+          <Link href="/cart" className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+            Cart
+            <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{itemCount}</span>
+          </Link>
         </nav>
 
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen((open) => !open)} aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={isMenuOpen} aria-controls="mobile-navigation">
-          {isMenuOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
-        </Button>
+        <div className="flex items-center gap-2 md:hidden">
+          <Link href="/cart" className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm font-semibold text-primary">
+            <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+            <span>{itemCount}</span>
+          </Link>
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen((open) => !open)} aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={isMenuOpen} aria-controls="mobile-navigation">
+            {isMenuOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
+          </Button>
+        </div>
       </div>
 
       {isMenuOpen && <div id="mobile-navigation" className="border-t border-border/40 md:hidden">
@@ -43,6 +56,10 @@ export const Navbar = () => {
               {link.label}
             </Link>
           ))}
+          <Link href="/cart" className="mt-2 flex items-center justify-between rounded-lg px-2 py-3 text-sm font-semibold text-primary hover:bg-secondary" onClick={() => setIsMenuOpen(false)}>
+            <span className="inline-flex items-center gap-2"><ShoppingBag className="h-4 w-4" aria-hidden="true" /> Cart</span>
+            <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{itemCount}</span>
+          </Link>
         </nav>
       </div>}
     </header>
