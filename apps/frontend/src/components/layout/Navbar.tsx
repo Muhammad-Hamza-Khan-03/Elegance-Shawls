@@ -39,8 +39,9 @@ export const Navbar = () => {
         </nav>
 
         <div className="flex items-center gap-2 md:hidden">
-          <Link href="/cart" className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm font-semibold text-primary">
+          <Link href="/cart" className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm font-semibold text-primary" aria-label={`Cart with ${itemCount} items`}>
             <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+            <span>Cart</span>
             <span>{itemCount}</span>
           </Link>
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen((open) => !open)} aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={isMenuOpen} aria-controls="mobile-navigation">

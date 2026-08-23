@@ -212,13 +212,6 @@ const statusClasses: Record<ProductStatus, string> = {
   archived: 'bg-slate-200 text-slate-800',
 };
 
-const actionLabel = (status: ProductStatus) => {
-  if (status === 'active') return 'Unpublish';
-  if (status === 'draft') return 'Publish';
-  if (status === 'out_of_stock') return 'Mark active';
-  return 'Restore';
-};
-
 const normalizeError = (value: unknown) => {
   if (value instanceof Error) return value.message;
   return 'Something went wrong while saving the product.';
@@ -273,6 +266,8 @@ export function AdminProductManager() {
   };
 
   useEffect(() => {
+    // Intentionally load initial data on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProducts();
   }, []);
 
@@ -411,26 +406,6 @@ export function AdminProductManager() {
       });
 
       setNotice(`${updated.name} moved to ${statusLabel[nextStatus].toLowerCase()}.`);
-      await loadProducts(productId);
-    } catch (err) {
-      setError(normalizeError(err));
-    }
-  };
-
-  const updateStock = async (product: AdminProduct, variant: AdminVariant, stock: string) => {
-    const productId = getProductId(product);
-    const variantId = getVariantId(variant);
-    if (!variantId) return;
-
-    setError('');
-    setNotice('');
-
-    try {
-      const updated = await requestJson<ApiProductResponse>(`/api/admin/products/${productId}/stock`, {
-        method: 'PATCH',
-        body: JSON.stringify({ variant_id: variantId, stock: clampInteger(stock) }),
-      });
-      setNotice(`${updated.name} stock updated.`);
       await loadProducts(productId);
     } catch (err) {
       setError(normalizeError(err));

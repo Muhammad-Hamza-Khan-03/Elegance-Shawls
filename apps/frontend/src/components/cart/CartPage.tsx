@@ -78,7 +78,7 @@ export const CartPage = () => {
 
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="flex items-center overflow-hidden rounded-full border border-[#e7dac8] bg-[#fbf7f0]">
-                        <button type="button" aria-label={`Decrease quantity for ${item.product.name}`} onClick={() => decrementItem(item.lineId)} disabled={item.quantity <= 1} className="p-3 disabled:opacity-35">
+                        <button type="button" aria-label={`Decrease ${item.product.name} quantity`} onClick={() => decrementItem(item.lineId)} disabled={item.quantity <= 1} className="p-3 disabled:opacity-35">
                           <Minus className="h-4 w-4" />
                         </button>
                         <input
@@ -90,7 +90,7 @@ export const CartPage = () => {
                           onChange={(event) => setItemQuantity(item.lineId, Number(event.target.value))}
                           className="w-16 bg-transparent text-center font-semibold outline-none"
                         />
-                        <button type="button" aria-label={`Increase quantity for ${item.product.name}`} onClick={() => incrementItem(item.lineId)} disabled={item.quantity >= item.variant.stock} className="p-3 disabled:opacity-35">
+                        <button type="button" aria-label={`Increase ${item.product.name} quantity`} onClick={() => incrementItem(item.lineId)} disabled={item.quantity >= item.variant.stock} className="p-3 disabled:opacity-35">
                           <Plus className="h-4 w-4" />
                         </button>
                       </div>

@@ -15,9 +15,9 @@ test('shared cart supports multiple products, quantity editing and refresh persi
   await expect(page.getByRole('heading', { name: 'Classic Wool Shawl' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Light Silk Stole' })).toBeVisible();
   await expect(page.getByLabel('Quantity for Classic Wool Shawl')).toHaveValue('2');
-  await page.getByLabel('Increase quantity for Classic Wool Shawl').click();
+  await page.getByLabel('Increase Classic Wool Shawl quantity').click();
   await expect(page.getByLabel('Quantity for Classic Wool Shawl')).toHaveValue('3');
-  await expect(page.getByLabel('Increase quantity for Classic Wool Shawl')).toBeDisabled();
+  await expect(page.getByLabel('Increase Classic Wool Shawl quantity')).toBeDisabled();
 
   await page.reload();
   await expect(page.getByLabel('Quantity for Classic Wool Shawl')).toHaveValue('3');
