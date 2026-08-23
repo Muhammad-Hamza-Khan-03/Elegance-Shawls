@@ -14,7 +14,8 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
 
   await page.getByRole('link', { name: 'Products' }).click();
   await expect(page).toHaveURL(/\/admin\/products$/);
-  await expect(page.getByRole('heading', { name: 'Product workspace ready' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Product management workspace' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New product' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Orders' }).click();
   await expect(page).toHaveURL(/\/admin\/orders$/);
