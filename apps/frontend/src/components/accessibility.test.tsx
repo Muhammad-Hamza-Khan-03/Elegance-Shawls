@@ -4,6 +4,7 @@ import { Footer } from './layout/Footer';
 import { Navbar } from './layout/Navbar';
 import { InfoPage } from './layout/InfoPage';
 import { ProductExperience } from './product/ProductExperience';
+import { CartProvider } from './cart/CartProvider';
 import { Product } from '@/types/types';
 
 const product: Product = {
@@ -15,7 +16,7 @@ const product: Product = {
 
 describe('storefront accessibility landmarks and controls', () => {
   it('exposes labelled navigation and a correctly described menu control', () => {
-    const html = renderToStaticMarkup(<Navbar />);
+    const html = renderToStaticMarkup(<CartProvider><Navbar /></CartProvider>);
     expect(html).toContain('aria-label="Main navigation"');
     expect(html).toContain('aria-label="Open navigation menu"');
     expect(html).toContain('aria-expanded="false"');
@@ -35,7 +36,7 @@ describe('storefront accessibility landmarks and controls', () => {
   });
 
   it('labels product option and quantity controls for assistive technology', () => {
-    const html = renderToStaticMarkup(<ProductExperience product={product} siteUrl="https://example.com" whatsappNumber="923001234567" />);
+    const html = renderToStaticMarkup(<CartProvider><ProductExperience product={product} siteUrl="https://example.com" whatsappNumber="923001234567" /></CartProvider>);
     expect(html).toContain('role="radiogroup"');
     expect(html).toContain('aria-label="Available product options"');
     expect(html).toContain('<label for="quantity"');

@@ -10,3 +10,4 @@ playwright-report/
 test-results/
 .pytest_cache/
 .next/
+.hermes/

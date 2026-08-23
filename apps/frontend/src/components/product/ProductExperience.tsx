@@ -3,8 +3,11 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, ShoppingBag } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Product } from '@/types/types';
+import { useCart } from '@/components/cart/CartProvider';
+import { toast } from 'sonner';
 import {
   buildSingleProductMessage,
   buildWhatsAppUrl,
@@ -25,12 +28,14 @@ export const clampQuantity = (value: number, stock: number) =>
   Math.max(1, Math.min(stock || 1, Number(value) || 1));
 
 export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductExperienceProps) {
+  const { items, addItem, setItemQuantity } = useCart();
   const firstAvailable = getInitialVariant(product);
   const [selectedId, setSelectedId] = useState(firstAvailable?.id || product.variants[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(firstAvailable?.image_url || product.images[0] || '');
 
   const selected = product.variants.find((variant) => variant.id === selectedId);
+  const cartLine = items.find((item) => item.productId === product.id && item.variantId === selected?.id);
 
   const selectVariant = (variantId: string) => {
     const variant = product.variants.find((item) => item.id === variantId);
@@ -48,6 +53,18 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   const orderError = selected
     ? validateSingleProductOrder({ variant: selected, quantity, productUrl })
     : 'No product option is available.';
+
+  const handleAddToCart = () => {
+    if (!selected) return;
+    if (cartLine) {
+      setItemQuantity(cartLine.lineId, quantity);
+      toast.success(`${product.name} updated in cart.`);
+      return;
+    }
+
+    addItem(product, selected, quantity);
+    toast.success(`${product.name} added to cart.`);
+  };
 
   const whatsappUrl = useMemo(() => {
     if (!selected || configurationError || orderError) return null;
@@ -132,13 +149,22 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
             <div className="flex justify-between gap-4"><span>Order total</span><strong>{formatCurrency((selected?.price || product.price) * quantity, product.currency)}</strong></div>
           </div>
 
-          {whatsappUrl ? (
-            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="block rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white transition hover:bg-[#4a382f]">Order on WhatsApp</a>
-          ) : (
-            <button type="button" disabled className="block w-full cursor-not-allowed rounded-full bg-[#8b817c] px-8 py-4 text-center text-sm font-semibold text-white">Order unavailable</button>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button type="button" onClick={handleAddToCart} className="rounded-full bg-[#d9c1a2] px-8 py-4 text-sm font-semibold text-[#2f241f] transition hover:bg-[#cbb08c]">
+              <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+              {cartLine ? 'Update cart item' : 'Add to cart'}
+            </Button>
+            {whatsappUrl ? (
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white transition hover:bg-[#4a382f]">
+                Order on WhatsApp
+              </a>
+            ) : (
+              <button type="button" disabled className="rounded-full bg-[#8b817c] px-8 py-4 text-center text-sm font-semibold text-white">Order unavailable</button>
+            )}
+          </div>
 
           {(configurationError || orderError) && <p role="alert" className="text-center text-sm text-red-700">{configurationError || orderError}</p>}
+          {cartLine && <p className="text-center text-sm text-[#6f625a]">This variant is already in your cart. Use the cart page to adjust quantity across products.</p>}
           <p className="text-center text-xs leading-6 text-[#6f625a]">WhatsApp will open with your selected product details. Availability and delivery are confirmed manually.</p>
         </div>
       </section>
