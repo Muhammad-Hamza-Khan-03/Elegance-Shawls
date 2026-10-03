@@ -1,5 +1,7 @@
 # Elegance Shawls
 
+[Portfolio case study](https://hamza-khan-portfolio.hamzakhan102003.chatgpt.site/projects/elegance-shawls/) · [Author portfolio](https://hamza-khan-portfolio.hamzakhan102003.chatgpt.site/) · [LinkedIn](https://www.linkedin.com/in/muhammadhamzakhan/)
+
 [![Main Branch](https://img.shields.io/badge/branch-main-111827?style=flat-square)](https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls/tree/main)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js_16-000000?style=flat-square&logo=next.js)](./apps/frontend)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-05998b?style=flat-square&logo=fastapi)](./apps/backend)
