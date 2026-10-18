@@ -18,13 +18,29 @@ test('customer can browse, search and filter the collection', async ({ page }) =
 });
 
 test('collection recovers from an API failure and handles an empty feed', async ({ page }) => {
-  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Unavailable' }) }), { times: 1 });
+  let failuresRemaining = 2;
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (failuresRemaining > 0 && url.origin === 'http://127.0.0.1:4100' && url.pathname === '/products/') {
+      failuresRemaining -= 1;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Unavailable' }) });
+      return;
+    }
+    await route.continue();
+  });
   await page.goto('/products');
   await expect(page.getByRole('heading', { name: 'Collection unavailable' })).toBeVisible();
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByText('12 products found')).toBeVisible();
 
-  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], next_cursor: null }) }));
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === 'http://127.0.0.1:4100' && url.pathname === '/products/') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], next_cursor: null }) });
+      return;
+    }
+    await route.continue();
+  });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The collection is being prepared' })).toBeVisible();
 });
