@@ -3,5 +3,5 @@ motor==3.7.1
 pydantic==2.13.4
 pymongo==4.15.5
 python-dotenv==1.2.2
-uvicorn==0.51.0
+uvicorn==0.52.4
 pydantic-settings==2.14.2
