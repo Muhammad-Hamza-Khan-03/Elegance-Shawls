@@ -18,9 +18,10 @@ test('customer can browse, search and filter the collection', async ({ page }) =
 });
 
 test('collection recovers from an API failure and handles an empty feed', async ({ page }) => {
-  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Unavailable' }) }), { times: 1 });
+  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Unavailable' }) }));
   await page.goto('/products');
   await expect(page.getByRole('heading', { name: 'Collection unavailable' })).toBeVisible();
+  await page.unroute('http://127.0.0.1:4100/products/**');
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByText('12 products found')).toBeVisible();
 

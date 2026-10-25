@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 test('shared cart supports multiple products, quantity editing and refresh persistence', async ({ page }) => {
+  const hydrationErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /hydration failed|hydrated.*didn't match/i.test(message.text())) hydrationErrors.push(message.text());
+  });
   await page.goto('/product/classic-wool-shawl');
   await page.getByLabel('Increase quantity').click();
   await page.getByRole('button', { name: 'Add to cart' }).click();
@@ -23,4 +27,5 @@ test('shared cart supports multiple products, quantity editing and refresh persi
   await expect(page.getByLabel('Quantity for Classic Wool Shawl')).toHaveValue('3');
   await expect(page.getByLabel('Quantity for Light Silk Stole')).toHaveValue('1');
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('4');
+  expect(hydrationErrors).toEqual([]);
 });
