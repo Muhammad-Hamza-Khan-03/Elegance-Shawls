@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ADMIN_SESSION_COOKIE, hasAdminSecret, issueAdminSession, verifyAdminSession } from '@/lib/admin-session';
+import { ADMIN_SESSION_COOKIE, hasAdminSecret, issueAdminSession, readAdminSession, verifyAdminSession } from '@/lib/admin-session';
 
 const cookieOptions = {
   httpOnly: true,
@@ -9,14 +9,7 @@ const cookieOptions = {
 };
 
 export async function GET(request: Request) {
-  const cookie = request.headers.get('cookie') || '';
-  const session = cookie
-    .split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
-    ?.slice(`${ADMIN_SESSION_COOKIE}=`.length);
-
-  return NextResponse.json({ authenticated: verifyAdminSession(session ? decodeURIComponent(session) : undefined) });
+  return NextResponse.json({ authenticated: verifyAdminSession(readAdminSession(request)) });
 }
 
 export async function POST(request: Request) {

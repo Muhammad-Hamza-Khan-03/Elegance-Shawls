@@ -8,7 +8,7 @@ Set these values in the deployment platform's encrypted secret/environment store
 |---|---|---|
 | `MONGODB_URI` | backend | TLS-enabled production MongoDB connection string with a least-privilege application user |
 | `MONGO_DB_NAME` | backend | Dedicated production database name |
-| `ADMIN_API_KEY` | backend + Quill | Long random secret (at least 32 random bytes); Quill sends it only as `X-Admin-Key` |
+| `ADMIN_API_KEY` | backend + frontend server + trusted Quill server if enabled | Matching long random secret (at least 32 random bytes); server-side proxies send it only as `X-Admin-Key`. Never expose it through a `NEXT_PUBLIC_*` variable. |
 | `ALLOWED_ORIGINS` | backend | Exact comma-separated HTTPS storefront origin(s), with no wildcard |
 | `NEXT_PUBLIC_API_URL` | frontend | Public HTTPS backend origin; baked into the frontend build |
 | `NEXT_PUBLIC_SITE_URL` | frontend | Canonical public HTTPS storefront origin; baked into the frontend build |

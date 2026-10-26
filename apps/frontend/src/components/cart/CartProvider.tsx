@@ -32,17 +32,8 @@ type CartContextValue = {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = window.localStorage.getItem(CART_STORAGE_KEY);
-      if (!stored) return [];
-      const parsed = JSON.parse(stored) as CartItem[];
-      return normalizeCartItems(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      return [];
-    }
-  });
+  // Server and first client render must agree; restore storage after hydration.
+  const [items, setItems] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {

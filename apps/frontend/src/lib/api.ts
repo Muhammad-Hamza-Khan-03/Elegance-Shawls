@@ -142,8 +142,8 @@ const extractItems = (data: unknown): BackendProduct[] => {
 
 export const api = {
   // GET /products
-  getProducts: async (): Promise<Product[]> => {
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`));
+  getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal }));
     return extractItems(data)
       .map((p) => mapBackendProduct(p))
       .filter((p: Product) => p.status === 'active');

@@ -3,6 +3,20 @@ import { createHmac, timingSafeEqual } from 'crypto';
 export const ADMIN_SESSION_COOKIE = 'es_admin_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
 
+export const readAdminSession = (request: Request) => {
+  const value = (request.headers.get('cookie') || '')
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
+    ?.slice(`${ADMIN_SESSION_COOKIE}=`.length);
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+};
+
 const getAdminSecret = () => process.env.ADMIN_API_KEY?.trim() || '';
 
 const base64url = (value: string) => Buffer.from(value, 'utf8').toString('base64url');

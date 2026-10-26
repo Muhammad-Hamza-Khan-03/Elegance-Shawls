@@ -1,3 +1,5 @@
+import { readAdminSession, verifyAdminSession } from '@/lib/admin-session';
+
 const getBackendBaseUrl = () => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!apiUrl) {
@@ -24,6 +26,10 @@ const buildTargetUrl = (backendPath: string, requestUrl: string) => {
 };
 
 export const proxyAdminRequest = async (request: Request, backendPath: string) => {
+  if (!verifyAdminSession(readAdminSession(request))) {
+    return Response.json({ detail: 'Administrative authentication is required.' }, { status: 401 });
+  }
+
   const adminKey = getAdminKey();
   const target = buildTargetUrl(backendPath, request.url);
 
