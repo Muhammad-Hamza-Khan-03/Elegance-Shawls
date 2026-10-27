@@ -456,6 +456,41 @@ Preferred extraction order:
 
 AI must not be a mandatory dependency for basic ingestion success.
 
+### 9.1 Product quality control pipeline
+
+Product quality control is part of the ingestion foundation, not a later cosmetic AI feature. Every staged item should receive deterministic validation before it can be approved.
+
+The first quality checks must use normal application code because it is cheaper, faster, predictable, and straightforward to test:
+
+- Missing title, description, category, or required variant fields.
+- Missing or invalid image URLs.
+- Invalid price, currency, stock, or availability values.
+- Broken product URLs or disallowed source domains.
+- Duplicate source identity or likely duplicate content.
+- Unsupported material, origin, or other ungrounded fallback values.
+- Invalid variant combinations and malformed payloads.
+
+Suggested quality states:
+
+```text
+CHECK_PENDING
+  -> READY_FOR_REVIEW
+  -> REVIEW_REQUIRED
+  -> BLOCKED
+  -> APPROVED
+```
+
+The admin review surface should show the failed rule, severity, source value, normalized value, and recommended next action. A corrected item must be revalidated before approval.
+
+AI may assist only where it adds value:
+
+- Suggest a missing description.
+- Flag a possible category mismatch.
+- Explain a possible duplicate.
+- Propose translation or standardized copy.
+
+AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
+
 ## 10. MongoDB-Backed Job System
 
 A dedicated queue is not required initially. Use durable MongoDB job records and a separate worker.
@@ -860,6 +895,59 @@ After deterministic ingestion works, AI may propose:
 
 Every AI result remains draft content until an operator approves it.
 
+### Controlled MCP business connector — future Phase 5/6
+
+An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
+
+```text
+Admin AI
+   -> MCP server
+   -> authenticated FastAPI business tool
+   -> authorization and validation
+   -> MongoDB/provider action
+   -> audit event
+```
+
+Start with read-only tools:
+
+```text
+list_failed_imports()
+find_missing_images()
+find_duplicate_candidates()
+get_import_job_summary()
+```
+
+Only later add approval-required proposal/mutation tools:
+
+```text
+propose_product_correction()
+propose_description_update()
+approve_staged_product()
+retry_failed_job()
+```
+
+Every mutation must follow:
+
+```text
+AI suggestion
+    -> human review
+    -> explicit approval
+    -> backend validation
+    -> state change
+    -> audit log
+```
+
+MCP requirements:
+
+- No direct database credentials or unrestricted queries.
+- Server-side authentication and per-tool authorization.
+- Read-only default and least-privilege scopes.
+- Idempotency for retryable actions.
+- Clear confirmation for every mutation.
+- Provider and database errors returned safely.
+- Full actor, tool, target, before/after, and timestamp audit data.
+- Separate admin/demo MCP credentials and environments.
+
 ## 16. Lead Capture, CRM, and Messaging Roadmap
 
 ### Phase 3 lead capture
@@ -1017,6 +1105,8 @@ Build only:
 - MongoDB-backed jobs.
 - Separate worker.
 - Validation and normalization.
+- Deterministic product quality checks.
+- Quality status, rule failures, and revalidation path.
 - Stable identity/deduplication.
 - Staged products.
 - Per-item errors.
@@ -1084,6 +1174,7 @@ Use HubSpot capabilities first. Add n8n only for external workflows that save me
 - Calendar or sheet integration if justified.
 - AI qualification suggestions for human review.
 - Approved follow-up drafts.
+- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
 
 Add Meta WhatsApp Cloud API or Twilio only if automated messaging, SMS, voice, or provider webhooks are genuinely required.
 
@@ -1227,6 +1318,7 @@ Do not add these to Phase 1 without a specific approved task and measured justif
 - Qdrant or vector search.
 - n8n as the business backend.
 - Make and n8n together for the same workflows.
+- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.
 - Twilio before official automated messaging, SMS, or voice is required.
 - Meta WhatsApp API and Twilio for the same channel without a clear reason.
 - Multiple email marketing providers.
