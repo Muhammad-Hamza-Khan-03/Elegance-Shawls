@@ -11,6 +11,20 @@ const getBackendBaseUrl = () => {
 
 const getAdminKey = () => process.env.ADMIN_API_KEY?.trim() || '';
 
+const hasSameOrigin = (request: Request) => {
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+
+  try {
+    const requestUrl = new URL(request.url);
+    // Next.js can canonicalize request.url to localhost while preserving the public Host header.
+    const host = request.headers.get('host') || requestUrl.host;
+    return origin === new URL(`${requestUrl.protocol}//${host}`).origin;
+  } catch {
+    return false;
+  }
+};
+
 const buildTargetUrl = (backendPath: string, requestUrl: string) => {
   const baseUrl = getBackendBaseUrl();
   if (!baseUrl) {
@@ -28,6 +42,10 @@ const buildTargetUrl = (backendPath: string, requestUrl: string) => {
 export const proxyAdminRequest = async (request: Request, backendPath: string) => {
   if (!verifyAdminSession(readAdminSession(request))) {
     return Response.json({ detail: 'Administrative authentication is required.' }, { status: 401 });
+  }
+
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !hasSameOrigin(request)) {
+    return Response.json({ detail: 'Invalid request origin.' }, { status: 403 });
   }
 
   const adminKey = getAdminKey();

@@ -25,6 +25,8 @@ Generate the admin key with `openssl rand -hex 32`. Rotate it immediately if exp
 5. Send a Quill test product through an authenticated admin endpoint, publish it, verify it appears publicly, then archive the test record.
 6. Complete the launch checklist in `OPERATIONS.md` before directing traffic.
 
+The storefront reverse proxy must preserve the public `Host` and HTTPS request scheme. Admin product mutations require a signed session and an `Origin` matching that public host and scheme. In staging, verify that same-origin create, edit, status, stock, and archive requests succeed and cross-origin requests return 403 without reaching the backend. If legitimate writes return 403, correct the proxy forwarding configuration before release; do not weaken the origin check.
+
 The included Mongo container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. A managed replica set is preferred for production resilience.
 
 ## Quill integration
