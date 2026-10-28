@@ -48,7 +48,9 @@ class ProductShawl(BaseModel):
 class FieldExtractor(Protocol):
     """Replaces quill-store's LLM step: turn sanitized page text into ProductShawl fields."""
 
-    async def extract(self, *, source_url: str, sanitized_html: str, text: str) -> dict | None: ...
+    async def extract(
+        self, *, source_url: str, sanitized_html: str, text: str, raw_html: str = ""
+    ) -> dict | None: ...
 
 
 class ExtractorNotConfigured(Exception):
@@ -56,7 +58,9 @@ class ExtractorNotConfigured(Exception):
 
 
 class UnconfiguredExtractor:
-    async def extract(self, *, source_url: str, sanitized_html: str, text: str) -> dict | None:
+    async def extract(
+        self, *, source_url: str, sanitized_html: str, text: str, raw_html: str = ""
+    ) -> dict | None:
         raise ExtractorNotConfigured("No FieldExtractor is configured for the ingestion source")
 
 

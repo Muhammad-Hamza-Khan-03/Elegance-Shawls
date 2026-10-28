@@ -79,6 +79,7 @@ async def run_job(
 
     extracted = await extractor.extract(
         source_url=page["source_url"], sanitized_html=page["html"], text=html_to_text(page["html"]),
+        raw_html=page["raw_html"],
     )
     if not isinstance(extracted, dict):
         raise InvalidSourceData("Extractor returned no product data")

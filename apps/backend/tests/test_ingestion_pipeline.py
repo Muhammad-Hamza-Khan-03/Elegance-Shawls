@@ -22,7 +22,7 @@ class FixtureExtractor:
     def __init__(self, data):
         self.data, self.calls = data, 0
 
-    async def extract(self, *, source_url, sanitized_html, text):
+    async def extract(self, *, source_url, sanitized_html, text, raw_html=""):
         self.calls += 1
         return self.data
 

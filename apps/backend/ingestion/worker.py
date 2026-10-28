@@ -7,7 +7,8 @@ import socket
 from ingestion import jobs
 from ingestion.normalize import InvalidSourceData
 from ingestion.pipeline import run_job
-from ingestion.quill_scraper import ExtractorNotConfigured, FieldExtractor, UnconfiguredExtractor
+from ingestion.extractors import ShopifyHtmlExtractor
+from ingestion.quill_scraper import ExtractorNotConfigured, FieldExtractor
 from ingestion.safe_fetch import FetchError, SafeFetcher
 
 logger = logging.getLogger("ingestion.worker")
@@ -41,8 +42,7 @@ async def main(poll_seconds: float = 5.0) -> None:
 
     await connect_to_mongo()
     db, me, fetcher = get_db(), worker_id(), SafeFetcher()
-    # A real FieldExtractor must be wired here once the source's markup is agreed.
-    extractor = UnconfiguredExtractor()
+    extractor = ShopifyHtmlExtractor()
     while True:
         if not await process_next_job(db, me, fetcher, extractor):
             await asyncio.sleep(poll_seconds)
