@@ -173,6 +173,21 @@ export const api = {
     }
   },
 
+  // Current published state for checkout: null when the product is not
+  // published; throws when the catalogue cannot be reached, so callers block handoff.
+  getPublishedProduct: async (slug: string): Promise<Product | null> => {
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    if (response.status === 404) return null;
+    const product = mapBackendProduct(await handleResponse(response));
+    return product.status === 'active' ? product : null;
+  },
+
+  getPublishedProducts: async (slugs: string[]): Promise<Map<string, Product | null>> => {
+    const unique = Array.from(new Set(slugs));
+    const products = await Promise.all(unique.map((slug) => api.getPublishedProduct(slug)));
+    return new Map(unique.map((slug, index) => [slug, products[index]]));
+  },
+
   // GET /products/featured
   getFeaturedProducts: async (): Promise<Product[]> => {
     const products = await api.getProducts();

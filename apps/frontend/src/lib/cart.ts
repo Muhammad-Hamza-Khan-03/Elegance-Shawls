@@ -146,6 +146,59 @@ export const getCartSummary = (items: CartItem[]) => {
   return { itemCount, subtotal, currency };
 };
 
+export interface CartIssue {
+  lineId: string;
+  message: string;
+}
+
+export const CART_VERIFICATION_TTL_MS = 60_000;
+
+const describeLine = (item: CartItem) => {
+  const variant = [item.variant.color, item.variant.size].filter(Boolean).join(' / ');
+  return `${item.product.name}${variant ? ` (${variant})` : ''}`;
+};
+
+// Rebuild cart lines from the current published catalogue. `current` maps each
+// cart slug to its published product, or null when it is no longer published.
+// Backend price, currency and stock always replace the browser snapshot.
+export const reconcileCartItems = (items: CartItem[], current: Map<string, Product | null>) => {
+  const next: CartItem[] = [];
+  const issues: CartIssue[] = [];
+
+  for (const item of items) {
+    const label = describeLine(item);
+    const product = current.get(item.product.slug);
+    if (!product || product.status !== 'active' || product.id !== item.productId) {
+      issues.push({ lineId: item.lineId, message: `${label} is no longer available and was removed from your cart.` });
+      continue;
+    }
+    const variant = product.variants.find((entry) => entry.id === item.variantId);
+    if (!variant) {
+      issues.push({ lineId: item.lineId, message: `${label} is no longer offered in this option and was removed from your cart.` });
+      continue;
+    }
+    if (variant.stock < 1) {
+      issues.push({ lineId: item.lineId, message: `${label} is sold out and was removed from your cart.` });
+      continue;
+    }
+
+    const quantity = Math.min(item.quantity, variant.stock);
+    if (quantity < item.quantity) {
+      issues.push({ lineId: item.lineId, message: `Only ${variant.stock} of ${label} available; quantity reduced from ${item.quantity} to ${quantity}.` });
+    }
+    if (variant.price !== item.variant.price || product.currency !== item.product.currency) {
+      issues.push({
+        lineId: item.lineId,
+        message: `${label} price changed from ${formatCurrency(item.variant.price, item.product.currency)} to ${formatCurrency(variant.price, product.currency)}.`,
+      });
+    }
+    const refreshed = createCartItem(product, variant, quantity);
+    if (refreshed) next.push(refreshed);
+  }
+
+  return { items: next, issues };
+};
+
 export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, customer?: { name?: string; phone?: string; city?: string; address?: string; notes?: string }) => {
   const currency = items[0]?.product.currency || 'PKR';
   const total = items.reduce((sum, item) => sum + item.variant.price * item.quantity, 0);

@@ -1,12 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Minus, Plus, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types/types';
 import { useCart } from '@/components/cart/CartProvider';
+import { api } from '@/lib/api';
+import { CART_VERIFICATION_TTL_MS } from '@/lib/cart';
 import { toast } from 'sonner';
 import {
   buildSingleProductMessage,
@@ -53,6 +56,33 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   const orderError = selected
     ? validateSingleProductOrder({ variant: selected, quantity, productUrl })
     : 'No product option is available.';
+
+  // The page may have been open for a while: re-check the published product
+  // before handing off, and re-render from the server if anything changed.
+  const router = useRouter();
+  const verifiedAtRef = useRef(0);
+  useEffect(() => {
+    verifiedAtRef.current = Date.now();
+  }, [product]);
+
+  const handleOrderClick = async (event: MouseEvent<HTMLAnchorElement>) => {
+    if (Date.now() - verifiedAtRef.current <= CART_VERIFICATION_TTL_MS) return;
+    event.preventDefault();
+    try {
+      const current = await api.getPublishedProduct(product.slug);
+      const variant = current?.variants.find((entry) => entry.id === selected?.id);
+      if (!current || !selected || !variant || current.id !== product.id || current.currency !== product.currency
+        || variant.price !== selected.price || variant.stock < quantity) {
+        toast.error('This product has changed. Review the updated details before ordering.');
+        router.refresh();
+        return;
+      }
+      verifiedAtRef.current = Date.now();
+      toast.success('Availability confirmed. Tap "Order on WhatsApp" again to continue.');
+    } catch {
+      toast.error('We could not confirm current availability. Please try again.');
+    }
+  };
 
   const handleAddToCart = () => {
     if (!selected) return;
@@ -155,7 +185,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
               {cartLine ? 'Update cart item' : 'Add to cart'}
             </Button>
             {whatsappUrl ? (
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white transition hover:bg-[#4a382f]">
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={handleOrderClick} className="rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white transition hover:bg-[#4a382f]">
                 Order on WhatsApp
               </a>
             ) : (
@@ -169,7 +199,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
         </div>
       </section>
       {whatsappUrl && (
-        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="fixed inset-x-4 bottom-4 z-40 rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white shadow-xl md:hidden">
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={handleOrderClick} className="fixed inset-x-4 bottom-4 z-40 rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white shadow-xl md:hidden">
           Order on WhatsApp
         </a>
       )}

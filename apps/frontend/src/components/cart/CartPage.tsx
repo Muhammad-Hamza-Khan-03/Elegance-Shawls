@@ -1,18 +1,74 @@
 'use client';
 
+import { MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/cart/CartProvider';
-import { buildCartCheckoutUrl, getCartSummary } from '@/lib/cart';
+import { api } from '@/lib/api';
+import { CART_VERIFICATION_TTL_MS, CartIssue, CartItem, buildCartCheckoutUrl, getCartSummary, reconcileCartItems } from '@/lib/cart';
 import { formatCurrency } from '@/lib/whatsapp';
 
 const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
 
+type Verification = { status: 'checking' | 'verified' | 'error'; at: number };
+
+const cartKey = (items: CartItem[]) =>
+  items.map((item) => `${item.lineId}:${item.quantity}:${item.variant.price}:${item.variant.stock}`).join('|');
+
+// Checks the cart against the published catalogue whenever it changes. Handoff
+// stays blocked until a check within the TTL succeeds and any changes it made
+// have been acknowledged.
+const useCartVerification = (items: CartItem[], hydrated: boolean, replaceItems: (items: CartItem[]) => void) => {
+  const [verification, setVerification] = useState<Verification>({ status: 'checking', at: 0 });
+  const [issues, setIssues] = useState<CartIssue[]>([]);
+  const itemsRef = useRef(items);
+  const requestRef = useRef(0);
+  const key = cartKey(items);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const verify = useCallback(async () => {
+    const current = itemsRef.current;
+    if (!current.length) return;
+    const request = ++requestRef.current;
+    setVerification({ status: 'checking', at: 0 });
+    try {
+      const products = await api.getPublishedProducts(current.map((item) => item.product.slug));
+      if (request !== requestRef.current) return;
+      const result = reconcileCartItems(current, products);
+      if (result.issues.length) {
+        setIssues(result.issues);
+        replaceItems(result.items);
+      }
+      setVerification({ status: 'verified', at: Date.now() });
+    } catch {
+      if (request === requestRef.current) setVerification({ status: 'error', at: 0 });
+    }
+  }, [replaceItems]);
+
+  useEffect(() => {
+    if (!hydrated || !key) return;
+    const timer = window.setTimeout(() => void verify(), 0);
+    return () => window.clearTimeout(timer);
+  }, [hydrated, key, verify]);
+
+  return { verification, issues, verify, acknowledge: () => setIssues([]) };
+};
+
 export const CartPage = () => {
-  const { items, hydrated, incrementItem, decrementItem, removeItem, clearCart, setItemQuantity } = useCart();
+  const { items, hydrated, incrementItem, decrementItem, removeItem, clearCart, setItemQuantity, replaceItems } = useCart();
   const summary = getCartSummary(items);
+  const { verification, issues, verify, acknowledge } = useCartVerification(items, hydrated, replaceItems);
+  const onCheckoutClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (Date.now() - verification.at > CART_VERIFICATION_TTL_MS) {
+      event.preventDefault();
+      void verify();
+    }
+  };
   const checkoutUrl = hydrated && items.length > 0 ? (() => {
     try {
       return buildCartCheckoutUrl(items, whatsappNumber);
@@ -38,6 +94,17 @@ export const CartPage = () => {
           </div>
         </div>
 
+        {issues.length > 0 && (
+          <div role="alert" className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Your cart was updated to match current availability and prices:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              {issues.map((issue, index) => <li key={`${issue.lineId}-${index}`}>{issue.message}</li>)}
+            </ul>
+            <Button type="button" variant="outline" className="w-full rounded-full border-amber-400 bg-white" onClick={acknowledge}>
+              {items.length ? 'Continue with updated cart' : 'Dismiss'}
+            </Button>
+          </div>
+        )}
         {!hydrated ? (
           <div className="rounded-3xl border border-[#e7dac8] bg-white/70 p-10 text-center text-[#6f625a]">Loading your saved cart…</div>
         ) : items.length === 0 ? (
@@ -110,12 +177,22 @@ export const CartPage = () => {
               <div className="rounded-2xl bg-[#fbf7f0] p-4 text-sm text-[#6f625a]">
                 This cart is saved in your browser so it survives a refresh on the same device.
               </div>
-              {checkoutUrl ? (
-                <Button asChild className="w-full rounded-full bg-[#2f241f] px-6 py-3 font-semibold text-white hover:bg-[#4a382f]">
-                  <a href={checkoutUrl} target="_blank" rel="noreferrer">Send cart on WhatsApp</a>
+              {verification.status === 'error' && (
+                <div role="alert" className="space-y-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                  <p>We could not confirm current availability and prices. Check your connection and try again.</p>
+                  <Button type="button" variant="outline" className="w-full rounded-full bg-white" onClick={() => void verify()}>Check again</Button>
+                </div>
+              )}
+              {!checkoutUrl ? (
+                <Button disabled className="w-full rounded-full bg-[#8b817c] px-6 py-3 font-semibold text-white">WhatsApp unavailable</Button>
+              ) : verification.status !== 'verified' || issues.length > 0 ? (
+                <Button disabled className="w-full rounded-full bg-[#8b817c] px-6 py-3 font-semibold text-white">
+                  {verification.status === 'checking' ? 'Checking availability…' : issues.length > 0 ? 'Review cart changes' : 'Availability not confirmed'}
                 </Button>
               ) : (
-                <Button disabled className="w-full rounded-full bg-[#8b817c] px-6 py-3 font-semibold text-white">WhatsApp unavailable</Button>
+                <Button asChild className="w-full rounded-full bg-[#2f241f] px-6 py-3 font-semibold text-white hover:bg-[#4a382f]">
+                  <a href={checkoutUrl} target="_blank" rel="noreferrer" onClick={onCheckoutClick}>Send cart on WhatsApp</a>
+                </Button>
               )}
               <Button variant="outline" className="w-full rounded-full border-[#d8c8b4] bg-transparent px-6 py-3 font-semibold" onClick={clearCart}>
                 Clear cart

@@ -7,6 +7,7 @@ import {
   getCartLineId,
   getCartSummary,
   incrementCartItem,
+  reconcileCartItems,
   decrementCartItem,
   removeCartItem,
   setCartItemQuantity,
@@ -67,5 +68,67 @@ describe('cart state helpers', () => {
     const items = addCartItem(addCartItem([], product, variantA, 1), product, variantB, 2);
     expect(getCartSummary(items)).toEqual({ itemCount: 3, subtotal: 12900, currency: 'PKR' });
     expect(buildCartCheckoutUrl(items, '923001234567')).toContain('wa.me/923001234567');
+  });
+});
+
+describe('cart revalidation against the published catalogue', () => {
+  const cartWith = (quantity = 2) => [createCartItem(product, variantA, quantity)!];
+  const published = (next: Partial<Product> | null) =>
+    new Map([[product.slug, next === null ? null : { ...product, ...next }]]);
+
+  it('keeps an unchanged cart without issues', () => {
+    const result = reconcileCartItems(cartWith(), published({}));
+    expect(result.issues).toEqual([]);
+    expect(result.items).toEqual(cartWith());
+  });
+
+  it.each([
+    ['removed or unpublished', null],
+    ['archived', { status: 'archived' as const }],
+    ['replaced by another product on the same slug', { id: 'other-product' }],
+  ])('drops a product that is %s', (_label, next) => {
+    const result = reconcileCartItems(cartWith(), published(next));
+    expect(result.items).toEqual([]);
+    expect(result.issues[0].message).toMatch(/no longer available/);
+  });
+
+  it('drops a variant that no longer exists', () => {
+    const result = reconcileCartItems(cartWith(), published({ variants: [variantB] }));
+    expect(result.items).toEqual([]);
+    expect(result.issues[0].message).toMatch(/no longer offered/);
+  });
+
+  it('drops a variant that sold out after it was added', () => {
+    const result = reconcileCartItems(cartWith(), published({ variants: [{ ...variantA, stock: 0 }, variantB] }));
+    expect(result.items).toEqual([]);
+    expect(result.issues[0].message).toMatch(/sold out/);
+  });
+
+  it('reduces quantity to the current stock', () => {
+    const result = reconcileCartItems(cartWith(3), published({ variants: [{ ...variantA, stock: 1 }, variantB] }));
+    expect(result.items[0].quantity).toBe(1);
+    expect(result.items[0].variant.stock).toBe(1);
+    expect(result.issues[0].message).toMatch(/quantity reduced from 3 to 1/);
+  });
+
+  it('uses the backend price and reports the change', () => {
+    const result = reconcileCartItems(cartWith(), published({ variants: [{ ...variantA, price: 5000 }, variantB] }));
+    expect(result.items[0].variant.price).toBe(5000);
+    expect(getCartSummary(result.items).subtotal).toBe(10000);
+    expect(result.issues[0].message).toMatch(/PKR 4,500 to PKR 5,000/);
+    expect(decodeURIComponent(buildCartCheckoutUrl(result.items, '923001234567'))).toContain('Total: PKR 10,000');
+  });
+
+  it('reports a currency change', () => {
+    const result = reconcileCartItems(cartWith(), published({ currency: 'USD' }));
+    expect(result.items[0].product.currency).toBe('USD');
+    expect(result.issues[0].message).toMatch(/price changed/);
+  });
+
+  it('handles several lines with mixed outcomes', () => {
+    const items = [createCartItem(product, variantA, 1)!, createCartItem(product, variantB, 2)!];
+    const result = reconcileCartItems(items, published({ variants: [variantA] }));
+    expect(result.items.map((item) => item.variantId)).toEqual([variantA.id]);
+    expect(result.issues).toHaveLength(1);
   });
 });
