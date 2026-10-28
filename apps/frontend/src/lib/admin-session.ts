@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 export const ADMIN_SESSION_COOKIE = 'es_admin_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -70,3 +70,11 @@ export const verifyAdminSession = (token?: string | null) => {
 };
 
 export const hasAdminSecret = () => Boolean(getAdminSecret());
+
+// Hash both values so timingSafeEqual compares equal-length buffers without leaking the key length.
+export const adminKeyMatches = (providedKey: string) => {
+  const secret = getAdminSecret();
+  if (!secret || !providedKey) return false;
+  const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest();
+  return timingSafeEqual(digest(providedKey), digest(secret));
+};
