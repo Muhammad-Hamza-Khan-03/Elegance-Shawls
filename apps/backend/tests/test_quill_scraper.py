@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from ingestion import quill_scraper as qs
+from ingestion.normalize import InvalidSourceData
 from ingestion.safe_fetch import DomainRateLimiter, SafeFetcher, SourcePolicy
 
 FIXTURE = (Path(__file__).parent / "fixtures/ingestion/product_page.html").read_text()
@@ -72,6 +73,38 @@ async def test_fetch_clean_html_goes_through_safe_fetcher():
     page = await qs.fetch_product_page_clean_html(fetcher, BASE)
     assert page["source_url"] == BASE
     assert len(page["images"]) == 3 and "<script" not in page["html"]
+
+
+def _redirect_fetcher(location: str, final_html: str = FIXTURE) -> SafeFetcher:
+    def handler(request):
+        if request.url.path == "/products/pearl-cashmere-shawl":
+            return httpx.Response(301, headers={"location": location})
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=final_html)
+
+    async def dns(_):
+        return ["93.184.216.34"]
+
+    return SafeFetcher(
+        SourcePolicy("shop.example", True, extra_hosts=frozenset({"www.shop.example"})),
+        resolver=dns,
+        rate_limiter=DomainRateLimiter(0),
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("location", ["https://shop.example/", "https://shop.example/collections/all"])
+async def test_fetch_clean_html_rejects_redirect_to_non_product_path(location):
+    with pytest.raises(InvalidSourceData, match="products/<handle>"):
+        await qs.fetch_product_page_clean_html(_redirect_fetcher(location), BASE)
+
+
+@pytest.mark.asyncio
+async def test_fetch_clean_html_accepts_valid_product_redirect():
+    page = await qs.fetch_product_page_clean_html(
+        _redirect_fetcher("https://www.shop.example/products/ivory-stole"), BASE
+    )
+    assert page["source_url"] == "https://www.shop.example/products/ivory-stole"
 
 
 @pytest.mark.asyncio

@@ -18,12 +18,13 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field
 
-from ingestion.safe_fetch import SafeFetcher
+from ingestion.safe_fetch import SafeFetcher, UnsafeURL, validate_url
 
 logger = logging.getLogger("ingestion.quill_scraper")
 
 ALLOWED_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 IMAGE_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS
+PRODUCT_PATH_PATTERN = re.compile(r"^/products/[A-Za-z0-9][A-Za-z0-9._~%-]{0,200}$")
 
 
 class ProductShawl(BaseModel):
@@ -231,9 +232,22 @@ def extract_product_links(html: str, page_url: str) -> set[str]:
     return links
 
 
+def _validate_fetched_product_url(url: str, fetcher: SafeFetcher) -> None:
+    """Reject a successful fetch that landed outside the requested product surface."""
+    from ingestion.normalize import InvalidSourceData
+
+    try:
+        validate_url(url, fetcher.policy)
+    except UnsafeURL as exc:
+        raise InvalidSourceData("Fetched URL is not on an approved HTTPS host") from exc
+    if not PRODUCT_PATH_PATTERN.fullmatch(urlparse(url).path):
+        raise InvalidSourceData("Fetched URL must match /products/<handle> path")
+
+
 async def fetch_product_page_clean_html(fetcher: SafeFetcher, product_url: str) -> dict | None:
     """quill-store's fetch_product_page_clean_html over the guarded fetcher."""
     page = await fetcher.fetch(product_url)
+    _validate_fetched_product_url(page.url, fetcher)
     if not page.text.strip():
         return None
     cleaned_html, sanitized_images = sanitize_product_html(page.text, product_url)

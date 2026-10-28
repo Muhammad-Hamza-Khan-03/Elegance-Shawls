@@ -229,3 +229,25 @@ async def test_apex_to_www_redirect_stages_under_the_canonical_host_once(db):
     await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="2")
     assert (await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor()))["result"]["outcome"] == "unchanged"
     assert await db.staged_products.count_documents({}) == 1
+
+
+@pytest.mark.asyncio
+async def test_homepage_redirect_fails_without_staging_a_product(db):
+    def handler(request):
+        if request.url.path == "/products/heritage-wool-shawl":
+            return httpx.Response(301, headers={"location": "https://shop.example/"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=load("jsonld_full.html"))
+
+    async def dns(_):
+        return ["93.184.216.34"]
+
+    fetcher = SafeFetcher(
+        POLICY,
+        resolver=dns,
+        rate_limiter=DomainRateLimiter(0),
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="homepage")
+    job = await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor())
+    assert job["status"] == "failed" and job["attempts"] == 1 and not job["last_error_retryable"]
+    assert await db.staged_products.count_documents({}) == 0
