@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { MarkdownText, parseMarkdown, renderInline } from './MarkdownText';
+import { MarkdownText, renderInline } from './MarkdownText';
+import { parseMarkdown } from '@/lib/markdown';
 
 describe('parseMarkdown', () => {
   it('splits headings, paragraphs and bullet lists', () => {

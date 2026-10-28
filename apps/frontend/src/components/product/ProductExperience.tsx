@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Product } from '@/types/types';
 import { useCart } from '@/components/cart/CartProvider';
 import { api } from '@/lib/api';
+import { dedupeImages } from '@/lib/images';
+import { firstParagraph } from '@/lib/markdown';
+import { MarkdownText } from '@/components/common/MarkdownText';
 import { CART_VERIFICATION_TTL_MS } from '@/lib/cart';
 import { toast } from 'sonner';
 import {
@@ -106,11 +109,12 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
     }
   }, [configurationError, orderError, product, productUrl, quantity, selected, whatsappNumber]);
 
-  const gallery = Array.from(new Set([
+  const gallery = dedupeImages([
     activeImage,
     ...product.images,
     ...product.variants.map((variant) => variant.image_url).filter(Boolean),
-  ].filter(Boolean))) as string[];
+  ].filter(Boolean) as string[]);
+  const teaser = product.description ? firstParagraph(product.description) : '';
 
   return (
     <main id="main-content" className="min-h-screen bg-[#fbf7f0] px-6 pb-28 pt-12 text-[#2f241f] md:pb-12">
@@ -143,7 +147,12 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
             </p>
           </div>
 
-          {product.description && <p className="leading-8 text-[#6f625a]">{product.description}</p>}
+          {teaser && (
+            <div className="space-y-2">
+              <p className="line-clamp-4 leading-7 text-[#6f625a]">{teaser}</p>
+              <a href="#product-details" className="inline-block text-sm font-semibold text-[#9a6b3f] underline underline-offset-4">Read the full description</a>
+            </div>
+          )}
 
           <div className="grid gap-3 rounded-2xl bg-[#fbf7f0] p-5 text-sm text-[#6f625a]">
             {product.material && <p><span className="font-semibold text-[#2f241f]">Material:</span> {product.material}</p>}
@@ -196,6 +205,14 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
           <p className="text-center text-xs leading-6 text-[#6f625a]">WhatsApp will open with your selected product details. Availability and delivery are confirmed manually.</p>
         </div>
       </section>
+      {product.description && (
+        <section id="product-details" aria-labelledby="product-details-heading" className="mx-auto mt-12 max-w-6xl scroll-mt-8">
+          <div className="rounded-3xl border border-[#e7dac8] bg-white/80 px-6 py-8 shadow-sm sm:px-10">
+            <h2 id="product-details-heading" className="text-xs font-semibold uppercase tracking-[0.3em] text-[#9a6b3f]">About this product</h2>
+            <MarkdownText text={product.description} size="md" className="mx-auto mt-4 max-w-3xl [&_h4:first-child]:pt-0" />
+          </div>
+        </section>
+      )}
       {whatsappUrl && (
         <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={handleOrderClick} className="fixed inset-x-4 bottom-4 z-40 rounded-full bg-[#2f241f] px-8 py-4 text-center text-sm font-semibold text-white shadow-xl md:hidden">
           Order on WhatsApp

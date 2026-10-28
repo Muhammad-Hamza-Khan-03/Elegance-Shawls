@@ -33,6 +33,31 @@ class InvalidSourceData(Exception):
     """The source page or scraper output cannot become a staged product. Not retryable."""
 
 
+_SIZE_SUFFIX = re.compile(r"_(?:\d{1,4}x\d{0,4}|x\d{1,4}|pico|icon|thumb|small|compact|medium|large|grande|original|master)(?=\.[A-Za-z0-9]+$)", re.I)
+
+
+def image_identity(url: str) -> str:
+    """Same picture, any size: Shopify serves one file as `x.jpg`, `x_1800x1800.jpg` and `x.jpg?width=1200`."""
+    path = urlsplit(url).path.lower()
+    name = _SIZE_SUFFIX.sub("", path.rsplit("/", 1)[-1])
+    return name or path
+
+
+def _is_plain(url: str) -> bool:
+    parts = urlsplit(url)
+    return not parts.query and not _SIZE_SUFFIX.search(parts.path)
+
+
+def dedupe_images(urls: list[str]) -> list[str]:
+    """One URL per picture, in first-seen order, preferring the unresized original with no query."""
+    chosen: dict[str, str] = {}
+    for url in urls:
+        key = image_identity(url)
+        if key not in chosen or (_is_plain(url) and not _is_plain(chosen[key])):
+            chosen[key] = url
+    return list(chosen.values())
+
+
 def clean_text(value: str | None, limit: int) -> str | None:
     if value is None:
         return None
@@ -115,11 +140,7 @@ def normalize(
     if not slug:
         raise InvalidSourceData("Product title cannot be turned into a slug")
 
-    images: list[str] = []
-    for url in scraped.image_urls:
-        if url not in images and is_allowed_image_url(url, policy):
-            images.append(url)
-    images = images[:MAX_IMAGES]
+    images = dedupe_images([url for url in scraped.image_urls if is_allowed_image_url(url, policy)])[:MAX_IMAGES]
     if not images:
         raise InvalidSourceData("Product has no images on an allowed host")
 

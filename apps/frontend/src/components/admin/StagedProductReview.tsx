@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Archive, Check, Eye, EyeOff, Loader2, Plus, RefreshCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { MarkdownText } from '@/components/admin/MarkdownText';
+import { MarkdownText } from '@/components/common/MarkdownText';
 import { CATEGORY_LABELS } from '@/lib/categories';
 import {
   STAGED_STATUSES,

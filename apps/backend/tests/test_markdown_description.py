@@ -80,3 +80,55 @@ def test_spec_lines_are_found_inside_bullets_and_bold_labels():
     from ingestion.extractors import parse_spec_lines
     assert parse_spec_lines("- **Material:** Wool blend.\n- **Weight:** Medium weight.\n- **Best for:** weddings") == {
         "material": "Wool blend.", "weight": "Medium weight."}
+
+
+# ---- duplicate product images --------------------------------------------------------------------
+
+from ingestion.normalize import dedupe_images, image_identity
+
+BASE = "https://scarvesaustralia.com.au/cdn/shop/files/"
+REAL = [  # the 12 URLs staged from the real page: 5 pictures, each listed in several sizes
+    BASE + "x-classic-1226720646.jpg", BASE + "x-classic-1226720646_1800x1800.jpg",
+    BASE + "x-classic-1227475036.png", BASE + "x-classic-1227475036_1800x1800.png",
+    BASE + "x-35721929752629.heic", BASE + "x-35721929752629_1800x1800.heic",
+    BASE + "x-35721929785397.heic",
+    BASE + "x-35721929850933.heic?v=1742615705&width=1200", BASE + "x-35721929785397.heic?v=1773731095&width=1200",
+    BASE + "x-classic-1227475036.png?v=1773736535&width=1200", BASE + "x-35721929752629.heic?v=1773731095&width=1200",
+    BASE + "x-classic-1226720646.jpg?v=1773731095&width=1200",
+]
+
+
+def test_every_size_of_one_picture_is_one_image():
+    kept = dedupe_images(REAL)
+    assert len(kept) == 5
+    assert kept == [BASE + "x-classic-1226720646.jpg", BASE + "x-classic-1227475036.png", BASE + "x-35721929752629.heic",
+                    BASE + "x-35721929785397.heic", BASE + "x-35721929850933.heic?v=1742615705&width=1200"]
+
+
+def test_the_plain_original_is_preferred_over_a_resized_copy_listed_first():
+    assert dedupe_images([BASE + "a_1800x1800.jpg", BASE + "a.jpg?width=1200", BASE + "a.jpg"]) == [BASE + "a.jpg"]
+    assert dedupe_images([BASE + "a_1800x1800.jpg"]) == [BASE + "a_1800x1800.jpg"]  # a lone copy is kept as is
+
+
+def test_different_pictures_are_never_merged():
+    urls = [BASE + "front.jpg", BASE + "back.jpg", BASE + "front_1x1.png", BASE + "side-2000x.jpg"]
+    assert [image_identity(u) for u in urls] == ["front.jpg", "back.jpg", "front.png", "side-2000x.jpg"]
+    assert len(dedupe_images(urls)) == 4
+
+
+def test_a_filename_that_merely_looks_like_a_size_is_not_stripped():
+    assert image_identity(BASE + "scarf_large_cream.jpg") == "scarf_large_cream.jpg"
+    assert image_identity(BASE + "photo-1800x1800.jpg") == "photo-1800x1800.jpg"
+
+
+@pytest.mark.asyncio
+async def test_normalized_products_carry_deduplicated_images_in_order():
+    from datetime import datetime, timezone
+    from ingestion.normalize import normalize
+    from ingestion.quill_scraper import ProductShawl
+    from ingestion.safe_fetch import SourcePolicy
+    policy = SourcePolicy("scarvesaustralia.com.au", True, image_hosts=frozenset({"cdn.shopify.com"}))
+    scraped = ProductShawl.model_validate({"url": "https://scarvesaustralia.com.au/products/x", "title": "Cream Shawl",
+                                           "description": "d", "category": "shawl", "image_urls": REAL})
+    product = normalize(scraped, policy=policy, source_product_id=None, fetched_at=datetime.now(timezone.utc))["product"]
+    assert len(product["images"]) == 5 and product["cover_image_url"] == product["images"][0]

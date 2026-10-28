@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { ProductExperience } from '@/components/product/ProductExperience';
 import { Metadata } from 'next';
 import { absoluteUrl } from '@/lib/site';
+import { markdownToPlainText } from '@/lib/markdown';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const product = await api.getProductBySlug(slug);
   if (!product || product.status !== 'active') return { title: 'Product not found', robots: { index: false, follow: false } };
-  const description = product.description?.slice(0, 160) || `View ${product.name}, available options and stock.`;
+  const plain = markdownToPlainText(product.description || '');
+  const description = plain.slice(0, 160) || `View ${product.name}, available options and stock.`;
   const canonical = absoluteUrl(`/product/${product.slug}`);
   return {
     title: product.name,
@@ -38,7 +40,7 @@ export default async function ProductDetailPage({
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
-    description: product.description || undefined,
+    description: markdownToPlainText(product.description || '') || undefined,
     image: product.images,
     sku: product.itemNumber ? String(product.itemNumber) : undefined,
     category: product.category,

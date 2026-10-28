@@ -1,44 +1,8 @@
 import type { ReactNode } from 'react';
+import { parseMarkdown } from '@/lib/markdown';
 
-// Renders the small Markdown subset the ingestion pipeline produces (## / ### headings, "- " bullets,
-// **bold**, *italic*, blank-line paragraphs). It builds React elements only: raw HTML is never
-// interpreted and links are never created, so untrusted source text cannot inject markup.
-export type MarkdownBlock =
-  | { type: 'heading'; level: 2 | 3; text: string }
-  | { type: 'list'; items: string[] }
-  | { type: 'paragraph'; lines: string[] };
-
-export const parseMarkdown = (source: string): MarkdownBlock[] => {
-  const blocks: MarkdownBlock[] = [];
-  for (const chunk of source.replace(/\r/g, '').split(/\n{2,}/)) {
-    let paragraph: string[] = [];
-    let list: string[] = [];
-    const flush = () => {
-      if (paragraph.length) blocks.push({ type: 'paragraph', lines: paragraph });
-      if (list.length) blocks.push({ type: 'list', items: list });
-      paragraph = [];
-      list = [];
-    };
-    for (const raw of chunk.split('\n')) {
-      const line = raw.trim();
-      if (!line) continue;
-      const heading = /^(#{2,3})\s+(.+)$/.exec(line);
-      if (heading) {
-        flush();
-        blocks.push({ type: 'heading', level: heading[1].length === 2 ? 2 : 3, text: heading[2] });
-      } else if (line.startsWith('- ')) {
-        if (paragraph.length) flush();
-        list.push(line.slice(2).trim());
-      } else {
-        if (list.length) flush();
-        paragraph.push(line);
-      }
-    }
-    flush();
-  }
-  return blocks;
-};
-
+// Renders the small Markdown subset the ingestion pipeline produces. It builds React elements only:
+// raw HTML is never interpreted and links are never created, so untrusted source text cannot inject markup.
 const INLINE = /\*\*([^*]+)\*\*|\*([^*]+)\*/g;
 
 export const renderInline = (text: string): ReactNode[] => {
@@ -53,14 +17,19 @@ export const renderInline = (text: string): ReactNode[] => {
   return nodes;
 };
 
-export const MarkdownText = ({ text, className = '' }: { text: string; className?: string }) => (
-  <div className={`space-y-3 text-sm leading-6 text-[#3b302a] ${className}`} data-testid="markdown">
+const SIZES = {
+  sm: { root: 'space-y-3 text-sm leading-6', h2: 'pt-2 text-base font-semibold', h3: 'pt-1 text-sm font-semibold text-[#9a6b3f]' },
+  md: { root: 'space-y-4 text-base leading-8', h2: 'pt-4 font-heading text-2xl font-semibold', h3: 'pt-2 text-base font-semibold text-[#9a6b3f]' },
+} as const;
+
+export const MarkdownText = ({ text, className = '', size = 'sm' }: { text: string; className?: string; size?: keyof typeof SIZES }) => (
+  <div className={`${SIZES[size].root} text-[#3b302a] ${className}`} data-testid="markdown">
     {parseMarkdown(text).map((block, index) => {
       if (block.type === 'heading') {
         return block.level === 2 ? (
-          <h4 key={index} className="pt-2 text-base font-semibold text-[#2f241f]">{renderInline(block.text)}</h4>
+          <h4 key={index} className={`${SIZES[size].h2} text-[#2f241f]`}>{renderInline(block.text)}</h4>
         ) : (
-          <h5 key={index} className="pt-1 text-sm font-semibold uppercase tracking-wide text-[#9a6b3f]">{renderInline(block.text)}</h5>
+          <h5 key={index} className={SIZES[size].h3}>{renderInline(block.text)}</h5>
         );
       }
       if (block.type === 'list') {
