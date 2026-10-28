@@ -76,7 +76,7 @@ def test_missing_price_and_details_are_flagged_not_invented():
     n = norm(fx.IVORY_STOLE_NO_PRICE)
     assert n["source_price"] is None and n["source_currency"] is None
     assert {"source_price", "material", "sizing", "weight"} <= set(n["missing_fields"])
-    assert n["product"]["category"] == "stoles" and n["product"]["material"] is None
+    assert n["product"]["category"] == "shawls" and n["product"]["material"] is None
 
 
 def test_price_without_currency_flags_currency():
@@ -112,6 +112,28 @@ def test_off_source_product_url_rejected():
 def test_job_path_must_be_product_path(path):
     with pytest.raises(InvalidSourceData):
         source_url_for_path(path, POLICY)
+
+
+def test_stole_source_category_maps_to_shawls():
+    assert norm(fx.PEARL)["product"]["category"] == "shawls"
+    assert norm(fx.IVORY_STOLE_NO_PRICE)["product"]["category"] == "shawls"
+
+
+def test_apex_and_www_urls_canonicalize_to_the_same_product():
+    policy = SourcePolicy("shop.example", True, extra_hosts=frozenset({"www.shop.example"}))
+    apex = normalize(ProductShawl.model_validate(fx.PEARL), policy=policy, source_product_id=None, fetched_at=NOW)
+    www = normalize(ProductShawl.model_validate({**fx.PEARL, "url": fx.PEARL["url"].replace("shop.example", "www.shop.example")}),
+                    policy=policy, source_product_id=None, fetched_at=NOW)
+    assert apex["source_url"] == www["source_url"] == "https://shop.example/products/pearl-cashmere-shawl"
+    assert apex["source_content_hash"] == www["source_content_hash"]
+
+
+def test_unlisted_sibling_host_is_rejected_by_normalize():
+    policy = SourcePolicy("shop.example", True, extra_hosts=frozenset({"www.shop.example"}))
+    for host in ("evil.shop.example", "shop.example.evil.example", "shop.example@evil.example"):
+        with pytest.raises(UnsafeURL):
+            normalize(ProductShawl.model_validate({**fx.PEARL, "url": f"https://{host}/products/x"}),
+                      policy=policy, source_product_id=None, fetched_at=NOW)
 
 
 def test_slugify():

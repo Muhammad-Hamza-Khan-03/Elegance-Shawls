@@ -229,3 +229,118 @@ def test_image_urls_limited_to_https_allowed_hosts():
     assert not is_allowed_image_url("https://evil.example/a.jpg", POLICY)
     assert not is_allowed_image_url("https://169.254.169.254/a.jpg", POLICY)
     assert not is_allowed_image_url("javascript:alert(1)", POLICY)
+
+
+# ---- approved two-host source policy (apex + www) -------------------------
+
+TWO = SourcePolicy(domain="shop.example", authorized=True, image_hosts=frozenset({"cdn.shopify.com"}),
+                   extra_hosts=frozenset({"www.shop.example"}))
+
+
+@pytest.mark.parametrize("url", [
+    "https://shop.example/products/a", "https://www.shop.example/products/a", "https://WWW.Shop.Example./products/a",
+])
+def test_both_approved_hosts_are_allowed(url):
+    assert validate_url(url, TWO) in {"shop.example", "www.shop.example"}
+
+
+@pytest.mark.parametrize("url", [
+    "https://evil.shop.example/products/a", "https://m.shop.example/products/a", "https://shop.example.evil.example/products/a",
+    "https://www.shop.example.evil.example/products/a", "https://wwwshop.example/products/a", "https://xwww.shop.example/products/a",
+    "http://www.shop.example/products/a", "https://www.shop.example:8443/products/a",
+    "https://user@www.shop.example/products/a", "https://other.example/products/a",
+])
+def test_every_other_host_stays_rejected(url):
+    with pytest.raises(UnsafeURL):
+        validate_url(url, TWO)
+
+
+def test_extra_hosts_do_nothing_without_authorization_or_a_domain():
+    with pytest.raises(UnsafeURL):
+        validate_url("https://www.shop.example/products/a", SourcePolicy("shop.example", False, extra_hosts=frozenset({"www.shop.example"})))
+    with pytest.raises(UnsafeURL):
+        validate_url("https://www.shop.example/products/a", SourcePolicy("", True, extra_hosts=frozenset({"www.shop.example"})))
+
+
+def test_policy_from_settings_reads_exact_hosts(monkeypatch):
+    from configuration.config import settings
+    monkeypatch.setattr(settings, "ingestion_source_domain", " Shop.Example. ")
+    monkeypatch.setattr(settings, "ingestion_source_authorized", True)
+    monkeypatch.setattr(settings, "ingestion_allowed_hosts", "WWW.shop.example, ,www.shop.example.")
+    monkeypatch.setattr(settings, "ingestion_image_hosts", "cdn.shopify.com")
+    policy = SourcePolicy.from_settings()
+    assert policy.hosts == {"shop.example", "www.shop.example"}
+    assert policy.image_hosts == {"cdn.shopify.com"}
+
+
+def test_images_may_be_served_from_either_source_host_and_the_cdn_only():
+    assert is_allowed_image_url("https://www.shop.example/cdn/shop/a.jpg", TWO)
+    assert is_allowed_image_url("https://shop.example/cdn/shop/a.jpg", TWO)
+    assert is_allowed_image_url("https://cdn.shopify.com/a.jpg", TWO)
+    assert not is_allowed_image_url("https://evil.shop.example/a.jpg", TWO)
+    assert not is_allowed_image_url("https://shopify.com/a.jpg", TWO)
+
+
+@pytest.mark.asyncio
+async def test_apex_to_www_redirect_is_followed_and_pinned_per_hop():
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.headers["host"]))
+        if request.headers["host"] == "shop.example":
+            return httpx.Response(301, headers={"location": "https://www.shop.example/products/a"})
+        return html(request)
+
+    async def dns(host):
+        return {"shop.example": ["93.184.216.34"], "www.shop.example": ["93.184.216.35"]}[host]
+
+    page = await fetcher(handler, resolver=dns, policy=TWO).fetch("https://shop.example/products/a")
+    assert page.url == "https://www.shop.example/products/a"
+    assert seen == [("93.184.216.34", "shop.example"), ("93.184.216.35", "www.shop.example")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("start,target", [
+    ("https://shop.example/products/a", "https://evil.shop.example/products/a"),
+    ("https://www.shop.example/products/a", "https://other.example/products/a"),
+    ("https://www.shop.example/products/a", "http://shop.example/products/a"),
+    ("https://shop.example/products/a", "https://www.shop.example.evil.example/"),
+    ("https://www.shop.example/products/a", "https://169.254.169.254/latest/meta-data/"),
+])
+async def test_redirects_leaving_the_two_approved_hosts_are_rejected(start, target):
+    def handler(request):
+        return httpx.Response(302, headers={"location": target})
+
+    with pytest.raises(UnsafeURL):
+        await fetcher(handler, policy=TWO).fetch(start)
+
+
+@pytest.mark.asyncio
+async def test_approved_host_resolving_privately_is_still_blocked():
+    async def dns(host):
+        return ["93.184.216.34"] if host == "shop.example" else ["10.0.0.9"]
+
+    def handler(request):
+        return httpx.Response(301, headers={"location": "https://www.shop.example/products/a"})
+
+    with pytest.raises(UnsafeURL, match="non-public"):
+        await fetcher(handler, resolver=dns, policy=TWO).fetch("https://shop.example/products/a")
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_is_shared_across_both_hosts():
+    waited = []
+
+    class Recorder(DomainRateLimiter):
+        async def wait(self, domain):
+            waited.append(domain)
+
+    def handler(request):
+        if request.headers["host"] == "shop.example":
+            return httpx.Response(301, headers={"location": "https://www.shop.example/products/a"})
+        return html(request)
+
+    fx_ = SafeFetcher(TWO, resolver=public_dns, rate_limiter=Recorder(0),
+                      client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await fx_.fetch("https://shop.example/products/a")
+    assert waited == ["shop.example", "shop.example"]

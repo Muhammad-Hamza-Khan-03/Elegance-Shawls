@@ -33,7 +33,9 @@ SPEC_LABELS = {
     "weight": r"weight|gsm",
     "origin": r"country of origin|origin",
 }
-CATEGORY_RULES = (("stole", re.compile(r"\bstoles?\b", re.I)), ("shawl", re.compile(r"\b(shawls?|wraps?|pashmina|scarf|scarves)\b", re.I)))
+# Approved policy: an explicit term anywhere in the category, title or URL handle maps to shawl.
+# Nothing else is inferred; a page with none of these terms fails instead of being guessed.
+CATEGORY_TERMS = re.compile(r"\b(shawls?|wraps?|pashminas?|scarf|scarves|stoles?)\b", re.I)
 
 
 def _text(value: Any) -> str | None:
@@ -153,10 +155,7 @@ def parse_spec_lines(text: str | None) -> dict[str, str]:
 
 
 def infer_category(*candidates: str | None) -> str | None:
-    for category, pattern in CATEGORY_RULES:
-        if any(c and pattern.search(c) for c in candidates):
-            return category
-    return None
+    return "shawl" if any(c and CATEGORY_TERMS.search(c) for c in candidates) else None
 
 
 class ShopifyHtmlExtractor:
@@ -192,7 +191,7 @@ class ShopifyHtmlExtractor:
         specs = parse_spec_lines(description)
         category = infer_category(_text(product.get("category")), title, source_url)
         if not category:
-            raise InvalidSourceData("Cannot determine category (expected shawl or stole) from the page")
+            raise InvalidSourceData("Cannot determine category (expected scarf, shawl, wrap, pashmina or stole) from the page")
 
         return {
             "title": title,

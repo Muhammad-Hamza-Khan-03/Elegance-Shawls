@@ -36,19 +36,30 @@ class ResponseTooLarge(FetchError):
     pass
 
 
+def _host_set(raw: str) -> frozenset[str]:
+    return frozenset(h.strip().lower().rstrip(".") for h in raw.split(",") if h.strip())
+
+
 @dataclass(frozen=True)
 class SourcePolicy:
+    """``domain`` is the canonical host (used to build URLs); ``extra_hosts`` are other exact
+    hosts of the same source. Nothing else, including subdomains, is ever allowed."""
     domain: str
     authorized: bool
     image_hosts: frozenset[str] = field(default_factory=frozenset)
+    extra_hosts: frozenset[str] = field(default_factory=frozenset)
+
+    @property
+    def hosts(self) -> frozenset[str]:
+        return frozenset({self.domain, *self.extra_hosts}) - {""}
 
     @classmethod
     def from_settings(cls) -> "SourcePolicy":
-        extra = {h.strip().lower() for h in settings.ingestion_image_hosts.split(",") if h.strip()}
         return cls(
             domain=settings.ingestion_source_domain.strip().lower().rstrip("."),
             authorized=settings.ingestion_source_authorized,
-            image_hosts=frozenset(extra),
+            image_hosts=_host_set(settings.ingestion_image_hosts),
+            extra_hosts=_host_set(settings.ingestion_allowed_hosts),
         )
 
 
@@ -68,7 +79,7 @@ def validate_url(url: str, policy: SourcePolicy) -> str:
     if port not in (None, 443):
         raise UnsafeURL("Non-standard ports are not allowed")
     host = (parts.hostname or "").lower().rstrip(".")
-    if host != policy.domain:
+    if host not in policy.hosts:
         raise UnsafeURL("Host is not on the source allowlist")
     return host
 
@@ -84,7 +95,7 @@ def is_allowed_image_url(url: str, policy: SourcePolicy) -> bool:
         parts.scheme == "https"
         and parts.username is None
         and port in (None, 443)
-        and host in ({policy.domain} | policy.image_hosts)
+        and host in (policy.hosts | policy.image_hosts)
     )
 
 
@@ -187,7 +198,8 @@ class SafeFetcher:
             for _ in range(self.max_redirects + 1):
                 host = validate_url(current, self.policy)
                 address = await resolve_public(host, self.resolver)
-                await self.rate_limiter.wait(host)
+                # One bucket per source, so hopping between its hosts cannot sidestep the spacing.
+                await self.rate_limiter.wait(self.policy.domain)
                 response_url, status, location, body = await self._get_once(client, current, host, address)
                 if status in REDIRECT_STATUSES:
                     if not location:

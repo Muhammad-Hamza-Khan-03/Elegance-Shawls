@@ -13,7 +13,7 @@ from ingestion.safe_fetch import DomainRateLimiter, SafeFetcher, SourcePolicy
 
 FIX = Path(__file__).parent / "fixtures/ingestion/shopify"
 URL = "https://shop.example/products/x"
-POLICY = SourcePolicy("shop.example", True, frozenset({"cdn.shopify.com"}))
+POLICY = SourcePolicy("shop.example", True, frozenset({"cdn.shopify.com"}), frozenset({"www.shop.example"}))
 
 
 def load(name):
@@ -42,7 +42,7 @@ async def test_json_ld_product_is_preferred_and_complete():
 @pytest.mark.asyncio
 async def test_graph_product_group_aggregate_offer_and_quantity_weight():
     data = await extract("jsonld_graph.html")
-    assert data["title"] == "Silk Stole" and data["category"] == "stole"
+    assert data["title"] == "Silk Stole" and data["category"] == "shawl"
     assert data["price"] == 45.0 and data["currency"] == "AUD"
     assert data["weight"] == "90 g" and data["material"] == "Silk"
     assert data["image_urls"] == ["https://cdn.shopify.com/s/files/silk.jpg"]
@@ -60,7 +60,7 @@ async def test_meta_tag_fallback():
 @pytest.mark.asyncio
 async def test_selector_fallback_leaves_unknown_currency_unset():
     data = await extract("selectors_only.html")
-    assert data["title"] == "Blush Stole" and data["category"] == "stole"
+    assert data["title"] == "Blush Stole" and data["category"] == "shawl"
     assert data["price"] == 1200.0 and data["currency"] is None  # currency is never guessed
     assert data["sizing"] == "70x180cm" and data["image_urls"] == []
 
@@ -105,10 +105,49 @@ def test_spec_line_parsing():
     assert parse_spec_lines("Not a spec line at all") == {}
 
 
-def test_category_inference():
-    assert infer_category("Silk Stoles") == "stole"
-    assert infer_category(None, "Wool Scarf", "/x") == "shawl"
-    assert infer_category("Leather Wallet") is None
+@pytest.mark.parametrize("candidates", [
+    ("Wool Scarf",), ("Merino Scarves",), ("Cashmere Shawl",), ("Silk Wrap",), ("Pashmina",), ("Pashminas",),
+    ("Silk Stole",), ("Stoles",), (None, "Plain title", "/products/winter-scarf-grey"), ("SCARF",),
+    ("Accessories", "Evening wrap in navy"),
+])
+def test_explicit_terms_map_to_shawl(candidates):
+    assert infer_category(*candidates) == "shawl"
+
+
+@pytest.mark.parametrize("candidates", [
+    ("Leather Wallet",), ("Wool Blanket",), ("Scarfing Tool",), ("Wrapper",), ("Handbag", "Accessories"), (None, None),
+])
+def test_no_explicit_term_is_not_guessed(candidates):
+    assert infer_category(*candidates) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("title", ["Alpine Scarf", "Silk Stole", "Pashmina Wrap", "Heritage Shawl"])
+async def test_every_approved_term_stages_into_the_shawls_category(title):
+    html = f'''<html><head><meta property="og:title" content="{title}">
+    <meta property="og:description" content="Plain description."><meta property="og:image" content="https://cdn.shopify.com/a.jpg">
+    </head></html>'''
+    from ingestion.normalize import normalize
+    from ingestion.quill_scraper import ProductShawl
+    from datetime import datetime, timezone
+    data = await ShopifyHtmlExtractor().extract(source_url=URL, sanitized_html="", text="", raw_html=html)
+    scraped = ProductShawl.model_validate({**data, "url": URL})
+    staged = normalize(scraped, policy=POLICY, source_product_id=None, fetched_at=datetime.now(timezone.utc))
+    assert staged["product"]["category"] == "shawls"
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_inferred_beyond_what_the_page_states():
+    html = '''<html><head><meta property="og:title" content="Fine Merino Wool Scarf, Large">
+    <meta property="og:description" content="Beautiful, warm and generously sized. Imported from overseas.">
+    <script type="application/ld+json">{"@type":"Product","name":"Fine Merino Wool Scarf, Large",
+    "offers":{"@type":"Offer","availability":"https://schema.org/InStock","price":"59.00"}}</script></head></html>'''
+    data = await ShopifyHtmlExtractor().extract(source_url=URL, sanitized_html="", text="", raw_html=html)
+    # "Merino Wool" in the title is not a material, "Large" is not a size, "Imported" is not an origin.
+    assert data["material"] is None and data["sizing"] is None and data["weight"] is None and data["origin"] is None
+    assert data["color"] is None
+    assert data["price"] == 59.0 and data["currency"] is None  # price without a stated currency stays unknown
+    assert "stock" not in data and "availability" not in str(data)  # InStock never becomes stock
 
 
 # ---- through the worker with the real extractor -----------------------------
@@ -162,3 +201,26 @@ async def test_worker_fails_terminally_on_unextractable_page(db):
     job = await worker.process_next_job(db, "w", fetcher_for(load("empty.html")), ShopifyHtmlExtractor())
     assert job["status"] == "failed" and job["attempts"] == 1 and "title" in job["last_error"]
     assert await db.staged_products.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_apex_to_www_redirect_stages_under_the_canonical_host_once(db):
+    page = load("jsonld_full.html")
+
+    def handler(request):
+        if request.headers["host"] == "shop.example":
+            return httpx.Response(301, headers={"location": "https://www.shop.example/products/heritage-wool-shawl"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=page)
+
+    async def dns(_):
+        return ["93.184.216.34"]
+
+    fetcher = SafeFetcher(POLICY, resolver=dns, rate_limiter=DomainRateLimiter(0),
+                          client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="1")
+    assert (await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor()))["status"] == "succeeded"
+    staged = await db.staged_products.find_one({})
+    assert staged["source_url"] == "https://shop.example/products/heritage-wool-shawl"
+    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="2")
+    assert (await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor()))["result"]["outcome"] == "unchanged"
+    assert await db.staged_products.count_documents({}) == 1

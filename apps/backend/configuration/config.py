@@ -24,6 +24,9 @@ class settings(BaseSettings):
     ingestion_source_name: str = ""
     ingestion_source_domain: str = ""
     ingestion_source_authorized: bool = False
+    # Additional exact hosts (comma-separated) that belong to the same source, e.g. "www.example.com".
+    # Redirects may move between the source domain and these hosts and nowhere else.
+    ingestion_allowed_hosts: str = ""
     # Extra https hosts (comma-separated) product images may be served from, e.g. a CDN.
     ingestion_image_hosts: str = ""
     ingestion_connect_timeout_seconds: float = 5.0

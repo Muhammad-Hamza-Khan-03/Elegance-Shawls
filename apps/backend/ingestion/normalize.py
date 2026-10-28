@@ -8,6 +8,8 @@ import re
 import unicodedata
 from datetime import datetime
 
+from urllib.parse import urlsplit
+
 from bs4 import BeautifulSoup
 
 from ingestion.quill_scraper import ProductShawl, normalize_shopify_product_url
@@ -15,7 +17,8 @@ from ingestion.safe_fetch import SourcePolicy, is_allowed_image_url, validate_ur
 from models.ingestion_model import content_hash
 from schemas.ingestion_schema import StagedProductDraft
 
-CATEGORY_MAP = {"shawl": "shawls", "stole": "stoles"}
+# Approved policy: scarf, shawl, wrap, pashmina and stole all land in the shawls category.
+CATEGORY_MAP = {"shawl": "shawls", "stole": "shawls"}
 MAX_IMAGES = 12
 PATH_PATTERN = re.compile(r"^/products/[A-Za-z0-9][A-Za-z0-9._~%-]{0,200}$")
 _ID_PATTERNS = (
@@ -82,6 +85,10 @@ def normalize(
     """Return the fields needed by pipeline.stage_product."""
     validate_url(scraped.url, policy)
     source_url = normalize_shopify_product_url(scraped.url.split("?")[0].split("#")[0])
+    # Hosts of one source are the same catalogue: key everything on the canonical host so
+    # apex and www URLs of a product cannot stage twice.
+    parts = urlsplit(source_url)
+    source_url = parts._replace(netloc=policy.domain).geturl()
 
     name = clean_text(scraped.title, 160)
     if not name:
