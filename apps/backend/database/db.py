@@ -38,6 +38,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.staged_products.create_index(
         [("status", 1), ("created_at", -1), ("_id", -1)], name="ix_staged_review_feed"
     )
+    await db.staged_products.create_index("product_id", sparse=True, name="ix_staged_product_link")
     await db.ingestion_jobs.create_index("idempotency_key", unique=True, name="uq_job_idempotency")
     await db.ingestion_jobs.create_index(
         [("status", 1), ("available_at", 1)], name="ix_job_claim"

@@ -98,6 +98,7 @@ class StagedProductResponse(BaseModel):
     source_attributes: dict[str, Any] = Field(default_factory=dict)
     missing_fields: List[str] = Field(default_factory=list)
     stock_known: bool = False
+    latest_source_hash: Optional[str] = None
     product_id: Optional[PyObjectId] = None
     audit: List[AuditEntry] = Field(default_factory=list)
 
@@ -119,3 +120,40 @@ class RejectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     reason: str = Field(..., min_length=3, max_length=500)
+
+
+class JobCreateRequest(BaseModel):
+    """Only a path on the configured source. Full URLs from the browser are never accepted."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    path: str = Field(..., min_length=1, max_length=220)
+
+
+class JobResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: PyObjectId = Field(alias="_id")
+    source_id: str
+    path: str
+    status: JobStatus
+    attempts: int
+    max_attempts: int
+    available_at: datetime
+    cancel_requested: bool = False
+    last_error: Optional[str] = None
+    result: Optional[dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class JobListResponse(BaseModel):
+    items: List[JobResponse]
+
+
+class SourceInfo(BaseModel):
+    source_id: str
+    name: str
+    domain: str
+    authorized: bool
