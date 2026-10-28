@@ -58,3 +58,7 @@ Create a new random `ADMIN_API_KEY`, update backend and Quill secret stores in a
 ## Routine maintenance
 
 Review Dependabot pull requests weekly. Merge only after CI and compatibility review. Apply security updates promptly, avoid unreviewed major upgrades, review rate-limit behavior and logs monthly, and rehearse rollback and restore procedures before high-traffic campaigns.
+
+## Product ingestion (Phase 1)
+
+Ingestion is off until an operator sets `INGESTION_SOURCE_DOMAIN` and `INGESTION_SOURCE_AUTHORIZED=true`; do this only for a source the business is authorized to use, and only on an isolated staging environment first. Staged products are never public; a reviewer approves and then publishes them in the admin UI (`/admin/staging`). The worker is a separate process (`python -m ingestion.worker`). Roll back by stopping the worker; staged and job collections are additive and can be left in place. See `docs/phase-1-one-source-ingestion.md`.
