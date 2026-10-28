@@ -37,6 +37,11 @@ class settings(BaseSettings):
     ingestion_job_max_attempts: int = 3
     ingestion_job_lease_seconds: int = 120
     ingestion_job_backoff_seconds: int = 30
+    # One-shot refresh (python -m ingestion.worker --once). Sitemap is always on an approved host.
+    ingestion_sitemap_path: str = "/sitemap.xml"
+    ingestion_max_urls_per_source: int = 500
+    ingestion_max_sitemaps: int = 50
+    ingestion_run_max_seconds: int = 2700
 
     model_config = SettingsConfigDict(
         env_file=".env",

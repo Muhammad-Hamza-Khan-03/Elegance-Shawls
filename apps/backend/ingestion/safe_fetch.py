@@ -18,6 +18,7 @@ from configuration.config import settings
 
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "application/json")
+SITEMAP_CONTENT_TYPES = ("application/xml", "text/xml")
 # Not globally routable on every provider, but listed explicitly so intent is obvious.
 METADATA_ADDRESSES = {ipaddress.ip_address("169.254.169.254"), ipaddress.ip_address("fd00:ec2::254")}
 
@@ -192,7 +193,7 @@ class SafeFetcher:
         self.max_bytes = max_bytes or settings.ingestion_max_response_bytes
         self.max_redirects = settings.ingestion_max_redirects if max_redirects is None else max_redirects
 
-    async def fetch(self, url: str) -> FetchedPage:
+    async def fetch(self, url: str, *, content_types: tuple[str, ...] = ALLOWED_CONTENT_TYPES) -> FetchedPage:
         current = url
         async with self.client_factory() as client:
             for _ in range(self.max_redirects + 1):
@@ -200,7 +201,7 @@ class SafeFetcher:
                 address = await resolve_public(host, self.resolver)
                 # One bucket per source, so hopping between its hosts cannot sidestep the spacing.
                 await self.rate_limiter.wait(self.policy.domain)
-                response_url, status, location, body = await self._get_once(client, current, host, address)
+                response_url, status, location, body = await self._get_once(client, current, host, address, content_types)
                 if status in REDIRECT_STATUSES:
                     if not location:
                         raise FetchError("Redirect without Location")
@@ -213,13 +214,13 @@ class SafeFetcher:
                 return FetchedPage(url=response_url, status=status, text=body)
         raise FetchError("Too many redirects")
 
-    async def _get_once(self, client, url: str, host: str, address: str):
+    async def _get_once(self, client, url: str, host: str, address: str, content_types=ALLOWED_CONTENT_TYPES):
         parts = urlsplit(url)
         literal = f"[{address}]" if ":" in address else address
         pinned = parts._replace(netloc=literal).geturl()
         request = client.build_request(
             "GET", pinned,
-            headers={"Host": host, "Accept": "text/html,application/json;q=0.9", "User-Agent": "EleganceIngestion/1.0"},
+            headers={"Host": host, "Accept": ("application/xml,text/xml" if content_types is SITEMAP_CONTENT_TYPES else "text/html,application/json;q=0.9"), "User-Agent": "EleganceIngestion/1.0"},
             extensions={"sni_hostname": host},
         )
         try:
@@ -232,7 +233,7 @@ class SafeFetcher:
             if response.status_code in REDIRECT_STATUSES or response.status_code >= 400:
                 return url, response.status_code, response.headers.get("location"), ""
             content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-            if content_type not in ALLOWED_CONTENT_TYPES:
+            if content_type not in content_types:
                 raise FetchError(f"Unsupported content type: {content_type or 'missing'}")
             declared = response.headers.get("content-length")
             if declared and declared.isdigit() and int(declared) > self.max_bytes:

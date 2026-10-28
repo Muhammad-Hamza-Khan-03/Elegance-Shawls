@@ -83,10 +83,14 @@ async def requeue_job(db, job_id: ObjectId, now: datetime | None = None) -> dict
     )
 
 
-async def claim_next(db, worker_id: str, now: datetime | None = None) -> dict | None:
+async def claim_next(db, worker_id: str, now: datetime | None = None, only_ids: list | None = None) -> dict | None:
+    """Claim the next due job; ``only_ids`` limits a one-shot run to its own batch."""
     ts = now or _now()
+    query = {"status": {"$in": CLAIMABLE}, "available_at": {"$lte": ts}, "cancel_requested": False}
+    if only_ids is not None:
+        query["_id"] = {"$in": list(only_ids)}
     return await db.ingestion_jobs.find_one_and_update(
-        {"status": {"$in": CLAIMABLE}, "available_at": {"$lte": ts}, "cancel_requested": False},
+        query,
         {
             "$set": {
                 "status": JobStatus.RUNNING.value,
@@ -145,7 +149,8 @@ async def fail_job(db, job_id: ObjectId, worker_id: str, error: str, *, retryabl
         return None
     if job["cancel_requested"]:
         return await _cancel_if_requested(db, owned, ts)
-    release = {"lease_owner": None, "lease_expires_at": None, "last_error": _clip(error), "updated_at": ts}
+    release = {"lease_owner": None, "lease_expires_at": None, "last_error": _clip(error),
+               "last_error_retryable": retryable, "updated_at": ts}
     if retryable and job["attempts"] < job["max_attempts"]:
         update = {**release, "status": JobStatus.RETRYING.value, "available_at": ts + _backoff(job["attempts"])}
     else:

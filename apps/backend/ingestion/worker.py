@@ -19,10 +19,11 @@ def worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
 
 
-async def process_next_job(db, me: str, fetcher: SafeFetcher, extractor: FieldExtractor) -> dict | None:
+async def process_next_job(db, me: str, fetcher: SafeFetcher, extractor: FieldExtractor,
+                           only_ids: list | None = None) -> dict | None:
     """Recover stale leases, claim one job and run it. Returns the final job document, if any."""
     await jobs.recover_expired_leases(db)
-    job = await jobs.claim_next(db, me)
+    job = await jobs.claim_next(db, me, only_ids=only_ids)
     if not job:
         return None
     try:
@@ -48,6 +49,25 @@ async def main(poll_seconds: float = 5.0) -> None:
             await asyncio.sleep(poll_seconds)
 
 
+def parse_args(argv: list[str] | None = None):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m ingestion.worker",
+        description="Without flags: long-running worker. With a flag: one bounded run that then exits.")
+    parser.add_argument("--once", action="store_true", help="refresh all authorized sources, then exit")
+    parser.add_argument("--dry-run", action="store_true", help="plan the refresh; no MongoDB writes")
+    parser.add_argument("--discovery-only", action="store_true", help="read sitemaps only; no MongoDB access")
+    parser.add_argument("--summary-file", help="also write the sanitized JSON summary to this path")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
+    args = parse_args()
+    if args.once or args.dry_run or args.discovery_only:
+        from ingestion.refresh import run_cli
+
+        mode = "discovery-only" if args.discovery_only else "dry-run" if args.dry_run else "once"
+        raise SystemExit(asyncio.run(run_cli(mode, args.summary_file)))
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
