@@ -9,7 +9,7 @@
 | Needed for QA | Value |
 |---|---|
 | Authorized source domain + written authorization | **not provided** |
-| Isolated staging API URL | **not provided** |
+| Isolated staging API URL | `https://elegance-shawls-api-staging.onrender.com` (provided; probes below) |
 | Isolated staging frontend URL | **not provided** |
 | Staging database name / staging-only admin key | **not provided** (never share the key in this file) |
 | FieldExtractor for the real source | **not implemented** (see Open items) |
@@ -61,3 +61,15 @@ Record for each step: pass/fail, timestamp, job IDs, and the exact deployed comm
 - Generic status changes to inactive on a published ingested product do not update the staged record's status.
 - The rate limiter and job claiming are per-database/per-process as appropriate; a single worker is assumed for the per-domain fetch limiter.
 - No compose/deploy file changes were made; the worker is not deployed anywhere.
+
+## Staging probe log (unauthenticated, read-only, 2026-10-28T10:45:12Z)
+
+| Request | Result |
+|---|---|
+| `GET /health/` | 200 `{"status":"ok"}` |
+| `GET /ready/` | 200, database connected |
+| `GET /products/` | 200, `items: []` (public catalogue empty) |
+| `GET /products/admin/` | **503** "Administrative API is not configured" |
+| `GET /products/admin/ingestion/source` and `/staged` | **503**, same message (route exists, so the deployed build includes the ingestion router) |
+
+Finding: the deployed service reports `ADMIN_API_KEY` as unset, so no authenticated QA step can run until the key is set on the staging service. The deployed commit SHA is not exposed by the API and must be recorded from the Render deploy. No admin key was used or recorded.
