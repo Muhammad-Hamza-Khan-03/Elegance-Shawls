@@ -24,7 +24,7 @@ Monitor the frontend `/api/health` for liveness and `/api/ready` for configurati
 
 It alerts once when a problem starts and once when it recovers. It covers: any probe failing for 3 consecutive runs; 5 or more backend 5xx responses in 5 minutes; a container restarting, missing or unhealthy; root disk at 85% or more; and container memory at 90% or more. `ALERT_WEBHOOK_URL` receives `{"text": "..."}`, which Slack, Discord (`/slack` suffix) and most chat webhooks accept. Thresholds are environment variables documented in the script.
 
-Logs: Caddy writes JSON access logs with the `X-Admin-Key`, `Cookie`, `Authorization` and `Set-Cookie` headers removed and adds an `X-Request-ID`. The backend logs one JSON line per request (request ID, method, path, status, duration) and never logs headers, query strings, bodies or client addresses. Operators read them with `docker compose logs proxy backend`. Configure Docker's log rotation (`max-size`, `max-file`) or ship logs to central storage, and restrict access to the host. Never log `X-Admin-Key`, MongoDB credentials, customer WhatsApp messages, addresses or payment details.
+Logs: Caddy writes JSON access logs with the `X-Admin-Key`, `X-Internal-API-Token`, `Cookie`, `Authorization` and `Set-Cookie` headers removed and adds an `X-Request-ID`. The backend logs one JSON line per request (request ID, method, path, status, duration) and never logs headers, query strings, bodies or client addresses. Operators read them with `docker compose logs proxy backend`. Configure Docker's log rotation (`max-size`, `max-file`) or ship logs to central storage, and restrict access to the host. Never log `X-Admin-Key`, MongoDB credentials, customer WhatsApp messages, addresses or payment details.
 
 ## Backup and restore
 

@@ -17,11 +17,13 @@
 	}
 	log {
 		output stdout
-		# Access logs must never contain the admin key, session cookies or credentials.
+		# Access logs must never contain the admin key, internal token, session cookies
+		# or credentials. Header names are matched in Go's canonical form.
 		format filter {
 			wrap json
 			fields {
 				request>headers>X-Admin-Key delete
+				request>headers>X-Internal-Api-Token delete
 				request>headers>Cookie delete
 				request>headers>Authorization delete
 				resp_headers>Set-Cookie delete
