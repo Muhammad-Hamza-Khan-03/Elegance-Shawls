@@ -132,3 +132,14 @@ describe('cart revalidation against the published catalogue', () => {
     expect(result.issues).toHaveLength(1);
   });
 });
+
+describe('cart WhatsApp message', () => {
+  it('lists SKU, options, unit price, line total, link and grand total for every line', () => {
+    const items = [createCartItem(product, variantA, 2)!, createCartItem(product, variantB, 1)!];
+    const message = decodeURIComponent(buildCartCheckoutUrl(items, '923001234567', { siteUrl: 'https://store.example.invalid/' }).split('?text=')[1]);
+    expect(message).toContain('1. Classic Wool Shawl\n   SKU/Item: ES-001\n   Color / Size: Brown / Free Size\n   Quantity: 2 x PKR 4,500 = PKR 9,000\n   Link: https://store.example.invalid/product/classic-wool-shawl');
+    expect(message).toContain('2. Classic Wool Shawl');
+    expect(message).toContain('Quantity: 1 x PKR 4,200 = PKR 4,200');
+    expect(message).toContain('Total: PKR 13,200');
+  });
+});

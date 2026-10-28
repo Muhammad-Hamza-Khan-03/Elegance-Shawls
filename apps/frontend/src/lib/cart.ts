@@ -199,13 +199,22 @@ export const reconcileCartItems = (items: CartItem[], current: Map<string, Produ
   return { items: next, issues };
 };
 
-export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, customer?: { name?: string; phone?: string; city?: string; address?: string; notes?: string }) => {
+export interface CartCheckoutOptions {
+  siteUrl?: string;
+  customer?: { name?: string; phone?: string; city?: string; address?: string; notes?: string };
+}
+
+export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, { siteUrl = '', customer }: CartCheckoutOptions = {}) => {
   const currency = items[0]?.product.currency || 'PKR';
   const total = items.reduce((sum, item) => sum + item.variant.price * item.quantity, 0);
-  const lines = items.map((item, index) => {
-    const variant = [item.variant.color, item.variant.size].filter(Boolean).join(' / ');
-    return `${index + 1}. ${item.product.name}${variant ? ` (${variant})` : ''} x ${item.quantity} = ${formatCurrency(item.variant.price * item.quantity, currency)}`;
-  });
+  const baseUrl = siteUrl.replace(/\/$/, '');
+  const lines = items.flatMap((item, index) => [
+    `${index + 1}. ${item.product.name}`,
+    `   SKU/Item: ${item.product.itemNumber || item.product.slug}`,
+    `   Color / Size: ${[item.variant.color, item.variant.size].filter(Boolean).join(' / ')}`,
+    `   Quantity: ${item.quantity} x ${formatCurrency(item.variant.price, item.product.currency)} = ${formatCurrency(item.variant.price * item.quantity, item.product.currency)}`,
+    ...(baseUrl ? [`   Link: ${baseUrl}/product/${item.product.slug}`] : []),
+  ]);
 
   const message = [
     'Assalam o Alaikum, I want to place an order from Elegance Shawls.',

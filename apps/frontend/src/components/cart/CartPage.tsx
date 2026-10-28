@@ -11,6 +11,7 @@ import { CART_VERIFICATION_TTL_MS, CartIssue, CartItem, buildCartCheckoutUrl, ge
 import { formatCurrency } from '@/lib/whatsapp';
 
 const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
 
 type Verification = { status: 'checking' | 'verified' | 'error'; at: number };
 
@@ -71,7 +72,7 @@ export const CartPage = () => {
   };
   const checkoutUrl = hydrated && items.length > 0 ? (() => {
     try {
-      return buildCartCheckoutUrl(items, whatsappNumber);
+      return buildCartCheckoutUrl(items, whatsappNumber, { siteUrl });
     } catch {
       return null;
     }
