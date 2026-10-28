@@ -16,7 +16,7 @@ Ported with minimal change into `apps/backend/ingestion/quill_scraper.py`: `is_l
 
 Not ported: CSV storage, Quill DB models, API routes, service layer, credentials, notification email, auto-upsert behavior.
 
-**Field extraction.** In quill-store, title/description/material/sizing/weight/origin/price come from an LLM step (`extract_product_with_llm`). Phase 1 forbids LLM dependencies, so that step is an injectable `FieldExtractor` interface. Tests use fixtures shaped like the scraper's output. A production extractor is a decision still open (see "Open items").
+**Field extraction.** In quill-store, title/description/material/sizing/weight/origin/price come from an LLM step (`extract_product_with_llm`). Phase 1 forbids LLM dependencies, so that step is the `FieldExtractor` interface, implemented deterministically by `ingestion/extractors.py::ShopifyHtmlExtractor` over static HTML: schema.org JSON-LD `Product` first, then Open Graph / `product:*` meta tags, then theme selectors, then `Label: value` spec lines in the description. It never reads stock from availability markup, never guesses a currency, and fails the job (non-retryable) when the title, description or category (shawl/stole) cannot be determined. A browser runtime is not used; add one only if static HTML is shown to be insufficient.
 
 **Fetching.** quill-store fetches through a Crawl4AI browser, which follows redirects internally and cannot be pinned to a validated IP. Phase 1 fetches through `SafeFetcher` (httpx) so every hop is validated. Crawl4AI can be added later as a second `PageFetcher` only with request interception that enforces the same rules.
 
@@ -61,6 +61,6 @@ All Phase 1 collections are new and additive; the public `products` read path is
 
 ## Open items
 
-1. Authorized source domain and written authorization: not provided.
-2. Isolated staging (API URL, database, staging admin key): not provided.
-3. Production `FieldExtractor` (non-LLM parser over the real source's markup, or an approved alternative).
+1. The extractor was written against standard Shopify/schema.org structures and fixtures; no real source page has been observed by the developer. Staging QA is the first real-markup check.
+2. The allowlist is the exact configured host. If the source redirects to another host (for example apex to `www`), the job fails terminally until that host is configured deliberately.
+3. Pages that need JavaScript rendering are unsupported.

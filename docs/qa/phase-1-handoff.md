@@ -4,43 +4,33 @@
 
 **Code under test:** branch `phase-1/one-source-ingestion`, commit `32c9520405e4926c91840386b000d5ca7bd06113` (docs-only commits may follow; re-record the SHA QA actually deploys).
 
-## Blocking inputs (not provided yet)
+## Inputs
 
-| Needed for QA | Value |
+| Item | Status |
 |---|---|
-| Authorized source domain + written authorization | **not provided** |
-| Isolated staging API URL | `https://elegance-shawls-api-staging.onrender.com` (provided; probes below) |
-| Isolated staging frontend URL | **not provided** |
-| Staging database name / staging-only admin key | **not provided** (never share the key in this file) |
-| FieldExtractor for the real source | **not implemented** (see Open items) |
-| Job IDs from a staging run | none — no staging run has happened |
+| Staging API | `https://elegance-shawls-api-staging.onrender.com` (ready; admin key configured, unauthenticated admin calls return 401) |
+| Source | Scarves Australia, `INGESTION_SOURCE_ID=scarves-australia`, domain `scarvesaustralia.com.au`, images from `cdn.shopify.com` (approved by the owner; authorization flag set on staging) |
+| Field extractor | `ShopifyHtmlExtractor`, deterministic, wired into the worker |
+| Staging worker | **not deployed yet** (deploy after this handoff is reviewed; spec below) |
+| Deployed commit SHA | to be recorded from the Render deploy (not exposed by the API) |
+| Job IDs / live evidence | none yet; no live crawl has been run |
 
 ## Implementation evidence (developer-run, local fixtures)
 
-- Backend `pytest -q`: 157 passed (31 baseline). `python -m compileall -q .` PASS. `pip-audit -r requirements.txt`: no known vulnerabilities.
+- Backend `pytest -q`: 171 passed (31 baseline). `python -m compileall -q .` PASS. `pip-audit -r requirements.txt`: no known vulnerabilities.
 - Frontend `npm test`: 149 passed (95 baseline). `npm run lint`, `npm run typecheck`, `npm run build` PASS.
 - Not run: `npm run test:e2e` (Playwright mock API has no ingestion endpoints), any Docker/compose stack, any real network fetch.
 
-## Required environment (staging only)
+## Staging worker spec (to deploy after review)
 
-```
-INGESTION_SOURCE_ID=primary
-INGESTION_SOURCE_NAME=<source name>
-INGESTION_SOURCE_DOMAIN=<authorized host, no scheme>
-INGESTION_SOURCE_AUTHORIZED=true     # operator's explicit statement of authorization
-INGESTION_IMAGE_HOSTS=<cdn host, optional>
-MONGODB_URI / MONGO_DB_NAME=<isolated staging database>
-ADMIN_API_KEY=<staging-only key>
-```
-
-Worker: `cd apps/backend && python -m ingestion.worker` (separate process; requires a wired FieldExtractor).
+Separate Render **background worker**, same repository and backend image/build as the API, start command `python -m ingestion.worker` from `apps/backend`. Same staging environment as the API: `MONGODB_URI` / `MONGO_DB_NAME` (the isolated staging database), `INGESTION_SOURCE_ID`, `INGESTION_SOURCE_NAME`, `INGESTION_SOURCE_DOMAIN`, `INGESTION_SOURCE_AUTHORIZED`, `INGESTION_IMAGE_HOSTS`. It needs no admin key and no inbound port. Run exactly one instance. Do not point it at production. Stopping the worker is the rollback; jobs stay queued and resume later.
 
 ## QA script
 
 1. Confirm the target is staging: separate DB, staging-only key, no production data.
 2. Unauthenticated and wrong-key calls to every `/products/admin/ingestion/*` route return 401; the browser proxy returns 401 without a session and 403 cross-origin.
 3. `POST /products/admin/ingestion/jobs` with a full URL, `//host/...`, or `/products/../x` returns 422.
-4. Queue a real product path. Record the job ID. Job goes queued → running → succeeded (`GET .../jobs/{id}`).
+4. Queue one real product path (`/products/<handle>`) from the approved source. Do not queue a catalogue crawl. Record the job ID. Job goes queued → running → succeeded (`GET .../jobs/{id}`).
 5. Staged product appears as `pending_review`; it is absent from `GET /products/` and `/products/slug/{slug}`. Check name, images, source URL, source price/currency, missing fields, stock unknown.
 6. Re-queue the same path and rerun the job: still exactly one staged product (outcome `unchanged`).
 7. `publish` before approval returns 409. Approve with a PKR price and stock: product exists as draft, still not public.
@@ -54,22 +44,12 @@ Record for each step: pass/fail, timestamp, job IDs, and the exact deployed comm
 
 ## Open items / known limitations
 
-- **No field extractor.** quill-store obtains title, description, material, sizing, weight, origin and price with an LLM step; Phase 1 forbids LLM dependencies. `ingestion/quill_scraper.FieldExtractor` is the seam, `UnconfiguredExtractor` is the default, and every job fails with a clear non-retryable error until one is wired in.
-- **Crawl4AI not used.** It follows redirects inside a browser and cannot be pinned to a validated IP. Fetching uses `SafeFetcher` (httpx). Pages that require JavaScript rendering will not work until a browser fetcher with equivalent request interception exists.
+- **Real markup is unverified.** The extractor targets standard Shopify/schema.org structures and was tested on fixtures only. Expect the first live run to be the real test; failed jobs carry a specific `last_error`.
+- **Host redirects.** The allowlist is the exact host `scarvesaustralia.com.au`. If the site redirects to `www.` the job fails with "Host is not on the source allowlist". That is intended; widen the configuration deliberately, do not loosen the code.
+- **Category.** Only shawls and stoles exist in Elegance. A page whose title/category/URL contains none of shawl, wrap, pashmina, scarf (mapped to shawls) or stole fails with "Cannot determine category". Scarf-to-shawl mapping is a business assumption to confirm.
+- **Bot protection / rate limits.** Fetches identify as `EleganceIngestion/1.0` and are spaced by `INGESTION_DOMAIN_MIN_INTERVAL_SECONDS` (default 2s). A 429 or 5xx retries with backoff, then fails.
+- **No browser.** JS-rendered pages are unsupported; Crawl4AI is not used.
 - **One quill-store behavior changed:** image extraction runs on raw HTML (quill-store ran it after `<img>` tags were removed).
-- Source price is stored as provenance only; the PKR retail price and stock are entered at approval.
+- Source price is provenance only; PKR price and stock are entered at approval.
 - Generic status changes to inactive on a published ingested product do not update the staged record's status.
-- The rate limiter and job claiming are per-database/per-process as appropriate; a single worker is assumed for the per-domain fetch limiter.
-- No compose/deploy file changes were made; the worker is not deployed anywhere.
-
-## Staging probe log (unauthenticated, read-only, 2026-10-28T10:45:12Z)
-
-| Request | Result |
-|---|---|
-| `GET /health/` | 200 `{"status":"ok"}` |
-| `GET /ready/` | 200, database connected |
-| `GET /products/` | 200, `items: []` (public catalogue empty) |
-| `GET /products/admin/` | **503** "Administrative API is not configured" |
-| `GET /products/admin/ingestion/source` and `/staged` | **503**, same message (route exists, so the deployed build includes the ingestion router) |
-
-Finding: the deployed service reports `ADMIN_API_KEY` as unset, so no authenticated QA step can run until the key is set on the staging service. The deployed commit SHA is not exposed by the API and must be recorded from the Render deploy. No admin key was used or recorded.
+- No compose/deploy files were changed.
