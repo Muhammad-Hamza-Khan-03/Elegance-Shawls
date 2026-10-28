@@ -11,6 +11,7 @@ const product = (overrides: Partial<Product>): Product => ({
 const products = [
   product({ id: '1' }),
   product({ id: '2', name: 'Silk Stole', slug: 'silk-stole', description: 'Light silk', category: 'stoles', price: 1800, createdAt: '2026-02-01' }),
+  product({ id: '3', name: 'Alpine Scarf', slug: 'alpine-scarf', description: 'Merino', category: 'scarves', price: 2200, createdAt: '2026-03-01' }),
 ];
 
 describe('filterAndSortProducts', () => {
@@ -21,11 +22,18 @@ describe('filterAndSortProducts', () => {
   it('filters by category and sorts without mutating the source list', () => {
     const result = filterAndSortProducts(products, { query: '', category: 'shawls', sort: 'price_asc' });
     expect(result.map((item) => item.id)).toEqual(['1']);
-    expect(products.map((item) => item.id)).toEqual(['1', '2']);
+    expect(products.map((item) => item.id)).toEqual(['1', '2', '3']);
+  });
+
+  it('filters scarves without affecting shawls or stoles', () => {
+    const ids = (category: 'shawls' | 'stoles' | 'scarves') => filterAndSortProducts(products, { query: '', category, sort: 'newest' }).map((item) => item.id);
+    expect(ids('scarves')).toEqual(['3']);
+    expect(ids('stoles')).toEqual(['2']);
+    expect(ids('shawls')).toEqual(['1']);
   });
 
   it('supports price and name sorting', () => {
-    expect(filterAndSortProducts(products, { query: '', category: 'all', sort: 'price_asc' }).map((item) => item.id)).toEqual(['2', '1']);
-    expect(filterAndSortProducts(products, { query: '', category: 'all', sort: 'name' }).map((item) => item.id)).toEqual(['1', '2']);
+    expect(filterAndSortProducts(products, { query: '', category: 'all', sort: 'price_asc' }).map((item) => item.id)).toEqual(['2', '3', '1']);
+    expect(filterAndSortProducts(products, { query: '', category: 'all', sort: 'name' }).map((item) => item.id)).toEqual(['3', '1', '2']);
   });
 });

@@ -33,7 +33,7 @@ SPEC_LABELS = {
     "weight": r"weight|gsm",
     "origin": r"country of origin|origin",
 }
-# Approved policy: an explicit term anywhere in the category, title or URL handle maps to shawl.
+# Approved policy: the first explicit term in the category, title or URL handle decides the category.
 # Nothing else is inferred; a page with none of these terms fails instead of being guessed.
 CATEGORY_TERMS = re.compile(r"\b(shawls?|wraps?|pashminas?|scarf|scarves|stoles?)\b", re.I)
 
@@ -155,7 +155,12 @@ def parse_spec_lines(text: str | None) -> dict[str, str]:
 
 
 def infer_category(*candidates: str | None) -> str | None:
-    return "shawl" if any(c and CATEGORY_TERMS.search(c) for c in candidates) else None
+    for candidate in candidates:
+        match = candidate and CATEGORY_TERMS.search(candidate)
+        if match:
+            term = match.group(1).lower()
+            return "scarf" if term.startswith("scarf") or term == "scarves" else "stole" if term.startswith("stole") else "shawl"
+    return None
 
 
 class ShopifyHtmlExtractor:

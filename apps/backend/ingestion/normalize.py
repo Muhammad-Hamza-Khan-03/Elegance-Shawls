@@ -17,8 +17,8 @@ from ingestion.safe_fetch import SourcePolicy, is_allowed_image_url, validate_ur
 from models.ingestion_model import content_hash
 from schemas.ingestion_schema import StagedProductDraft
 
-# Approved policy: scarf, shawl, wrap, pashmina and stole all land in the shawls category.
-CATEGORY_MAP = {"shawl": "shawls", "stole": "shawls"}
+# Approved policy: scarf/scarves -> scarves, stole/stoles -> stoles, shawl/shawls/wrap/pashmina -> shawls.
+CATEGORY_MAP = {"scarf": "scarves", "stole": "stoles", "shawl": "shawls"}
 MAX_IMAGES = 12
 PATH_PATTERN = re.compile(r"^/products/[A-Za-z0-9][A-Za-z0-9._~%-]{0,200}$")
 _ID_PATTERNS = (

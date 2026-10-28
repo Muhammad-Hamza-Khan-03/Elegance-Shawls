@@ -4,11 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { api } from '@/lib/api';
+import { CATEGORY_LABELS, PRODUCT_CATEGORIES } from '@/lib/categories';
 import { CatalogCategory, CatalogSort, filterAndSortProducts } from '@/lib/catalog';
 import { formatCurrency } from '@/lib/whatsapp';
 import { Product } from '@/types/types';
 
 const PAGE_SIZE = 9;
+
+export function CategoryFilter({ value, onChange }: { value: CatalogCategory; onChange: (category: CatalogCategory) => void }) {
+  return <div><label htmlFor="category" className="mb-2 block text-sm font-semibold">Category</label><select id="category" value={value} onChange={(event) => onChange(event.target.value as CatalogCategory)} className="w-full rounded-xl border border-[#d8c8b4] bg-white px-4 py-3"><option value="all">All products</option>{PRODUCT_CATEGORIES.map((key) => <option key={key} value={key}>{CATEGORY_LABELS[key]}</option>)}</select></div>;
+}
 
 export function ProductBrowser({ initialCategory = 'all' }: { initialCategory?: CatalogCategory }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -41,7 +46,7 @@ export function ProductBrowser({ initialCategory = 'all' }: { initialCategory?: 
   return <div className="space-y-8">
     <div className="grid gap-4 rounded-3xl border border-[#e7dac8] bg-white/70 p-5 md:grid-cols-[1fr_auto_auto]">
       <div><label htmlFor="product-search" className="mb-2 block text-sm font-semibold">Search</label><input id="product-search" type="search" value={query} onChange={(event) => updateFilters(() => setQuery(event.target.value))} placeholder="Search by name or material" className="w-full rounded-xl border border-[#d8c8b4] bg-white px-4 py-3" /></div>
-      <div><label htmlFor="category" className="mb-2 block text-sm font-semibold">Category</label><select id="category" value={category} onChange={(event) => updateFilters(() => setCategory(event.target.value as CatalogCategory))} className="w-full rounded-xl border border-[#d8c8b4] bg-white px-4 py-3"><option value="all">All products</option><option value="shawls">Shawls</option><option value="stoles">Stoles</option></select></div>
+      <CategoryFilter value={category} onChange={(next) => updateFilters(() => setCategory(next))} />
       <div><label htmlFor="sort" className="mb-2 block text-sm font-semibold">Sort by</label><select id="sort" value={sort} onChange={(event) => updateFilters(() => setSort(event.target.value as CatalogSort))} className="w-full rounded-xl border border-[#d8c8b4] bg-white px-4 py-3"><option value="newest">Newest</option><option value="name">Name</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option></select></div>
     </div>
 

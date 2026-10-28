@@ -5,6 +5,7 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from utils.bson import PyObjectId
+from .product_schema import ProductCategory
 
 
 class StagedStatus(str, Enum):
@@ -59,7 +60,7 @@ class StagedProductDraft(BaseModel):
     cover_image_url: str
     images: List[str] = Field(default_factory=list, max_length=12)
     main_description: Optional[str] = Field(default=None, max_length=5000)
-    category: str = "shawls"
+    category: ProductCategory = ProductCategory.SHAWLS
     material: Optional[str] = Field(default=None, max_length=200)
     sizing: Optional[str] = Field(default=None, max_length=200)
     weight: Optional[str] = Field(default=None, max_length=100)

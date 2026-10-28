@@ -1,4 +1,5 @@
 import { Product } from '@/types/types';
+import { normalizeCategory } from '@/lib/categories';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -83,15 +84,6 @@ const handleResponse = async (response: Response) => {
     throw new Error(error.detail || `API Error: ${response.statusText}`);
   }
   return response.json();
-};
-
-const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
-  const raw =
-    typeof category === 'object' && category !== null && 'name' in category
-      ? String((category as { name?: string }).name || '')
-      : String(category || '');
-
-  return raw.toLowerCase().includes('stole') ? 'stoles' : 'shawls';
 };
 
 // Mapper: Backend/Quill Product -> Storefront Product

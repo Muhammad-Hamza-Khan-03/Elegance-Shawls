@@ -42,7 +42,7 @@ async def test_json_ld_product_is_preferred_and_complete():
 @pytest.mark.asyncio
 async def test_graph_product_group_aggregate_offer_and_quantity_weight():
     data = await extract("jsonld_graph.html")
-    assert data["title"] == "Silk Stole" and data["category"] == "shawl"
+    assert data["title"] == "Silk Stole" and data["category"] == "stole"
     assert data["price"] == 45.0 and data["currency"] == "AUD"
     assert data["weight"] == "90 g" and data["material"] == "Silk"
     assert data["image_urls"] == ["https://cdn.shopify.com/s/files/silk.jpg"]
@@ -60,7 +60,7 @@ async def test_meta_tag_fallback():
 @pytest.mark.asyncio
 async def test_selector_fallback_leaves_unknown_currency_unset():
     data = await extract("selectors_only.html")
-    assert data["title"] == "Blush Stole" and data["category"] == "shawl"
+    assert data["title"] == "Blush Stole" and data["category"] == "stole"
     assert data["price"] == 1200.0 and data["currency"] is None  # currency is never guessed
     assert data["sizing"] == "70x180cm" and data["image_urls"] == []
 
@@ -105,13 +105,15 @@ def test_spec_line_parsing():
     assert parse_spec_lines("Not a spec line at all") == {}
 
 
-@pytest.mark.parametrize("candidates", [
-    ("Wool Scarf",), ("Merino Scarves",), ("Cashmere Shawl",), ("Silk Wrap",), ("Pashmina",), ("Pashminas",),
-    ("Silk Stole",), ("Stoles",), (None, "Plain title", "/products/winter-scarf-grey"), ("SCARF",),
-    ("Accessories", "Evening wrap in navy"),
+@pytest.mark.parametrize("candidates,expected", [
+    (("Wool Scarf",), "scarf"), (("Merino Scarves",), "scarf"), (("SCARF",), "scarf"),
+    ((None, "Plain title", "/products/winter-scarf-grey"), "scarf"),
+    (("Cashmere Shawl",), "shawl"), (("Cashmere Shawls",), "shawl"), (("Silk Wrap",), "shawl"),
+    (("Pashmina",), "shawl"), (("Pashminas",), "shawl"), (("Accessories", "Evening wrap in navy"), "shawl"),
+    (("Silk Stole",), "stole"), (("Stoles",), "stole"),
 ])
-def test_explicit_terms_map_to_shawl(candidates):
-    assert infer_category(*candidates) == "shawl"
+def test_explicit_terms_map_to_their_category(candidates, expected):
+    assert infer_category(*candidates) == expected
 
 
 @pytest.mark.parametrize("candidates", [
@@ -122,8 +124,11 @@ def test_no_explicit_term_is_not_guessed(candidates):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("title", ["Alpine Scarf", "Silk Stole", "Pashmina Wrap", "Heritage Shawl"])
-async def test_every_approved_term_stages_into_the_shawls_category(title):
+@pytest.mark.parametrize("title,expected", [
+    ("Alpine Scarf", "scarves"), ("Alpine Scarves", "scarves"), ("Silk Stole", "stoles"), ("Silk Stoles", "stoles"),
+    ("Pashmina Wrap", "shawls"), ("Heritage Shawl", "shawls"), ("Heritage Shawls", "shawls"), ("Pashmina", "shawls"),
+])
+async def test_every_approved_term_stages_into_its_category(title, expected):
     html = f'''<html><head><meta property="og:title" content="{title}">
     <meta property="og:description" content="Plain description."><meta property="og:image" content="https://cdn.shopify.com/a.jpg">
     </head></html>'''
@@ -133,7 +138,7 @@ async def test_every_approved_term_stages_into_the_shawls_category(title):
     data = await ShopifyHtmlExtractor().extract(source_url=URL, sanitized_html="", text="", raw_html=html)
     scraped = ProductShawl.model_validate({**data, "url": URL})
     staged = normalize(scraped, policy=POLICY, source_product_id=None, fetched_at=datetime.now(timezone.utc))
-    assert staged["product"]["category"] == "shawls"
+    assert staged["product"]["category"] == expected
 
 
 @pytest.mark.asyncio

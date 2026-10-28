@@ -76,7 +76,7 @@ def test_missing_price_and_details_are_flagged_not_invented():
     n = norm(fx.IVORY_STOLE_NO_PRICE)
     assert n["source_price"] is None and n["source_currency"] is None
     assert {"source_price", "material", "sizing", "weight"} <= set(n["missing_fields"])
-    assert n["product"]["category"] == "shawls" and n["product"]["material"] is None
+    assert n["product"]["category"] == "stoles" and n["product"]["material"] is None
 
 
 def test_price_without_currency_flags_currency():
@@ -114,9 +114,20 @@ def test_job_path_must_be_product_path(path):
         source_url_for_path(path, POLICY)
 
 
-def test_stole_source_category_maps_to_shawls():
+def test_source_categories_map_to_their_elegance_category():
     assert norm(fx.PEARL)["product"]["category"] == "shawls"
-    assert norm(fx.IVORY_STOLE_NO_PRICE)["product"]["category"] == "shawls"
+    assert norm(fx.IVORY_STOLE_NO_PRICE)["product"]["category"] == "stoles"
+    assert norm({**fx.PEARL, "category": "scarf"})["product"]["category"] == "scarves"
+
+
+def test_staged_validation_rejects_unknown_categories():
+    import pytest as _pytest
+    from pydantic import ValidationError
+    from schemas.ingestion_schema import StagedProductDraft
+    draft = norm(fx.PEARL)["product"]
+    assert StagedProductDraft.model_validate({**draft, "category": "scarves"}).category.value == "scarves"
+    with _pytest.raises(ValidationError):
+        StagedProductDraft.model_validate({**draft, "category": "wallets"})
 
 
 def test_apex_and_www_urls_canonicalize_to_the_same_product():

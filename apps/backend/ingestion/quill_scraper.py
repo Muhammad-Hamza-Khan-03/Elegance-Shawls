@@ -34,7 +34,7 @@ class ProductShawl(BaseModel):
     title: str
     description: str
     image_urls: List[str] = Field(default_factory=list)
-    category: Literal["shawl", "stole"]
+    category: Literal["shawl", "stole", "scarf"]
     color: Optional[str] = None
     material: Optional[str] = None
     sizing: Optional[str] = None

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ProductBrowser } from '@/components/product/ProductBrowser';
 import { CatalogCategory } from '@/lib/catalog';
+import { isProductCategory } from '@/lib/categories';
 import { Metadata } from 'next';
 import { absoluteUrl } from '@/lib/site';
 
@@ -9,7 +10,7 @@ export const metadata: Metadata = { title: 'Shop shawls and stoles', description
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
   const { category } = await searchParams;
-  const initialCategory: CatalogCategory = category === 'shawls' || category === 'stoles' ? category : 'all';
+  const initialCategory: CatalogCategory = isProductCategory(category) ? category : 'all';
 
   return <main id="main-content" className="min-h-screen bg-[#fbf7f0] px-6 py-12 text-[#2f241f]">
     <section className="mx-auto max-w-6xl space-y-10">
