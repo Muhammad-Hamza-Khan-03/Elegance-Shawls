@@ -32,6 +32,16 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         name="ix_products_public_feed",
     )
     await db.products.create_index("item_number", sparse=True, name="ix_products_item_number")
+    await db.staged_products.create_index(
+        [("source_id", 1), ("dedupe_key", 1)], unique=True, name="uq_staged_source_identity"
+    )
+    await db.staged_products.create_index(
+        [("status", 1), ("created_at", -1), ("_id", -1)], name="ix_staged_review_feed"
+    )
+    await db.ingestion_jobs.create_index("idempotency_key", unique=True, name="uq_job_idempotency")
+    await db.ingestion_jobs.create_index(
+        [("status", 1), ("available_at", 1)], name="ix_job_claim"
+    )
 
 
 async def database_is_ready(timeout_seconds: float = 2.0) -> bool:
