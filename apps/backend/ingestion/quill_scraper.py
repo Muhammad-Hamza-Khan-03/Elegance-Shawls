@@ -240,7 +240,8 @@ def _validate_fetched_product_url(url: str, fetcher: SafeFetcher) -> None:
         validate_url(url, fetcher.policy)
     except UnsafeURL as exc:
         raise InvalidSourceData("Fetched URL is not on an approved HTTPS host") from exc
-    if not PRODUCT_PATH_PATTERN.fullmatch(urlparse(url).path):
+    final_path = urlparse(url).path
+    if not PRODUCT_PATH_PATTERN.fullmatch(final_path):
         raise InvalidSourceData("Fetched URL must match /products/<handle> path")
 
 

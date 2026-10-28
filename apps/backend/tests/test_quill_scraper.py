@@ -93,7 +93,11 @@ def _redirect_fetcher(location: str, final_html: str = FIXTURE) -> SafeFetcher:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("location", ["https://shop.example/", "https://shop.example/collections/all"])
+@pytest.mark.parametrize("location", [
+    "https://shop.example/",
+    "https://shop.example/collections/all",
+    "https://shop.example/pages/about",
+])
 async def test_fetch_clean_html_rejects_redirect_to_non_product_path(location):
     with pytest.raises(InvalidSourceData, match="products/<handle>"):
         await qs.fetch_product_page_clean_html(_redirect_fetcher(location), BASE)
