@@ -52,6 +52,14 @@ const currencyFrom = (
   fallback = 'PKR',
 ) => (typeof price === 'object' ? price.currency || fallback : fallback);
 
+// Inventory must come from the backend; a missing, invalid or explicitly
+// out-of-stock value is unavailable, never an invented quantity.
+const stockFrom = (variant: BackendVariant) => {
+  if (variant.stock_status?.trim().toLowerCase() === 'out of stock') return 0;
+  const { stock } = variant;
+  return typeof stock === 'number' && Number.isInteger(stock) && stock > 0 ? stock : 0;
+};
+
 const getApiUrl = () => {
   if (!API_URL) {
     throw new Error('NEXT_PUBLIC_API_URL is not configured.');
@@ -79,7 +87,7 @@ const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
 };
 
 // Mapper: Backend/Quill Product -> Storefront Product
-const mapBackendProduct = (bp: BackendProduct): Product => {
+export const mapBackendProduct = (bp: BackendProduct): Product => {
   const rawVariations = bp.variations || bp.variants || [];
   const productPrice = amountFrom(bp.price);
   const currency = currencyFrom(bp.price, bp.currency || 'PKR');
@@ -88,7 +96,7 @@ const mapBackendProduct = (bp: BackendProduct): Product => {
     id: v._id || v.id || `${bp._id || bp.id || bp.slug}-variant-${index}`,
     color: v.color || v.name || 'Default',
     size: v.size || bp.sizing || 'Free Size',
-    stock: v.stock ?? (v.stock_status === 'Out of stock' ? 0 : 10),
+    stock: stockFrom(v),
     price: amountFrom(v.price, productPrice),
     image_url: v.image_url || v.imageUrl || undefined,
   }));
