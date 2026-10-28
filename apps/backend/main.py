@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from configuration.config import settings
 from database.db import connect_to_mongo, close_mongo_connection, database_is_ready
 from routes.product_routes import router as product_router
+from observability.request_log import RequestLogMiddleware
 from security.rate_limit import RateLimitMiddleware
 
 
@@ -34,6 +35,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RateLimitMiddleware)
+    # Added last so it is outermost and also logs rate-limited responses.
+    app.add_middleware(RequestLogMiddleware)
 
     # Routers
     app.include_router(product_router)
