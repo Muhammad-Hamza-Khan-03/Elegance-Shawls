@@ -32,6 +32,8 @@ services:
       ALLOWED_ORIGINS: ${SITE_URL:?Set SITE_URL}
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
       ENVIRONMENT: production
+      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
+      ADMIN_RATE_LIMIT_PER_MINUTE: ${ADMIN_RATE_LIMIT_PER_MINUTE:-60}
       # The backend is reachable only through the proxy, which overwrites X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
     networks: [data, web]

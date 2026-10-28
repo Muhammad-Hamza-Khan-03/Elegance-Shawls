@@ -117,7 +117,7 @@ test.describe('customer WhatsApp ordering', () => {
     await addToCart(page, shawl.slug);
     await adminApi(request, 'PATCH', `/${shawl.id}/stock`, { variant_id: shawl.variants[0]._id, stock: 0 });
     await page.goto('/cart');
-    await expect(page.getByRole('alert')).toContainText('is sold out and was removed from your cart');
+    await expect(page.getByRole('alert').filter({ hasText: 'is sold out and was removed from your cart' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
 
     await page.goto(`/product/${shawl.slug}`);
@@ -128,7 +128,7 @@ test.describe('customer WhatsApp ordering', () => {
     await addToCart(page, stole.slug);
     await page.route(`${live.api}/products/slug/**`, (route) => route.abort());
     await page.goto('/cart');
-    await expect(page.getByRole('alert')).toContainText('could not confirm current availability');
+    await expect(page.getByRole('alert').filter({ hasText: 'could not confirm current availability' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Availability not confirmed' })).toBeDisabled();
 
     await page.unroute(`${live.api}/products/slug/**`);
@@ -147,7 +147,21 @@ test.describe('customer WhatsApp ordering', () => {
     let opened = false;
     page.on('popup', () => { opened = true; });
     await checkoutLink(page).click();
-    await expect(page.getByRole('alert')).toContainText('is no longer available');
+    await expect(page.getByRole('alert').filter({ hasText: 'is no longer available' })).toBeVisible();
+    expect(opened).toBe(false);
+  });
+
+  test('a product page left open re-checks the backend before ordering', async ({ page, request }) => {
+    await page.clock.install();
+    await page.goto(`/product/${shawl.slug}`);
+    await expect(page.getByText('PKR 4,500').first()).toBeVisible();
+    await adminApi(request, 'PATCH', `/${shawl.id}/stock`, { variant_id: shawl.variants[0]._id, stock: 0 });
+
+    await page.clock.fastForward('02:00');
+    let opened = false;
+    page.on('popup', () => { opened = true; });
+    await page.getByRole('link', { name: 'Order on WhatsApp' }).first().click();
+    await expect(page.getByRole('button', { name: 'Order unavailable' }).first()).toBeVisible();
     expect(opened).toBe(false);
   });
 

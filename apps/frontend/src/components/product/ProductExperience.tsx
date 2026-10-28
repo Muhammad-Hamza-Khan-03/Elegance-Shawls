@@ -3,7 +3,6 @@
 import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { Minus, Plus, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types/types';
@@ -58,8 +57,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
     : 'No product option is available.';
 
   // The page may have been open for a while: re-check the published product
-  // before handing off, and re-render from the server if anything changed.
-  const router = useRouter();
+  // before handing off, and reload from the server if anything changed.
   const verifiedAtRef = useRef(0);
   useEffect(() => {
     verifiedAtRef.current = Date.now();
@@ -74,7 +72,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
       if (!current || !selected || !variant || current.id !== product.id || current.currency !== product.currency
         || variant.price !== selected.price || variant.stock < quantity) {
         toast.error('This product has changed. Review the updated details before ordering.');
-        router.refresh();
+        window.location.reload();
         return;
       }
       verifiedAtRef.current = Date.now();

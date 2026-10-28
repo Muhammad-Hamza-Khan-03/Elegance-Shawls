@@ -8,7 +8,7 @@ const productCard = (page: Page, slug: string) =>
   page.getByText(slug, { exact: false }).locator('xpath=ancestor::*[.//button[normalize-space()="Edit"]][1]');
 
 const variantSection = (page: Page, index: number) =>
-  page.locator('section').filter({ has: page.getByText(`Variant ${index}`, { exact: true }) });
+  page.locator('section').filter({ has: page.getByText(`Variant ${index}`, { exact: true }) }).last();
 
 test('admin creates, publishes, edits, unpublishes, republishes and archives a product', async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Admin lifecycle runs once on desktop.');
@@ -47,7 +47,7 @@ test('admin creates, publishes, edits, unpublishes, republishes and archives a p
     await page.getByLabel('Slug').fill(slug);
     await page.getByLabel('Cover image URL').fill(image(name));
     await page.getByLabel('Item number').fill(`QA-${suffix}`);
-    await page.getByLabel('Status').last().selectOption('draft');
+    await page.locator('label').filter({ has: page.locator('span', { hasText: /^Status$/ }) }).locator('select').last().selectOption('draft');
     const first = variantSection(page, 1);
     await first.getByLabel('Name', { exact: true }).fill('Brown');
     await first.getByLabel('Color', { exact: true }).fill('Brown');
