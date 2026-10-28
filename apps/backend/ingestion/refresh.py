@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from configuration.config import settings
 from ingestion.normalize import source_url_for_path
 from ingestion.safe_fetch import SafeFetcher, SourcePolicy
-from ingestion.sitemap import DiscoveryError, discover_products
+from ingestion.sitemap import Discovery, DiscoveryError, canonical_product_path, discover_products
 from ingestion.staging_guard import STAGING_NAME, StagingGuardError, assert_staging  # noqa: F401  (re-exported)
 from schemas.ingestion_schema import JobStatus
 
@@ -32,7 +32,57 @@ COUNTERS = (
     "succeeded", "created", "unchanged", "updated", "source_changed",
     "retryable_failures", "non_retryable_failures", "unprocessed_jobs", "missing_from_sitemap",
 )
+MAX_EXPLICIT_PRODUCTS = 5
 URI_PATTERN = re.compile(r"mongodb(?:\+srv)?://\S+|(?i:bearer)\s+\S+|(?i:x-admin-key)\S*\s*[:=]\s*\S+")
+
+
+class ProductSelectionError(ValueError):
+    """Explicit product input is unsafe, ambiguous, duplicated, or too large."""
+
+
+def _canonical_explicit_product(value: str, policy: SourcePolicy, *, is_url: bool) -> str:
+    from urllib.parse import urlsplit
+
+    if not isinstance(value, str) or not value.strip():
+        raise ProductSelectionError("Product selections must be non-empty strings")
+    raw = value.strip()
+    if is_url:
+        parts = urlsplit(raw)
+        if parts.scheme != "https" or not parts.netloc:
+            raise ProductSelectionError("Product URLs must use HTTPS and include an approved host")
+        try:
+            path = canonical_product_path(raw, policy)
+        except Exception as exc:
+            raise ProductSelectionError(f"Unsafe product URL: {exc}") from exc
+    else:
+        if not raw.startswith("/") or "?" in raw or "#" in raw:
+            raise ProductSelectionError("Product paths must be absolute paths without query or fragment")
+        path = canonical_product_path(f"https://{policy.domain}{raw}", policy)
+    if path is None:
+        raise ProductSelectionError("Product selection must match /products/<handle>")
+    return path
+
+
+def select_explicit_products(
+    policy: SourcePolicy, *, product_paths: list[str] | None = None, product_urls: list[str] | None = None,
+) -> Discovery:
+    """Canonicalize a bounded explicit selection without contacting sitemap URLs."""
+    paths = list(product_paths or [])
+    urls = list(product_urls or [])
+    if paths and urls:
+        raise ProductSelectionError("Do not mix --product-path and --product-url selections")
+    values, is_url = (urls, True) if urls else (paths, False)
+    if not values:
+        raise ProductSelectionError("At least one explicit product selection is required")
+    if len(values) > MAX_EXPLICIT_PRODUCTS:
+        raise ProductSelectionError(f"At most {MAX_EXPLICIT_PRODUCTS} explicit products are allowed")
+    selected = []
+    for value in values:
+        path = _canonical_explicit_product(value, policy, is_url=is_url)
+        if path in selected:
+            raise ProductSelectionError("Duplicate explicit product selection")
+        selected.append(path)
+    return Discovery(products={path: None for path in selected})
 
 
 def redact(text: str) -> str:
@@ -140,7 +190,8 @@ async def _tally(db, ids: list, counts: dict) -> None:
 async def run_refresh(
     db, *, sources, mode: str = "once", run_id: str | None = None, sha: str | None = None,
     fetcher_factory=SafeFetcher, extractor=None, clock=time.monotonic, sleep=asyncio.sleep,
-    max_seconds: int | None = None,
+    max_seconds: int | None = None, product_paths: list[str] | None = None,
+    product_urls: list[str] | None = None,
 ) -> dict:
     """mode: once | dry-run | discovery-only. dry-run and discovery-only never write to MongoDB."""
     started = clock()
@@ -156,12 +207,17 @@ async def run_refresh(
         summary["sources"].append(counts)
         fetcher = fetcher_factory(policy)
         try:
-            found = await discover_products(fetcher, policy, sleep=sleep)
-        except DiscoveryError as exc:
-            counts["termination_reason"] = exc.code
+            found = (
+                select_explicit_products(policy, product_paths=product_paths, product_urls=product_urls)
+                if product_paths or product_urls
+                else await discover_products(fetcher, policy, sleep=sleep)
+            )
+        except (DiscoveryError, ProductSelectionError) as exc:
+            code = getattr(exc, "code", "product_selection_invalid")
+            counts["termination_reason"] = code
             counts["error_samples"].append(redact(str(exc))[:200])
-            reason = reason or exc.code
-            if exc.code == "source_policy_violation":
+            reason = reason or code
+            if code == "source_policy_violation":
                 break  # never carry on past a policy violation
             continue
         counts.update(discovered_urls=len(found.products), duplicate_urls=found.duplicates, ignored_urls=found.ignored)
@@ -173,7 +229,7 @@ async def run_refresh(
             extractor = ShopifyHtmlExtractor()
         existing = await _existing_staged(db, source_id)
         urls = {path: source_url_for_path(path, policy) for path in found.products}
-        gone = sorted(set(existing) - set(urls.values()))
+        gone = [] if (product_paths or product_urls) else sorted(set(existing) - set(urls.values()))
         counts["missing_from_sitemap"], counts["missing_sample"] = len(gone), gone[:20]  # report only
         batch, ids = [], []
         for path, lastmod in found.products.items():
@@ -225,7 +281,10 @@ async def open_db(mode: str):
     return client, db
 
 
-async def run_cli(mode: str, summary_file: str | None = None, *, fetcher_factory=SafeFetcher) -> int:
+async def run_cli(
+    mode: str, summary_file: str | None = None, *, fetcher_factory=SafeFetcher,
+    product_paths: list[str] | None = None, product_urls: list[str] | None = None,
+) -> int:
     handler = logging.StreamHandler()
     handler.setFormatter(RedactingFormatter("%(levelname)s %(name)s: %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
@@ -235,7 +294,10 @@ async def run_cli(mode: str, summary_file: str | None = None, *, fetcher_factory
         if mode != "discovery-only":
             client, db = await open_db(mode)
         try:
-            summary = await run_refresh(db, sources=enabled_sources(), mode=mode, fetcher_factory=fetcher_factory)
+            summary = await run_refresh(
+                db, sources=enabled_sources(), mode=mode, fetcher_factory=fetcher_factory,
+                product_paths=product_paths, product_urls=product_urls,
+            )
         finally:
             if client:
                 client.close()

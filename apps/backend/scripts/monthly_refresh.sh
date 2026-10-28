@@ -12,14 +12,31 @@ backend="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$backend"
 
 mode="--once"
-if [ "$#" -gt 1 ]; then echo "usage: $0 [--once|--dry-run|--discovery-only]" >&2; exit 64; fi
-if [ "$#" -eq 1 ]; then
+mode_seen=0
+product_args=()
+product_kind=""
+product_count=0
+while [ "$#" -gt 0 ]; do
   case "$1" in
-    --once|--dry-run|--discovery-only) mode="$1" ;;
-    *) echo "usage: $0 [--once|--dry-run|--discovery-only] (no secrets or other options are accepted)" >&2; exit 64 ;;
+    --once|--dry-run|--discovery-only)
+      if [ "$mode_seen" -eq 1 ]; then echo "usage: $0 accepts one run mode" >&2; exit 64; fi
+      mode="$1"
+      mode_seen=1 ;;
+    --product-path|--product-url)
+      kind="$1"
+      if [ "$product_kind" ] && [ "$product_kind" != "$kind" ]; then
+        echo "usage: --product-path and --product-url cannot be mixed" >&2; exit 64
+      fi
+      if [ "$#" -lt 2 ]; then echo "usage: $0 $1 requires a value" >&2; exit 64; fi
+      product_kind="$kind"
+      product_args+=("$1" "$2")
+      product_count=$((product_count + 1))
+      if [ "$product_count" -gt 5 ]; then echo "at most five explicit products are allowed" >&2; exit 64; fi
+      shift ;;
+    *) echo "usage: $0 [--once|--dry-run|--discovery-only] [--product-path PATH|--product-url URL ...]" >&2; exit 64 ;;
   esac
-fi
-
+  shift
+done
 # Database name: environment first, then the ignored .env. Read as text, never executed or printed.
 db_name="${MONGO_DB_NAME:-}"
 if [ -z "$db_name" ] && [ -f .env ]; then
@@ -47,6 +64,6 @@ summary="$out/refresh-summary-$(date -u +%Y%m%dT%H%M%SZ).json"
 if [ -n "${PYTHON:-}" ]; then py="$PYTHON"; elif [ -x .venv/bin/python ]; then py=.venv/bin/python; else py=python3.11; fi
 
 status=0
-"$py" -m ingestion.worker "$mode" --summary-file "$summary" || status=$?
+"$py" -m ingestion.worker "$mode" --summary-file "$summary" "${product_args[@]}" || status=$?
 echo "refresh finished: exit=$status summary=$summary" >&2
 exit "$status"

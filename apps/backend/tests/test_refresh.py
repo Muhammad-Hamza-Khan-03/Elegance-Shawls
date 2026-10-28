@@ -14,7 +14,10 @@ from mongomock_motor import AsyncMongoMockClient
 from configuration.config import settings
 from database.db import ensure_indexes
 from ingestion import refresh
-from ingestion.refresh import StagingGuardError, assert_staging, enabled_sources, redact, render_summary, run_cli, run_refresh
+from ingestion.refresh import (
+    ProductSelectionError, StagingGuardError, assert_staging, enabled_sources, redact,
+    render_summary, run_cli, run_refresh, select_explicit_products,
+)
 from ingestion.safe_fetch import DomainRateLimiter, SafeFetcher, SourcePolicy
 from ingestion.sitemap import DiscoveryError, canonical_product_path, discover_products, parse_sitemap
 
@@ -243,6 +246,42 @@ def test_canonicalization_collapses_www_query_fragment_and_slash():
 ])
 def test_non_product_urls_are_ignored(loc):
     assert canonical_product_path(loc, POLICY) is None
+
+
+def test_explicit_selection_accepts_exactly_five_product_paths_without_sitemap_discovery():
+    selected = select_explicit_products(
+        POLICY, product_paths=[f"/products/{handle}" for handle in "abcde"]
+    )
+    assert list(selected.products) == [f"/products/{handle}" for handle in "abcde"]
+    assert selected.sitemaps_fetched == 0
+
+
+@pytest.mark.parametrize("values", [
+    [f"/products/{handle}" for handle in "abcdef"],
+    ["https://evil.example/products/a"],
+    ["https://shop.example/collections/all"],
+    ["/products/a", "/products/a"],
+])
+def test_explicit_selection_rejects_over_limit_unsafe_non_product_and_duplicates(values):
+    kwargs = {"product_urls": values} if values and values[0].startswith("http") else {"product_paths": values}
+    with pytest.raises(ProductSelectionError):
+        select_explicit_products(POLICY, **kwargs)
+
+
+def test_explicit_selection_rejects_ambiguous_path_and_url_inputs():
+    with pytest.raises(ProductSelectionError):
+        select_explicit_products(POLICY, product_paths=["/products/a"], product_urls=["https://shop.example/products/b"])
+
+
+@pytest.mark.asyncio
+async def test_explicit_refresh_never_fetches_the_full_sitemap(db, site):
+    site.xml(ROOT, urlset(*[(f"https://shop.example/products/{handle}", OLD) for handle in "abcdef"]))
+    for handle in "abcde":
+        site.html(f"/products/{handle}", product_page(handle, f"Product {handle}"))
+    summary = await go(db, site, product_paths=[f"/products/{handle}" for handle in "abcde"])
+    assert src(summary)["discovered_urls"] == 5
+    assert not any(path == ROOT for _, path in site.log)
+    assert site.products_fetched() == [f"/products/{handle}" for handle in "abcde"]
 
 
 @pytest.mark.asyncio

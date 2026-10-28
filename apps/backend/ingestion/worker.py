@@ -67,7 +67,18 @@ def parse_args(argv: list[str] | None = None):
     parser.add_argument("--dry-run", action="store_true", help="plan the refresh; no MongoDB writes")
     parser.add_argument("--discovery-only", action="store_true", help="read sitemaps only; no MongoDB access")
     parser.add_argument("--summary-file", help="also write the sanitized JSON summary to this path")
-    return parser.parse_args(argv)
+    parser.add_argument("--product-path", action="append", default=[], metavar="PATH",
+                        help="explicit /products/<handle> path; repeat up to five times")
+    parser.add_argument("--product-url", action="append", default=[], metavar="URL",
+                        help="explicit HTTPS product URL; repeat up to five times")
+    args = parser.parse_args(argv)
+    if args.product_path and args.product_url:
+        parser.error("--product-path and --product-url cannot be mixed")
+    if len(args.product_path) > 5 or len(args.product_url) > 5:
+        parser.error("at most five explicit products are allowed")
+    if (args.product_path or args.product_url) and not (args.once or args.dry_run or args.discovery_only):
+        parser.error("explicit product selection requires --once, --dry-run, or --discovery-only")
+    return args
 
 
 if __name__ == "__main__":
@@ -84,6 +95,8 @@ if __name__ == "__main__":
         from ingestion.refresh import run_cli
 
         mode = "discovery-only" if args.discovery_only else "dry-run" if args.dry_run else "once"
-        raise SystemExit(asyncio.run(run_cli(mode, args.summary_file)))
+        raise SystemExit(asyncio.run(run_cli(
+            mode, args.summary_file, product_paths=args.product_path, product_urls=args.product_url,
+        )))
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
