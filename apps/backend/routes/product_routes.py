@@ -115,13 +115,20 @@ async def update_product(
     payload: ProductCreateSchema,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    replacement = build_product_document(payload.model_dump(mode="json"))
+    object_id = _object_id(product_id)
+    existing = await db.products.find_one({"_id": object_id}, {"variants._id": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
+    replacement = build_product_document(
+        payload.model_dump(mode="json"),
+        existing_variant_ids=[variant["_id"] for variant in existing.get("variants", [])],
+    )
     replacement.pop("_id")
     replacement.pop("created_at")
     replacement["updated_at"] = datetime.now(timezone.utc)
     try:
         product = await db.products.find_one_and_update(
-            {"_id": _object_id(product_id)},
+            {"_id": object_id},
             {"$set": replacement},
             return_document=ReturnDocument.AFTER,
         )
