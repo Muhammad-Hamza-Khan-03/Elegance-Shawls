@@ -698,7 +698,7 @@ def test_helper_never_accepts_secrets_or_other_arguments(tmp_path, args):
 
 
 @needs_flock
-@pytest.mark.parametrize("name", ["elegance_shawls", "elegance_shawls_prod", "production", "prod_staging", "", "stagingx"])
+@pytest.mark.parametrize("name", ["elegance_shawls", "elegance_shawls_prod", "production", "prod_staging", "stagingx"])
 def test_helper_refuses_a_database_that_is_not_clearly_staging(tmp_path, name):
     result = run_script(tmp_path, env={"MONGO_DB_NAME": name})
     assert result.returncode == 2 and not (tmp_path / "argv").exists()
@@ -713,6 +713,16 @@ def test_helper_reads_the_database_name_from_the_ignored_env_file_without_printi
     environ = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "REFRESH_LOCK_FILE": str(tmp_path / "lock")}
     result = subprocess.run(["bash", str(backend / "scripts/monthly_refresh.sh")], env=environ, capture_output=True, text=True, timeout=30)
     assert result.returncode == 2 and "hunter2" not in result.stdout + result.stderr
+
+
+@needs_flock
+def test_helper_refuses_when_no_database_name_is_configured_anywhere(tmp_path):
+    backend = tmp_path / "backend"  # a clean copy, so a developer's real .env cannot supply a name
+    (backend / "scripts").mkdir(parents=True)
+    shutil.copy(SCRIPT, backend / "scripts/monthly_refresh.sh")
+    environ = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "REFRESH_LOCK_FILE": str(tmp_path / "lock")}
+    result = subprocess.run(["bash", str(backend / "scripts/monthly_refresh.sh")], env=environ, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 2
 
 
 @needs_flock
@@ -785,9 +795,9 @@ def test_discovery_only_never_loads_database_or_fetch_modules_before_a_source_is
     assert forbidden == set(), forbidden
 
 
-@pytest.mark.parametrize("name", ["elegance_shawls_prod", "elegance_shawls", "production", "prod_staging", "stagingx", None, ""])
+@pytest.mark.parametrize("name", ["elegance_shawls_prod", "elegance_shawls", "production", "prod_staging", "stagingx", ""])
 def test_bad_database_names_are_refused_before_settings_or_source_access(name):
-    env = {} if name is None else {"MONGO_DB_NAME": name}
+    env = {"MONGO_DB_NAME": name}  # set explicitly (even empty) so a local .env cannot fill it in
     snippet = (
         "import runpy, sys, json\n"
         "sys.argv = ['ingestion.worker', '--discovery-only']\n"
@@ -805,6 +815,14 @@ def test_a_connection_string_in_the_environment_is_never_printed():
     secret = SCHEME + "user:hunter2@host.example/elegance_shawls_staging"
     result = run_entry("--discovery-only", env={"MONGO_DB_NAME": "elegance_shawls_staging", "MONGODB_URI": secret})
     assert "hunter2" not in result.stdout + result.stderr and secret not in result.stdout + result.stderr
+
+
+def test_a_missing_database_name_is_refused_before_settings_load(monkeypatch):
+    from ingestion import staging_guard
+    monkeypatch.delenv("MONGO_DB_NAME", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)  # simulate a checkout without a .env
+    with pytest.raises(StagingGuardError):
+        staging_guard.prepare_discovery_environment()
 
 
 @pytest.mark.asyncio

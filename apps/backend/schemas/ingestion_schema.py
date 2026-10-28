@@ -158,3 +158,13 @@ class SourceInfo(BaseModel):
     name: str
     domain: str
     authorized: bool
+
+
+class PkrSuggestion(BaseModel):
+    """Reference conversion for the reviewer; never stored and never applied automatically."""
+    source_price: float
+    source_currency: str
+    rate: float
+    rate_date: str
+    suggested_pkr: int
+    note: str

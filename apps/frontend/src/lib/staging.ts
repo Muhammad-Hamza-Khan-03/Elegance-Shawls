@@ -99,6 +99,21 @@ export const runStagedAction = (id: string, action: StagedAction, body?: ActionB
     body: JSON.stringify(body ?? {}),
   });
 
+export type PkrSuggestion = {
+  source_price: number;
+  source_currency: string;
+  rate: number;
+  rate_date: string;
+  suggested_pkr: number;
+  note: string;
+};
+
+export const fetchPkrSuggestion = (id: string) =>
+  request<PkrSuggestion>(`/api/admin/ingestion/staged/${id}/pkr-suggestion`);
+
+export const formatSuggestion = (s: PkrSuggestion) =>
+  `≈ PKR ${s.suggested_pkr.toLocaleString('en-US')} (1 ${s.source_currency} = ${s.rate.toFixed(2)} PKR, rate of ${s.rate_date})`;
+
 export const queueProductPath = (path: string) =>
   request<{ _id: string; status: string }>('/api/admin/ingestion/jobs', {
     method: 'POST',

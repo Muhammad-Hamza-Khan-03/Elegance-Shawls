@@ -9,13 +9,14 @@ from pymongo.errors import DuplicateKeyError
 from configuration.config import settings
 from database.db import get_db
 from ingestion import jobs
+from ingestion.fx import RateUnavailable, get_pkr_rate, suggest_pkr
 from ingestion.normalize import InvalidSourceData, source_url_for_path
 from ingestion.safe_fetch import SourcePolicy, UnsafeURL
 from models.ingestion_model import audit_entry
 from models.product_model import build_product_document
 from routes.product_routes import _cursor_query, _object_id
 from schemas.ingestion_schema import (
-    STAGED_TRANSITIONS, ApproveRequest, JobCreateRequest, JobListResponse, JobResponse, RejectRequest,
+    STAGED_TRANSITIONS, ApproveRequest, JobCreateRequest, JobListResponse, JobResponse, PkrSuggestion, RejectRequest,
     SourceInfo, StagedProductListResponse, StagedProductResponse, StagedStatus,
 )
 from schemas.product_schema import ProductCreateSchema, ProductStatus
@@ -144,6 +145,26 @@ async def get_staged(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db))
     if not doc:
         raise HTTPException(status_code=404, detail="Staged product not found")
     return doc
+
+
+@router.get("/staged/{staged_id}/pkr-suggestion", response_model=PkrSuggestion)
+async def pkr_suggestion(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Reference PKR value of the source price. Read-only: nothing is saved and no price is set."""
+    doc = await db.staged_products.find_one({"_id": _object_id(staged_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Staged product not found")
+    price, currency = doc.get("source_price"), doc.get("source_currency")
+    if price is None or not currency:
+        raise HTTPException(status_code=409, detail="The source price or currency is unknown; set the PKR price manually")
+    try:
+        rate = await get_pkr_rate(currency)
+    except RateUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return PkrSuggestion(
+        source_price=price, source_currency=currency.upper(), rate=rate.rate, rate_date=rate.date,
+        suggested_pkr=suggest_pkr(price, rate),
+        note="Reference conversion only. It excludes margin, shipping, duty and tax; the reviewer sets the retail price.",
+    )
 
 
 @router.post("/staged/{staged_id}/approve", response_model=StagedProductResponse)

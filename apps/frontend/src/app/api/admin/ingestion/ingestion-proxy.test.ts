@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as listStagedRoute } from './staged/route';
+import { GET as pkrSuggestion } from './staged/[stagedId]/pkr-suggestion/route';
 import { POST as stagedAction } from './staged/[stagedId]/[action]/route';
 import { GET as listJobs, POST as createJob } from './jobs/route';
 import { ADMIN_SESSION_COOKIE, issueAdminSession } from '@/lib/admin-session';
@@ -14,6 +15,7 @@ const routes = [
   { name: 'publish', method: 'POST', path: `/api/admin/ingestion/staged/${id}/publish`, backend: `/products/admin/ingestion/staged/${id}/publish`, handler: stagedAction },
   { name: 'unpublish', method: 'POST', path: `/api/admin/ingestion/staged/${id}/unpublish`, backend: `/products/admin/ingestion/staged/${id}/unpublish`, handler: stagedAction },
   { name: 'archive', method: 'POST', path: `/api/admin/ingestion/staged/${id}/archive`, backend: `/products/admin/ingestion/staged/${id}/archive`, handler: stagedAction },
+  { name: 'pkr suggestion', method: 'GET', path: `/api/admin/ingestion/staged/${id}/pkr-suggestion`, backend: `/products/admin/ingestion/staged/${id}/pkr-suggestion`, handler: pkrSuggestion },
   { name: 'list jobs', method: 'GET', path: '/api/admin/ingestion/jobs', backend: '/products/admin/ingestion/jobs', handler: listJobs },
   { name: 'queue job', method: 'POST', path: '/api/admin/ingestion/jobs', backend: '/products/admin/ingestion/jobs', handler: createJob },
 ] as const;

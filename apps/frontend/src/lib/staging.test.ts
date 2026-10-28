@@ -7,6 +7,7 @@ import {
   availableActions,
   describeMissing,
   formatSourcePrice,
+  formatSuggestion,
   listStaged,
   runStagedAction,
 } from './staging';
@@ -111,5 +112,12 @@ describe('public storefront isolation', () => {
       const source = readFileSync(file, 'utf8');
       expect(source, file).not.toMatch(/ingestion|staged|\/products\/admin/);
     }
+  });
+});
+
+describe('PKR suggestion', () => {
+  it('is described as an approximate reference with its rate and date', () => {
+    expect(formatSuggestion({ source_price: 125, source_currency: 'AUD', rate: 194.9163, rate_date: '2026-10-28', suggested_pkr: 24365, note: 'x' }))
+      .toBe('≈ PKR 24,365 (1 AUD = 194.92 PKR, rate of 2026-10-28)');
   });
 });

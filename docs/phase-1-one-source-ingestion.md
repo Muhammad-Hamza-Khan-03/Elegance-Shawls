@@ -39,7 +39,7 @@ Not ported: CSV storage, Quill DB models, API routes, service layer, credentials
 
 ## Approval rules
 
-- Approval requires: name, at least one image, a human-entered PKR price, and acknowledged stock. Source price is provenance and is never converted.
+- Approval requires: name, at least one image, a human-entered PKR price, and acknowledged stock. Source price is provenance and is never converted or applied automatically. On the review screen the reviewer can request a reference PKR suggestion (`GET .../staged/{id}/pkr-suggestion`, rates from the free fawazahmed0 currency API, cached 6 hours). It is not stored and excludes margin, shipping, duty and tax; the reviewer still types and confirms the retail price. Ingestion and the monthly refresh never call the rate API.
 - Scraped stock is unknown, so staged variants start at stock 0 and flag `needs_review`.
 - Publish requires the staged product to be `approved` and the linked product to exist.
 

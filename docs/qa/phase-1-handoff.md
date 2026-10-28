@@ -51,6 +51,6 @@ Record for each step: pass/fail, timestamp, job IDs, and the exact deployed comm
 - **Bot protection / rate limits.** Fetches identify as `EleganceIngestion/1.0` and are spaced by `INGESTION_DOMAIN_MIN_INTERVAL_SECONDS` (default 2s). A 429 or 5xx retries with backoff, then fails.
 - **No browser.** JS-rendered pages are unsupported; Crawl4AI is not used.
 - **One quill-store behavior changed:** image extraction runs on raw HTML (quill-store ran it after `<img>` tags were removed).
-- Source price is provenance only; PKR price and stock are entered at approval.
+- Source price is provenance only; PKR price and stock are entered at approval. The review card can show a reference PKR suggestion from the fawazahmed0 rate API (suggestion only, nothing stored or pre-filled). QA: with a priced item, click "Suggest from source price", check the rate/date, click "Use as starting price", and confirm approval still needs an explicit click.
 - Generic status changes to inactive on a published ingested product do not update the staged record's status.
 - No compose/deploy files were changed.

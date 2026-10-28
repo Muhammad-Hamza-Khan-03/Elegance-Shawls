@@ -8,10 +8,13 @@ import {
   availableActions,
   describeMissing,
   formatSourcePrice,
+  fetchPkrSuggestion,
+  formatSuggestion,
   listStaged,
   queueProductPath,
   runStagedAction,
   type ActionBody,
+  type PkrSuggestion,
   type StagedAction,
   type StagedProduct,
   type StagedStatus,
@@ -23,9 +26,22 @@ type CardProps = {
   item: StagedProduct;
   busy?: boolean;
   onAction?: (item: StagedProduct, action: StagedAction, body?: ActionBody) => void;
+  suggest?: (id: string) => Promise<PkrSuggestion>;
 };
 
-export const StagedProductCard = ({ item, busy = false, onAction }: CardProps) => {
+export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetchPkrSuggestion }: CardProps) => {
+  const [suggestion, setSuggestion] = useState<PkrSuggestion | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const canSuggest = item.source_price != null && Boolean(item.source_currency);
+  const loadSuggestion = async () => {
+    setSuggestError(null);
+    try {
+      setSuggestion(await suggest(item._id));
+    } catch (err) {
+      setSuggestion(null);
+      setSuggestError(err instanceof Error ? err.message : 'Could not get an exchange rate.');
+    }
+  };
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('0');
   const [reason, setReason] = useState('');
@@ -80,6 +96,18 @@ export const StagedProductCard = ({ item, busy = false, onAction }: CardProps) =
       ) : null}
       {item.rejection_reason ? <p className="mt-3 text-sm text-red-700">Rejected: {item.rejection_reason}</p> : null}
 
+      {actions.includes('approve') && (suggestion || suggestError) ? (
+        <div className="mt-4 rounded-2xl border border-[#d8c8b4] bg-[#faf5ee] p-3 text-sm" data-testid="pkr-suggestion">
+          {suggestion ? (
+            <>
+              <p className="font-semibold">{formatSuggestion(suggestion)}</p>
+              <p className="mt-1 text-[#6f625a]">{suggestion.note}</p>
+              <Button type="button" variant="outline" className="mt-2" onClick={() => setPrice(String(suggestion.suggested_pkr))}>Use as starting price</Button>
+            </>
+          ) : <p role="alert" className="text-red-700">{suggestError}</p>}
+        </div>
+      ) : null}
+
       {actions.length > 0 ? (
         <div className="mt-5 flex flex-wrap items-end gap-3">
           {actions.includes('approve') ? (
@@ -87,6 +115,7 @@ export const StagedProductCard = ({ item, busy = false, onAction }: CardProps) =
               <label className="text-sm">Retail price (PKR)
                 <input className="mt-1 block w-32 rounded-lg border border-[#d8c8b4] px-2 py-1" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
               </label>
+              {canSuggest ? <Button type="button" variant="outline" onClick={() => void loadSuggestion()}>Suggest from source price</Button> : null}
               <label className="text-sm">Stock
                 <input className="mt-1 block w-20 rounded-lg border border-[#d8c8b4] px-2 py-1" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value)} />
               </label>

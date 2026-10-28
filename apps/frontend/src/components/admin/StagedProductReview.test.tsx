@@ -90,3 +90,18 @@ describe('staged product review card', () => {
     expect(render({ source_currency: null })).toContain('currency unknown');
   });
 });
+
+describe('PKR suggestion control', () => {
+  it('offers a suggestion only when the source price and currency are known, and never pre-fills the price', () => {
+    const known = renderToStaticMarkup(<StagedProductCard item={item()} />);
+    expect(known).toContain('Suggest from source price');
+    expect(known).not.toContain('data-testid="pkr-suggestion"'); // nothing is fetched until the reviewer asks
+    expect(known).toMatch(/Retail price \(PKR\)[\s\S]*?value=""/);
+    expect(renderToStaticMarkup(<StagedProductCard item={item({ source_price: null })} />)).not.toContain('Suggest from source price');
+    expect(renderToStaticMarkup(<StagedProductCard item={item({ source_currency: null })} />)).not.toContain('Suggest from source price');
+  });
+
+  it('is not offered once a product is past approval', () => {
+    expect(renderToStaticMarkup(<StagedProductCard item={item({ status: 'approved' })} />)).not.toContain('Suggest from source price');
+  });
+});
