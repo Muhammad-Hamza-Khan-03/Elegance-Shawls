@@ -16,17 +16,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from configuration.config import settings
-from ingestion import jobs
-from ingestion.extractors import ShopifyHtmlExtractor
 from ingestion.normalize import source_url_for_path
 from ingestion.safe_fetch import SafeFetcher, SourcePolicy
 from ingestion.sitemap import DiscoveryError, discover_products
-from ingestion.worker import process_next_job, worker_id
+from ingestion.staging_guard import STAGING_NAME, StagingGuardError, assert_staging  # noqa: F401  (re-exported)
 from schemas.ingestion_schema import JobStatus
 
 logger = logging.getLogger("ingestion.refresh")
 
-STAGING_NAME = re.compile(r"(^|[_-])staging($|[_-])", re.I)
 TERMINAL = {JobStatus.SUCCEEDED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value}
 PENDING = {JobStatus.QUEUED.value, JobStatus.RETRYING.value}
 OUTCOMES = ("created", "unchanged", "updated", "source_changed")
@@ -36,16 +33,6 @@ COUNTERS = (
     "retryable_failures", "non_retryable_failures", "unprocessed_jobs", "missing_from_sitemap",
 )
 URI_PATTERN = re.compile(r"mongodb(?:\+srv)?://\S+|(?i:bearer)\s+\S+|(?i:x-admin-key)\S*\s*[:=]\s*\S+")
-
-
-class StagingGuardError(Exception):
-    pass
-
-
-def assert_staging(db_name: str) -> None:
-    """Refuse any database that does not clearly identify itself as staging."""
-    if not STAGING_NAME.search(db_name or "") or re.search("prod", db_name, re.I):
-        raise StagingGuardError("Refusing to run: database name must identify a staging database")
 
 
 def redact(text: str) -> str:
@@ -104,6 +91,8 @@ def _needs_refresh(existing: dict | None, lastmod: datetime | None) -> bool:
 
 
 async def _queue(db, source_id: str, path: str, counts: dict) -> dict | None:
+    from ingestion import jobs
+
     job, created = await jobs.create_job(db, source_id=source_id, path=path)
     counts["jobs_created" if created else "jobs_reused"] += 1
     if not created and job["status"] in TERMINAL:
@@ -113,6 +102,8 @@ async def _queue(db, source_id: str, path: str, counts: dict) -> dict | None:
 
 async def _process_batch(db, ids: list, fetcher, extractor, *, deadline: float, clock, sleep) -> bool:
     """Run the batch to completion. Returns False if the runtime cap stopped it early."""
+    from ingestion.worker import process_next_job, worker_id
+
     me = worker_id()
     while clock() < deadline:
         if await process_next_job(db, me, fetcher, extractor, only_ids=ids):
@@ -154,7 +145,6 @@ async def run_refresh(
     """mode: once | dry-run | discovery-only. dry-run and discovery-only never write to MongoDB."""
     started = clock()
     deadline = started + (settings.ingestion_run_max_seconds if max_seconds is None else max_seconds)
-    extractor = extractor or ShopifyHtmlExtractor()
     summary = {"run_id": run_id or os.environ.get("GITHUB_RUN_ID") or uuid.uuid4().hex[:12],
                "commit_sha": sha or commit_sha(), "mode": mode, "sources": [], "termination_reason": "completed"}
     reason = None
@@ -178,6 +168,9 @@ async def run_refresh(
         if mode == "discovery-only":
             continue
 
+        if extractor is None:
+            from ingestion.extractors import ShopifyHtmlExtractor
+            extractor = ShopifyHtmlExtractor()
         existing = await _existing_staged(db, source_id)
         urls = {path: source_url_for_path(path, policy) for path in found.products}
         gone = sorted(set(existing) - set(urls.values()))
@@ -191,6 +184,7 @@ async def run_refresh(
                 batch.append(path)
         if mode == "dry-run":
             for path in batch:
+                from ingestion import jobs
                 has_job = await db.ingestion_jobs.find_one({"idempotency_key": jobs.idempotency_key_for(source_id, path)})
                 counts["jobs_reused" if has_job else "jobs_created"] += 1
             continue

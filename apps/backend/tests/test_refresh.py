@@ -741,3 +741,108 @@ def test_helper_script_has_no_credentials_or_production_targets():
     text = SCRIPT.read_text()
     assert SCHEME + "" not in text and SRV + "" not in text and "set -x" not in text
     assert "onrender.com" not in text and "vercel" not in text.lower()
+
+
+# ---- --discovery-only needs no MongoDB credentials or database modules -----------------------------
+
+import sys
+
+BACKEND = Path(__file__).resolve().parents[1]
+FORBIDDEN_MODULES = ("database", "database.db", "motor", "motor.motor_asyncio", "pymongo", "ingestion.jobs",
+                     "ingestion.pipeline", "ingestion.safe_fetch", "httpx")
+# Explicitly unauthorized, so even a developer's local .env cannot make these subprocess runs touch a real source.
+HERMETIC = {"INGESTION_SOURCE_AUTHORIZED": "false", "INGESTION_SOURCE_DOMAIN": "", "INGESTION_SOURCE_ID": "t"}
+
+
+def run_entry(*flags, env=None, snippet=None):
+    environ = {"PATH": os.environ["PATH"], "HOME": "/nonexistent", **HERMETIC, **(env or {})}
+    if snippet:
+        cmd = [sys.executable, "-c", snippet]
+    else:
+        cmd = [sys.executable, "-m", "ingestion.worker", *flags]
+    return subprocess.run(cmd, cwd=BACKEND, env=environ, capture_output=True, text=True, timeout=60)
+
+
+def test_discovery_only_starts_without_a_mongodb_uri():
+    result = run_entry("--discovery-only", env={"MONGO_DB_NAME": "elegance_shawls_staging"})
+    out = json.loads(result.stdout)
+    assert out["termination_reason"] == "no_authorized_sources"  # reached dispatch; no source is configured here
+    assert "Field required" not in result.stdout + result.stderr and "Traceback" not in result.stderr
+    assert result.returncode == 1
+
+
+def test_discovery_only_never_loads_database_or_fetch_modules_before_a_source_is_authorized():
+    snippet = (
+        "import runpy, sys, json\n"
+        "sys.argv = ['ingestion.worker', '--discovery-only']\n"
+        "try:\n    runpy.run_module('ingestion.worker', run_name='__main__')\n"
+        "except SystemExit:\n    pass\n"
+        f"print('LOADED=' + json.dumps([m for m in {FORBIDDEN_MODULES!r} if m in sys.modules]))\n"
+    )
+    result = run_entry(snippet=snippet, env={"MONGO_DB_NAME": "elegance_shawls_staging"})
+    loaded = [line for line in result.stdout.splitlines() if line.startswith("LOADED=")]
+    forbidden = set(json.loads(loaded[0][7:])) - {"ingestion.safe_fetch", "httpx"}  # fetching is allowed; databases are not
+    assert forbidden == set(), forbidden
+
+
+@pytest.mark.parametrize("name", ["elegance_shawls_prod", "elegance_shawls", "production", "prod_staging", "stagingx", None, ""])
+def test_bad_database_names_are_refused_before_settings_or_source_access(name):
+    env = {} if name is None else {"MONGO_DB_NAME": name}
+    snippet = (
+        "import runpy, sys, json\n"
+        "sys.argv = ['ingestion.worker', '--discovery-only']\n"
+        "try:\n    runpy.run_module('ingestion.worker', run_name='__main__')\n"
+        "except SystemExit as e:\n    print('EXIT=%s' % e.code)\n"
+        "print('LOADED=' + json.dumps([m for m in ('configuration.config','ingestion.safe_fetch','ingestion.sitemap','httpx','database','motor') if m in sys.modules]))\n"
+    )
+    result = run_entry(snippet=snippet, env=env)
+    assert "EXIT=1" in result.stdout and "staging_guard_failed" in result.stdout
+    assert "LOADED=[]" in result.stdout  # nothing that could reach a source or database was even imported
+    assert "Traceback" not in result.stderr and "Field required" not in result.stdout + result.stderr
+
+
+def test_a_connection_string_in_the_environment_is_never_printed():
+    secret = SCHEME + "user:hunter2@host.example/elegance_shawls_staging"
+    result = run_entry("--discovery-only", env={"MONGO_DB_NAME": "elegance_shawls_staging", "MONGODB_URI": secret})
+    assert "hunter2" not in result.stdout + result.stderr and secret not in result.stdout + result.stderr
+
+
+@pytest.mark.asyncio
+async def test_discovery_only_cli_succeeds_without_any_database_connection(monkeypatch, site, capsys):
+    monkeypatch.setattr(settings, "MONGO_DB_NAME", "elegance_shawls_staging")
+    monkeypatch.setattr(settings, "MONGODB_URI", "")
+    monkeypatch.setattr(settings, "ingestion_source_domain", "shop.example")
+    monkeypatch.setattr(settings, "ingestion_source_authorized", True)
+    async def forbidden(mode): raise AssertionError("discovery-only must not connect to MongoDB")
+    monkeypatch.setattr(refresh, "open_db", forbidden)
+    assert await run_cli("discovery-only", fetcher_factory=lambda p: site.factory(p)) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["totals"]["discovered_urls"] == 2 and printed["totals"]["jobs_created"] == 0
+    assert site.products_fetched() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["discovery-only", "dry-run", "once"])
+async def test_a_non_staging_database_is_refused_before_any_source_access(monkeypatch, mode, capsys):
+    monkeypatch.setattr(settings, "MONGO_DB_NAME", "elegance_shawls_prod")
+    def no_fetch(policy): raise AssertionError("source must not be contacted")
+    async def no_db(mode): raise AssertionError("database must not be opened")
+    monkeypatch.setattr(refresh, "open_db", no_db)
+    assert await run_cli(mode, fetcher_factory=no_fetch) == 1
+    assert "staging_guard_failed" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_only_the_database_aware_modes_open_the_database(monkeypatch, db, site):
+    monkeypatch.setattr(settings, "MONGO_DB_NAME", "elegance_shawls_staging")
+    monkeypatch.setattr(settings, "ingestion_source_domain", "shop.example")
+    monkeypatch.setattr(settings, "ingestion_source_authorized", True)
+    opened = []
+    async def fake_open(mode):
+        opened.append(mode)
+        return _Client(), db
+    monkeypatch.setattr(refresh, "open_db", fake_open)
+    for mode in ("discovery-only", "dry-run", "once"):
+        await run_cli(mode, fetcher_factory=lambda p: site.factory(p))
+    assert opened == ["dry-run", "once"]
+    assert await db.ingestion_jobs.count_documents({}) == 2  # only --once created jobs; dry-run still read the database
