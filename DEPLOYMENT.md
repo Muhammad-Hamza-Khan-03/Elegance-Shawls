@@ -15,6 +15,7 @@ Set these values in the deployment platform's encrypted secret/environment store
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | frontend | International digits only, without `+` or spaces |
 | `MONGO_ROOT_*`, `MONGO_APP_*`, `MONGO_BACKUP_*` | mongo (compose) | Separate random passwords for the root, application and backup users; see `.env.example` |
 | `SITE_DOMAIN`, `API_DOMAIN` | proxy (compose) | Public hostnames Caddy serves and obtains certificates for |
+| `INTERNAL_API_TOKEN` | backend + frontend server | Matching random secret. The storefront server sends it on its own reads so server-rendered pages, which all reach the API from one address, are not limited as one client. It only bypasses the public rate limit (never admin routes) and grants no data access. Never expose it through `NEXT_PUBLIC_*`. Unset means no exemption. |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE`, `ADMIN_RATE_LIMIT_PER_MINUTE` | backend | Optional per-client limits (defaults 120 and 60) |
 
 Generate the admin key with `openssl rand -hex 32`. Rotate it immediately if exposed. Because `NEXT_PUBLIC_*` values are public and build-time values, changing them requires rebuilding the frontend image.
@@ -33,6 +34,8 @@ Generate the admin key with `openssl rand -hex 32`. Rotate it immediately if exp
 MongoDB requires authentication. On first start of an empty volume, `deploy/mongo/init-users.sh` creates an application user with `readWrite` on `MONGO_DB_NAME` only, and a backup user with the built-in `backup` role. The backend connects as the application user. MongoDB runs on an internal Docker network with no internet egress and no published port, so only the backend can reach it; traffic on that private network is not TLS-encrypted. For a managed provider (for example Atlas), point `MONGODB_URI` at its TLS connection string with a least-privilege user and IP allowlist instead of running the `mongo` service.
 
 The backend trusts `X-Forwarded-For` (`FORWARDED_ALLOW_IPS=*`) because it is reachable only through Caddy, which replaces any client-supplied value. Do not publish the backend or frontend ports directly.
+
+On a hosted backend (for example Render), the backend's per-client limits are only as accurate as the client address uvicorn sees. Unless `FORWARDED_ALLOW_IPS` trusts the platform's proxy, browser requests are keyed by proxy addresses and share limits. Set it only after confirming how the platform builds `X-Forwarded-For`, so clients cannot choose their own address.
 
 ### Local HTTPS acceptance stack
 

@@ -68,6 +68,14 @@ const getApiUrl = () => {
   return API_URL.replace(/\/$/, '');
 };
 
+// Server-rendered reads all reach the backend from the storefront server's
+// address; this server-only token keeps them out of the per-client public rate
+// limit. It is never available in the browser bundle.
+export const internalApiHeaders = (): Record<string, string> => {
+  const token = typeof window === 'undefined' ? process.env.INTERNAL_API_TOKEN : undefined;
+  return token ? { 'X-Internal-API-Token': token } : {};
+};
+
 // Helper to handle API responses
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -151,7 +159,7 @@ const extractItems = (data: unknown): BackendProduct[] => {
 export const api = {
   // GET /products
   getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal }));
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal, headers: internalApiHeaders() }));
     return extractItems(data)
       .map((p) => mapBackendProduct(p))
       .filter((p: Product) => p.status === 'active');
@@ -160,7 +168,7 @@ export const api = {
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: internalApiHeaders() }));
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
@@ -176,7 +184,7 @@ export const api = {
   // Current published state for checkout: null when the product is not
   // published; throws when the catalogue cannot be reached, so callers block handoff.
   getPublishedProduct: async (slug: string): Promise<Product | null> => {
-    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', headers: internalApiHeaders() });
     if (response.status === 404) return null;
     const product = mapBackendProduct(await handleResponse(response));
     return product.status === 'active' ? product : null;

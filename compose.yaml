@@ -34,6 +34,7 @@ services:
       ENVIRONMENT: production
       PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
       ADMIN_RATE_LIMIT_PER_MINUTE: ${ADMIN_RATE_LIMIT_PER_MINUTE:-60}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
       # The backend is reachable only through the proxy, which overwrites X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
     networks: [data, web]
@@ -52,6 +53,7 @@ services:
     restart: unless-stopped
     environment:
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
     networks: [web]
     depends_on:
       backend:

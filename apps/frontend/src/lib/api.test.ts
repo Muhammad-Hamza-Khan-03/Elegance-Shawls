@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { mapBackendProduct } from './api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { internalApiHeaders, mapBackendProduct } from './api';
 import { createCartItem } from './cart';
 import { validateSingleProductOrder } from './whatsapp';
 
@@ -51,5 +51,28 @@ describe('backend product stock mapping', () => {
     });
     expect(product.variants.map((variant) => variant.stock)).toEqual([2, 0, 5]);
     expect(product.stock).toBe(7);
+  });
+});
+
+describe('internal API token', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('is sent from the server when configured', () => {
+    vi.stubEnv('INTERNAL_API_TOKEN', 'server-only-fixture');
+    expect(internalApiHeaders()).toEqual({ 'X-Internal-API-Token': 'server-only-fixture' });
+  });
+
+  it('is never sent from the browser', () => {
+    vi.stubEnv('INTERNAL_API_TOKEN', 'server-only-fixture');
+    vi.stubGlobal('window', {});
+    expect(internalApiHeaders()).toEqual({});
+  });
+
+  it('is omitted when not configured', () => {
+    vi.stubEnv('INTERNAL_API_TOKEN', '');
+    expect(internalApiHeaders()).toEqual({});
   });
 });

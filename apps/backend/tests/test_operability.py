@@ -73,3 +73,29 @@ def test_readiness_ping_fails_fast_when_database_hangs(monkeypatch):
     started = time.perf_counter()
     assert asyncio.run(db.database_is_ready(timeout_seconds=0.2)) is False
     assert time.perf_counter() - started < 2
+
+
+def test_internal_token_exempts_only_public_reads(monkeypatch):
+    monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1)
+    monkeypatch.setattr(settings, "admin_rate_limit_per_minute", 1)
+    monkeypatch.setattr(settings, "internal_api_token", "internal-token-fixture")
+    monkeypatch.setattr(settings, "admin_api_key", "")
+    client = TestClient(main.create_app())
+    internal = {"X-Internal-API-Token": "internal-token-fixture"}
+
+    for _ in range(5):
+        assert client.get("/health/", headers=internal).status_code == 200
+    assert client.get("/health/").status_code == 200
+    assert client.get("/health/").status_code == 429
+    assert client.get("/health/", headers={"X-Internal-API-Token": "wrong"}).status_code == 429
+
+    assert client.post("/products/admin/", headers=internal, json={}).status_code == 503
+    assert client.post("/products/admin/", headers=internal, json={}).status_code == 429
+
+
+def test_internal_token_is_ignored_when_not_configured(monkeypatch):
+    monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1)
+    monkeypatch.setattr(settings, "internal_api_token", "")
+    client = TestClient(main.create_app())
+    assert client.get("/health/", headers={"X-Internal-API-Token": ""}).status_code == 200
+    assert client.get("/health/", headers={"X-Internal-API-Token": ""}).status_code == 429
