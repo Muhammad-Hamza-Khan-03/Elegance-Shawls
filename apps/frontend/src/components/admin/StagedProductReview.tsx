@@ -251,9 +251,12 @@ export const StagedProductReview = () => {
     setNotice(null);
     try {
       await runStagedAction(item._id, action, body);
-      setNotice(`${item.product.name}: ${action} succeeded.`);
+      // Follow the product to its next stage so its next action (e.g. Publish after Approve) is on screen.
+      const next = { approve: 'approved', publish: 'published', unpublish: 'unpublished', reject: 'rejected', archive: 'archived' } as const;
+      setFilter(next[action]);
+      setNotice(`${item.product.name}: ${action} succeeded.${action === 'approve' ? ' It is now an inactive draft; use Publish below to make it live.' : ''}`);
       setError(null);
-      await load();
+      if (next[action] === filter) await load(); // otherwise the filter change reloads the list
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed.');
     } finally {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, Check, Edit3, Loader2, Plus, RefreshCcw, Search, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ActionErrorBanner } from '@/components/admin/ActionErrorBanner';
 import { formatCurrency } from '@/lib/whatsapp';
 import { PRODUCT_CATEGORIES, CATEGORY_LABELS, type ProductCategory } from '@/lib/categories';
 
@@ -243,6 +244,7 @@ export function AdminProductManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const loadProducts = async (preserveId?: string | null) => {
     setLoading(true);
@@ -352,12 +354,12 @@ export function AdminProductManager() {
   const saveProduct = async () => {
     const validationError = validateForm();
     if (validationError) {
-      setError(validationError);
+      setActionError(validationError);
       return;
     }
 
     setSaving(true);
-    setError('');
+    setActionError('');
     setNotice('');
 
     try {
@@ -376,7 +378,7 @@ export function AdminProductManager() {
       setSelectedId(savedId);
       setForm(toForm(saved));
     } catch (err) {
-      setError(normalizeError(err));
+      setActionError(normalizeError(err));
     } finally {
       setSaving(false);
     }
@@ -384,7 +386,7 @@ export function AdminProductManager() {
 
   const updateStatus = async (product: AdminProduct, nextStatus: ProductStatus) => {
     const productId = getProductId(product);
-    setError('');
+    setActionError('');
     setNotice('');
 
     try {
@@ -409,7 +411,7 @@ export function AdminProductManager() {
       setNotice(`${updated.name} moved to ${statusLabel[nextStatus].toLowerCase()}.`);
       await loadProducts(productId);
     } catch (err) {
-      setError(normalizeError(err));
+      setActionError(normalizeError(err));
     }
   };
 
@@ -510,6 +512,7 @@ export function AdminProductManager() {
             </label>
           </div>
 
+          <ActionErrorBanner message={actionError} />
           {loading ? (
             <div role="status" aria-live="polite" className="rounded-3xl border border-dashed border-[#e7dac8] p-10 text-center text-[#6f625a]">
               <Loader2 className="mx-auto h-6 w-6 animate-spin" />
