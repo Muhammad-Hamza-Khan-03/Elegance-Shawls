@@ -6,6 +6,8 @@ from utils.bson import PyObjectId
 class VariantCreateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    # Identifies an existing variant on update; ignored on create and when unknown.
+    id: Optional[PyObjectId] = None
     name: str = Field(..., min_length=1)
     color: Optional[str] = Field(default=None, min_length=1)
     size: str = Field(default="Free Size", min_length=1)

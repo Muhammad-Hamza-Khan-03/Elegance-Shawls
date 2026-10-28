@@ -1,3 +1,5 @@
+import asyncio
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import Optional
 
@@ -32,11 +34,12 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.products.create_index("item_number", sparse=True, name="ix_products_item_number")
 
 
-async def database_is_ready() -> bool:
+async def database_is_ready(timeout_seconds: float = 2.0) -> bool:
     if _client is None or _db is None:
         return False
     try:
-        await _client.admin.command("ping")
+        # Fail fast so probes see 503 rather than timing out while the driver waits for a server.
+        await asyncio.wait_for(_client.admin.command("ping"), timeout_seconds)
         return True
     except Exception:
         return False

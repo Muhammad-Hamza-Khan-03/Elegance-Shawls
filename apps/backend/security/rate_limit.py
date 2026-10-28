@@ -1,3 +1,4 @@
+import secrets
 from collections import defaultdict, deque
 from time import monotonic
 
@@ -5,6 +6,13 @@ from fastapi import Request
 from starlette.responses import JSONResponse
 
 from configuration.config import settings
+
+
+def _is_internal(request: Request) -> bool:
+    """Public reads from the storefront server; admin routes are always limited."""
+    token = settings.internal_api_token
+    provided = request.headers.get("x-internal-api-token", "")
+    return bool(token and provided) and secrets.compare_digest(provided, token)
 
 
 class RateLimitMiddleware:
@@ -27,6 +35,9 @@ class RateLimitMiddleware:
             if is_admin
             else settings.public_rate_limit_per_minute
         )
+        if not is_admin and _is_internal(request):
+            await self.app(scope, receive, send)
+            return
         key = f"{client}:{'admin' if is_admin else 'public'}"
         now = monotonic()
         bucket = self.requests[key]

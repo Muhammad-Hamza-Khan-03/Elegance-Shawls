@@ -1,9 +1,26 @@
 from datetime import datetime, timezone
+from collections.abc import Iterable
+
 from bson import ObjectId
 
 
-def build_product_document(payload: dict) -> dict:
+def _variant_ids(variants: list[dict], existing_ids: Iterable[ObjectId]) -> list[ObjectId]:
+    """Keep a submitted id only if it already belongs to this product, once."""
+    available = {str(value) for value in existing_ids}
+    ids = []
+    for variant in variants:
+        submitted = variant.get("id")
+        if submitted and submitted in available:
+            available.discard(submitted)
+            ids.append(ObjectId(submitted))
+        else:
+            ids.append(ObjectId())
+    return ids
+
+
+def build_product_document(payload: dict, existing_variant_ids: Iterable[ObjectId] = ()) -> dict:
     now = datetime.now(timezone.utc)
+    variant_ids = _variant_ids(payload["variants"], existing_variant_ids)
 
     return {
         "_id": ObjectId(),
@@ -24,19 +41,20 @@ def build_product_document(payload: dict) -> dict:
 
         "variants": [
             {
-                "_id": ObjectId(),
+                "_id": variant_id,
                 "name": v["name"],
                 "color": v.get("color"),
                 "size": v["size"],
                 "image_url": v["image_url"],
                 "price": v["price"],
                 "currency": v.get("currency", "PKR"),
-                "stock_status": v["stock_status"],
+                # Derived like the stock endpoint so status never contradicts the count.
+                "stock_status": "In stock" if v["stock"] > 0 else "Out of stock",
                 "stock": v["stock"],
                 "description": v.get("description"),
                 "is_active": True,
             }
-            for v in payload["variants"]
+            for v, variant_id in zip(payload["variants"], variant_ids)
         ],
 
         "is_active": payload["status"] == "active",

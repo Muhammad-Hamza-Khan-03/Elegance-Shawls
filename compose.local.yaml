@@ -1,0 +1,34 @@
+# Local HTTPS acceptance testing only. Use with .env.local (from .env.local.example):
+#   docker compose --env-file .env.local -f compose.yaml -f compose.local.yaml up -d --build
+# Caddy issues certificates from its own local CA. Its public root certificate is
+# copied to a shared volume so the non-root frontend can trust it for
+# server-side requests; Caddy's private keys stay in its own data volume.
+services:
+  proxy:
+    command:
+      - sh
+      - -c
+      - >-
+        caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
+        until [ -f /data/caddy/pki/authorities/local/root.crt ]; do sleep 1; done;
+        install -m 644 /data/caddy/pki/authorities/local/root.crt /local-ca/root.crt;
+        wait
+    volumes:
+      - local_ca:/local-ca
+    healthcheck:
+      test: ["CMD", "test", "-f", "/local-ca/root.crt"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  frontend:
+    environment:
+      NODE_EXTRA_CA_CERTS: /local-ca/root.crt
+    volumes:
+      - local_ca:/local-ca:ro
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+volumes:
+  local_ca:

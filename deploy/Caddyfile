@@ -1,0 +1,47 @@
+{
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+	# Local testing sets CADDY_GLOBAL_OPTIONS=local_certs; production leaves it
+	# empty so Caddy obtains publicly trusted certificates for the domains below.
+	{$CADDY_GLOBAL_OPTIONS}
+}
+
+(common) {
+	encode zstd gzip
+	request_body {
+		max_size 1MB
+	}
+	header {
+		-Server
+		X-Request-ID {http.request.uuid}
+	}
+	log {
+		output stdout
+		# Access logs must never contain the admin key, internal token, session cookies
+		# or credentials. Header names are matched in Go's canonical form.
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Admin-Key delete
+				request>headers>X-Internal-Api-Token delete
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+}
+
+{$SITE_DOMAIN} {
+	import common
+	reverse_proxy frontend:3000 {
+		header_up X-Request-ID {http.request.uuid}
+	}
+}
+
+{$API_DOMAIN} {
+	import common
+	reverse_proxy backend:8000 {
+		header_up X-Request-ID {http.request.uuid}
+	}
+}

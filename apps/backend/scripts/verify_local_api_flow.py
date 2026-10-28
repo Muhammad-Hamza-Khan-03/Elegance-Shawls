@@ -46,8 +46,9 @@ app.dependency_overrides[get_db] = lambda: database
 with tempfile.TemporaryDirectory() as temporary:
     temp = Path(temporary)
     (temp / 'fixture_backend.py').write_text(fixture)
+    backend_path = os.pathsep.join(filter(None, [str(ROOT / 'apps/backend'), os.environ.get('PYTHONPATH')]))
     backend_env = dict(os.environ, MONGODB_URI='mongodb://localhost/test-fixture-only', MONGO_DB_NAME='elegance_integration_test',
-                       ADMIN_API_KEY=KEY, ALLOWED_ORIGINS=FRONT, PYTHONPATH=str(ROOT / 'apps/backend'))
+                       ADMIN_API_KEY=KEY, ALLOWED_ORIGINS=FRONT, PYTHONPATH=backend_path)
     frontend_env = dict(os.environ, ADMIN_API_KEY=KEY, NEXT_PUBLIC_API_URL=API, NEXT_PUBLIC_SITE_URL=FRONT,
                         NEXT_PUBLIC_WHATSAPP_NUMBER='923001234567')
     backend = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'fixture_backend:app', '--app-dir', str(temp), '--host', '127.0.0.1', '--port', '4200'],
@@ -55,7 +56,7 @@ with tempfile.TemporaryDirectory() as temporary:
     frontend = subprocess.Popen(['npm', 'run', 'dev', '--', '--hostname', '127.0.0.1', '--port', '3200'],
                                 cwd=ROOT / 'apps/frontend', env=frontend_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
-        with httpx.Client(base_url=FRONT, timeout=20, trust_env=False) as web, httpx.Client(base_url=API, timeout=10, trust_env=False) as api:
+        with httpx.Client(base_url=FRONT, headers={'Origin': FRONT}, timeout=20, trust_env=False) as web, httpx.Client(base_url=API, timeout=10, trust_env=False) as api:
             for _ in range(45):
                 try:
                     if web.get('/api/health').status_code == 200 and api.get('/health/').status_code == 200:
@@ -76,8 +77,10 @@ with tempfile.TemporaryDirectory() as temporary:
             payload = {'name':'Integration Shawl','slug':'integration-shawl','cover_image_url':'https://images.example.com/test.jpg',
                        'category':'shawls','status':'draft','item_number':'E2E-ONLY',
                        'variants':[{'name':'Blue','color':'Blue','size':'Free Size','image_url':'https://images.example.com/test.jpg','price':4500,'stock':2}]}
+            rejected = web.post('/api/admin/products', json=payload, headers={'Origin':'https://untrusted.example.invalid'})
+            check('cross-origin admin mutation rejected before persistence', rejected.status_code == 403 and web.get('/api/admin/products').json()['items'] == [])
             created = web.post('/api/admin/products', json=payload)
-            check('create through authenticated frontend proxy', created.status_code == 201)
+            check(f'create through authenticated frontend proxy (HTTP {created.status_code})', created.status_code == 201)
             data = created.json()
             product_id, variant_id = data['_id'], data['variants'][0]['_id']
             check('draft hidden from public catalog', api.get('/products/').json()['items'] == [])

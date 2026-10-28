@@ -1,9 +1,21 @@
+# Self-hosted production stack. Copy .env.example to .env and fill in every
+# value; see DEPLOYMENT.md. Only the Caddy proxy publishes host ports.
 services:
   mongo:
     image: mongo:8.0
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-elegance_shawls}
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:-elegance_app}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}
+      MONGO_BACKUP_USERNAME: ${MONGO_BACKUP_USERNAME:-elegance_backup}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:?Set MONGO_BACKUP_PASSWORD}
     volumes:
       - mongo_data:/data/db
+      - ./deploy/mongo/init-users.sh:/docker-entrypoint-initdb.d/10-init-users.sh:ro
+    networks: [data]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
@@ -12,18 +24,23 @@ services:
 
   backend:
     build: ./apps/backend
+    image: elegance-backend:${APP_VERSION:-local}
     restart: unless-stopped
     environment:
-      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_URI: mongodb://${MONGO_APP_USERNAME:-elegance_app}:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}@mongo:27017/${MONGO_DB_NAME:-elegance_shawls}?authSource=${MONGO_DB_NAME:-elegance_shawls}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-elegance_shawls}
       ALLOWED_ORIGINS: ${SITE_URL:?Set SITE_URL}
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
       ENVIRONMENT: production
+      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
+      ADMIN_RATE_LIMIT_PER_MINUTE: ${ADMIN_RATE_LIMIT_PER_MINUTE:-60}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
+      # The backend is reachable only through the proxy, which overwrites X-Forwarded-For.
+      FORWARDED_ALLOW_IPS: "*"
+    networks: [data, web]
     depends_on:
       mongo:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8000:8000"
 
   frontend:
     build:
@@ -32,14 +49,46 @@ services:
         NEXT_PUBLIC_API_URL: ${API_URL:?Set API_URL}
         NEXT_PUBLIC_SITE_URL: ${SITE_URL:?Set SITE_URL}
         NEXT_PUBLIC_WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:?Set WHATSAPP_NUMBER}
+    image: elegance-frontend:${APP_VERSION:-local}
     restart: unless-stopped
     environment:
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
+    networks: [web]
     depends_on:
       backend:
         condition: service_healthy
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+      CADDY_GLOBAL_OPTIONS: ${CADDY_GLOBAL_OPTIONS:-}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${PROXY_BIND:-0.0.0.0}:${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      - "${PROXY_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      web:
+        # Server-side frontend requests to the public URLs stay on the internal network.
+        aliases:
+          - ${SITE_DOMAIN:?Set SITE_DOMAIN}
+          - ${API_DOMAIN:?Set API_DOMAIN}
+
+networks:
+  web: {}
+  data:
+    # No route outside Docker: MongoDB is reachable only from the backend.
+    internal: true
 
 volumes:
   mongo_data:
+  caddy_data:
+  caddy_config:

@@ -52,12 +52,28 @@ const currencyFrom = (
   fallback = 'PKR',
 ) => (typeof price === 'object' ? price.currency || fallback : fallback);
 
+// Inventory must come from the backend; a missing, invalid or explicitly
+// out-of-stock value is unavailable, never an invented quantity.
+const stockFrom = (variant: BackendVariant) => {
+  if (variant.stock_status?.trim().toLowerCase() === 'out of stock') return 0;
+  const { stock } = variant;
+  return typeof stock === 'number' && Number.isInteger(stock) && stock > 0 ? stock : 0;
+};
+
 const getApiUrl = () => {
   if (!API_URL) {
     throw new Error('NEXT_PUBLIC_API_URL is not configured.');
   }
 
   return API_URL.replace(/\/$/, '');
+};
+
+// Server-rendered reads all reach the backend from the storefront server's
+// address; this server-only token keeps them out of the per-client public rate
+// limit. It is never available in the browser bundle.
+export const internalApiHeaders = (): Record<string, string> => {
+  const token = typeof window === 'undefined' ? process.env.INTERNAL_API_TOKEN : undefined;
+  return token ? { 'X-Internal-API-Token': token } : {};
 };
 
 // Helper to handle API responses
@@ -79,7 +95,7 @@ const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
 };
 
 // Mapper: Backend/Quill Product -> Storefront Product
-const mapBackendProduct = (bp: BackendProduct): Product => {
+export const mapBackendProduct = (bp: BackendProduct): Product => {
   const rawVariations = bp.variations || bp.variants || [];
   const productPrice = amountFrom(bp.price);
   const currency = currencyFrom(bp.price, bp.currency || 'PKR');
@@ -88,7 +104,7 @@ const mapBackendProduct = (bp: BackendProduct): Product => {
     id: v._id || v.id || `${bp._id || bp.id || bp.slug}-variant-${index}`,
     color: v.color || v.name || 'Default',
     size: v.size || bp.sizing || 'Free Size',
-    stock: v.stock ?? (v.stock_status === 'Out of stock' ? 0 : 10),
+    stock: stockFrom(v),
     price: amountFrom(v.price, productPrice),
     image_url: v.image_url || v.imageUrl || undefined,
   }));
@@ -143,7 +159,7 @@ const extractItems = (data: unknown): BackendProduct[] => {
 export const api = {
   // GET /products
   getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal }));
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal, headers: internalApiHeaders() }));
     return extractItems(data)
       .map((p) => mapBackendProduct(p))
       .filter((p: Product) => p.status === 'active');
@@ -152,7 +168,7 @@ export const api = {
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: internalApiHeaders() }));
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
@@ -163,6 +179,21 @@ export const api = {
         return undefined;
       }
     }
+  },
+
+  // Current published state for checkout: null when the product is not
+  // published; throws when the catalogue cannot be reached, so callers block handoff.
+  getPublishedProduct: async (slug: string): Promise<Product | null> => {
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', headers: internalApiHeaders() });
+    if (response.status === 404) return null;
+    const product = mapBackendProduct(await handleResponse(response));
+    return product.status === 'active' ? product : null;
+  },
+
+  getPublishedProducts: async (slugs: string[]): Promise<Map<string, Product | null>> => {
+    const unique = Array.from(new Set(slugs));
+    const products = await Promise.all(unique.map((slug) => api.getPublishedProduct(slug)));
+    return new Map(unique.map((slug, index) => [slug, products[index]]));
   },
 
   // GET /products/featured

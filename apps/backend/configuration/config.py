@@ -12,6 +12,9 @@ class settings(BaseSettings):
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
     admin_api_key: str = ""
+    # Shared with the storefront server so server-rendered reads, which all come
+    # from one address, are not limited as if they were a single client.
+    internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
 

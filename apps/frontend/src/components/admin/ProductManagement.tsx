@@ -185,6 +185,8 @@ const toPayload = (form: ProductFormState) => {
     item_number: form.item_number.trim() || undefined,
     status: form.status,
     variants: form.variants.map((variant) => ({
+      // Existing ids let the backend keep variant identity stable across edits.
+      id: variant.backendId || undefined,
       name: variant.name.trim(),
       color: variant.color.trim() || undefined,
       size: variant.size.trim() || 'Free Size',
