@@ -29,6 +29,12 @@ The storefront reverse proxy must preserve the public `Host` and HTTPS request s
 
 The included Mongo container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. A managed replica set is preferred for production resilience.
 
+## Admin sign-in protection
+
+`POST /api/admin/session` compares the submitted key in constant time, accepts only JSON bodies, and returns 429 with `Retry-After` after 5 failed attempts from one client within 15 minutes, including when the next attempt uses the correct key. The client is the right-most `X-Forwarded-For` address, so exactly one trusted reverse proxy (or Vercel) must set or append that header; without it, all clients share one throttle bucket, and if the frontend is reachable without passing through that proxy, clients can choose their own throttle key. The counter lives in each frontend process, so it resets on restart and is not shared between instances. Add an edge/proxy rate limit for `/api/admin/session` in production. A long random `ADMIN_API_KEY` remains the primary defence.
+
+Sessions are HMAC-signed, `HttpOnly`, `SameSite=Lax`, `Secure` in production, and expire after 8 hours. Signing out clears the cookie but cannot revoke a copied token before it expires; rotate `ADMIN_API_KEY` to invalidate every session.
+
 ## Quill integration
 
 Quill must use the documented `/products/admin/*` routes and send `X-Admin-Key` over HTTPS. It must not call public routes for writes or put the key in query strings, logs or browser code. Validate the exact payload contract against backend OpenAPI at `/docs` in a non-public staging environment.

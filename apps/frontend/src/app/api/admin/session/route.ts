@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ADMIN_SESSION_COOKIE, hasAdminSecret, issueAdminSession, readAdminSession, verifyAdminSession } from '@/lib/admin-session';
+import { clearLoginFailures, getLoginClientKey, loginRetryAfterSeconds, recordLoginFailure } from '@/lib/admin-login-throttle';
+import { ADMIN_SESSION_COOKIE, adminKeyMatches, hasAdminSecret, issueAdminSession, readAdminSession, verifyAdminSession } from '@/lib/admin-session';
 
 const cookieOptions = {
   httpOnly: true,
@@ -17,13 +18,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: 'Administrative access is not configured.' }, { status: 503 });
   }
 
-  const body = (await request.json().catch(() => null)) as { key?: string } | null;
-  const providedKey = body?.key?.trim() || '';
+  // Requiring JSON forces a CORS preflight, so cross-site forms cannot submit sign-in attempts.
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+    return NextResponse.json({ detail: 'Sign-in requests must be JSON.' }, { status: 415 });
+  }
 
-  if (!providedKey || providedKey !== process.env.ADMIN_API_KEY?.trim()) {
+  const clientKey = getLoginClientKey(request);
+  const retryAfter = loginRetryAfterSeconds(clientKey);
+  if (retryAfter > 0) {
+    return NextResponse.json(
+      { detail: 'Too many failed sign-in attempts. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as { key?: unknown } | null;
+  const providedKey = typeof body?.key === 'string' ? body.key.trim() : '';
+
+  if (!adminKeyMatches(providedKey)) {
+    recordLoginFailure(clientKey);
     return NextResponse.json({ detail: 'Invalid administrative credentials.' }, { status: 401 });
   }
 
+  clearLoginFailures(clientKey);
   const session = issueAdminSession();
   if (!session) {
     return NextResponse.json({ detail: 'Administrative access is not configured.' }, { status: 503 });
