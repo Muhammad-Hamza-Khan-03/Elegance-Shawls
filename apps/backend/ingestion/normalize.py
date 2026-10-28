@@ -5,6 +5,7 @@ image URLs must pass the source image allowlist. Source price is kept as provena
 never converted to PKR; the retail price and stock are supplied by a human at approval.
 """
 import re
+import html
 import unicodedata
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
 
+from ingestion.markdown import html_to_markdown
 from ingestion.quill_scraper import ProductShawl, normalize_shopify_product_url
 from ingestion.safe_fetch import SourcePolicy, is_allowed_image_url, validate_url
 from models.ingestion_model import content_hash
@@ -38,6 +40,22 @@ def clean_text(value: str | None, limit: int) -> str | None:
     text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C" or ch in "\n\t")
     text = re.sub(r"\s+", " ", text).strip()
     return text[:limit] or None
+
+
+_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def clean_description(value: str | None, limit: int) -> str | None:
+    """Description as the safe Markdown subset: structure kept, markup and control characters removed."""
+    if value is None:
+        return None
+    raw = str(value)
+    if _TAG.search(raw):
+        return html_to_markdown(BeautifulSoup(raw, "html.parser"), limit) or None
+    text = "".join(ch for ch in html.unescape(raw) if unicodedata.category(ch)[0] != "C" or ch in "\n\t")
+    lines = [re.sub(r"[ \t\u00a0]+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+    return text[:limit].rstrip() or None
 
 
 def slugify(value: str) -> str:
@@ -117,7 +135,7 @@ def normalize(
         slug=slug,
         cover_image_url=images[0],
         images=images,
-        main_description=clean_text(scraped.description, 5000),
+        main_description=clean_description(scraped.description, 5000),
         category=CATEGORY_MAP[scraped.category],
         material=material,
         sizing=sizing,

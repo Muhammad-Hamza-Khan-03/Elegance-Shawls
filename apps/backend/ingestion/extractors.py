@@ -18,6 +18,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from ingestion.markdown import html_to_markdown, plain
 from ingestion.normalize import InvalidSourceData
 
 PRODUCT_TYPES = {"product", "productgroup"}
@@ -141,7 +142,7 @@ def parse_spec_lines(text: str | None) -> dict[str, str]:
     if not text:
         return specs
     for line in re.split(r"[\n\r;•·]+", text):
-        line = line.strip(" -–\t")
+        line = line.replace("**", "").strip(" -–\t")  # bullets and bold labels from structured descriptions
         made_in = re.match(r"made in\s+([A-Za-z][A-Za-z .'-]{1,60})$", line, re.I)
         if made_in and "origin" not in specs:
             specs["origin"] = made_in.group(1).strip()
@@ -163,6 +164,25 @@ def infer_category(*candidates: str | None) -> str | None:
     return None
 
 
+def _structured_description(soup: BeautifulSoup, reference: str | None) -> str | None:
+    """Markdown of the rendered description block, used only when it is the same text as ``reference``.
+
+    JSON-LD and meta descriptions are flattened (``...WrapComplete your...``); the visible theme block keeps
+    headings, paragraphs and lists. Text that does not match the reference is never substituted for it.
+    """
+    for selector in DESCRIPTION_SELECTORS:
+        for node in soup.select(selector):
+            markdown = html_to_markdown(node)
+            if not markdown:
+                continue
+            if reference is None:
+                return markdown
+            a, b = plain(reference), plain(markdown)
+            if a and b and (a == b or (min(len(a), len(b)) >= 40 and (a.startswith(b) or b.startswith(a)))):
+                return markdown
+    return None
+
+
 class ShopifyHtmlExtractor:
     """FieldExtractor for Shopify product pages served as static HTML."""
 
@@ -178,6 +198,7 @@ class ShopifyHtmlExtractor:
             or _first_text(soup, DESCRIPTION_SELECTORS)
             or _meta(soup, "og:description", "description")
         )
+        description = _structured_description(soup, description) or description
         if not title:
             raise InvalidSourceData("Page has no product title (JSON-LD, og:title or heading)")
         if not description:

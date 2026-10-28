@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Archive, Check, Eye, EyeOff, Loader2, Plus, RefreshCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MarkdownText } from '@/components/admin/MarkdownText';
+import { CATEGORY_LABELS } from '@/lib/categories';
 import {
   STAGED_STATUSES,
   availableActions,
@@ -29,9 +31,30 @@ type CardProps = {
   suggest?: (id: string) => Promise<PkrSuggestion>;
 };
 
+const sourceLabel = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+};
+
+const categoryLabel = (key: string) =>
+  (CATEGORY_LABELS as Record<string, string>)[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+
+const Fact = ({ label, children, muted = false }: { label: string; children: ReactNode; muted?: boolean }) => (
+  <div className="rounded-2xl border border-[#efe4d3] bg-[#fdfaf5] px-4 py-3">
+    <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9a6b3f]">{label}</dt>
+    <dd className={`mt-1 text-sm ${muted ? 'text-[#8a7b70]' : 'font-medium text-[#2f241f]'}`}>{children}</dd>
+  </div>
+);
+
 export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetchPkrSuggestion }: CardProps) => {
   const [suggestion, setSuggestion] = useState<PkrSuggestion | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const canSuggest = item.source_price != null && Boolean(item.source_currency);
   const loadSuggestion = async () => {
     setSuggestError(null);
@@ -50,74 +73,122 @@ export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetc
   const approveReady = price.trim() !== '' && Number.isInteger(priceValue) && priceValue >= 0 && Number.isInteger(Number(stock)) && Number(stock) >= 0;
   const rejectReady = reason.trim().length >= 3;
   const fire = (action: StagedAction, body?: ActionBody) => onAction?.(item, action, body);
+  const images = item.product.images.length ? item.product.images : [item.product.cover_image_url].filter(Boolean);
+  const current = images[Math.min(selected, Math.max(images.length - 1, 0))];
+  const description = item.product.main_description ?? '';
+  const longDescription = description.length > 700;
+  const field = (value?: string | null) => (value ? value : <span aria-label="not provided">Not provided</span>);
 
   return (
-    <article className="rounded-3xl border border-[#e7dac8] bg-white p-5" data-testid="staged-product">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-heading text-xl font-semibold">{item.product.name}</h3>
-          <p className="mt-1 text-sm text-[#6f625a]">
-            Source: {item.source_name} ·{' '}
-            <a className="break-all underline" href={item.source_url} target="_blank" rel="noreferrer noopener">
-              {item.source_url}
+    <article className="overflow-hidden rounded-3xl border border-[#e7dac8] bg-white shadow-sm" data-testid="staged-product">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[#efe4d3] bg-[#fbf7f1] px-6 py-5">
+        <div className="min-w-0 space-y-2">
+          <span className="inline-block rounded-full bg-[#2f241f] px-3 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+            {categoryLabel(item.product.category)}
+          </span>
+          <h3 className="font-heading text-2xl font-semibold leading-tight text-[#2f241f]">{item.product.name}</h3>
+          <p className="text-sm text-[#6f625a]">
+            {item.source_name} ·{' '}
+            <a className="break-all underline decoration-[#c9a577] underline-offset-2 hover:text-[#2f241f]" href={item.source_url} target="_blank" rel="noreferrer noopener" title={item.source_url}>
+              {sourceLabel(item.source_url)}
             </a>
+            <span className="sr-only"> ({item.source_url})</span>
           </p>
         </div>
-        <span className="rounded-full bg-[#f4ebe0] px-3 py-1 text-xs font-bold uppercase tracking-wide" data-testid="staged-status">
+        <span className="rounded-full border border-[#e2d2bb] bg-white px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#2f241f]" data-testid="staged-status">
           {statusLabel(item.status)}
         </span>
-      </div>
+      </header>
 
-      <div className="mt-4 flex gap-2 overflow-x-auto">
-        {item.product.images.slice(0, 6).map((src) => (
-          // Remote, untrusted image: plain <img> so Next's optimizer never fetches it server-side.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={src} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-24 w-24 rounded-xl object-cover" />
-        ))}
-      </div>
-
-      {item.product.main_description ? <p className="mt-4 text-sm leading-6">{item.product.main_description}</p> : null}
-
-      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-        <div><dt className="font-semibold">Source price</dt><dd>{formatSourcePrice(item.source_price, item.source_currency)}</dd></div>
-        <div><dt className="font-semibold">Stock</dt><dd>{item.stock_known ? 'Set by reviewer' : 'Unknown — reviewer must set'}</dd></div>
-        <div><dt className="font-semibold">Category</dt><dd>{item.product.category}</dd></div>
-        <div><dt className="font-semibold">Material</dt><dd>{item.product.material ?? '—'}</dd></div>
-      </dl>
-
-      {item.missing_fields.length > 0 ? (
-        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm" data-testid="missing-fields">
-          <p className="font-semibold">Missing or needs review</p>
-          <ul className="mt-1 list-disc pl-5">{item.missing_fields.map((field) => <li key={field}>{describeMissing(field)}</li>)}</ul>
+      <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+        <div className="space-y-3">
+          {current ? (
+            <div className="overflow-hidden rounded-2xl border border-[#efe4d3] bg-[#f6efe4]">
+              {/* Remote, untrusted image: plain <img> so Next's optimizer never fetches it server-side. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={current} alt={`${item.product.name} — photo ${selected + 1} of ${images.length}`} referrerPolicy="no-referrer" className="aspect-[4/5] w-full object-cover" />
+            </div>
+          ) : null}
+          {images.length > 1 ? (
+            <ul className="flex flex-wrap gap-2" aria-label="Product photos">
+              {images.slice(0, 12).map((src, index) => (
+                <li key={src}>
+                  <button type="button" onClick={() => setSelected(index)} aria-label={`Show photo ${index + 1}`} aria-current={index === selected}
+                    className={`block overflow-hidden rounded-xl border-2 ${index === selected ? 'border-[#2f241f]' : 'border-transparent opacity-80 hover:opacity-100'}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-14 w-14 object-cover" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-      ) : null}
-      {item.latest_source_hash ? (
-        <p className="mt-3 text-sm text-amber-800">The source changed after review. The changes were not applied.</p>
-      ) : null}
-      {item.rejection_reason ? <p className="mt-3 text-sm text-red-700">Rejected: {item.rejection_reason}</p> : null}
+
+        <div className="min-w-0 space-y-5">
+          <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Fact label="Source price">{formatSourcePrice(item.source_price, item.source_currency)}</Fact>
+            <Fact label="Stock" muted={!item.stock_known}>{item.stock_known ? 'Set by reviewer' : 'Unknown — reviewer must set'}</Fact>
+            <Fact label="Category">{categoryLabel(item.product.category)}</Fact>
+            <Fact label="Material" muted={!item.product.material}>{field(item.product.material)}</Fact>
+            <Fact label="Size" muted={!item.product.sizing}>{field(item.product.sizing)}</Fact>
+            <Fact label="Weight" muted={!item.product.weight}>{field(item.product.weight)}</Fact>
+          </dl>
+
+          {item.missing_fields.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm" data-testid="missing-fields">
+              <p className="font-semibold text-amber-900">Needs your attention</p>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {item.missing_fields.map((missing) => (
+                  <li key={missing} className="rounded-full border border-amber-300 bg-white px-3 py-0.5 text-xs text-amber-900">{describeMissing(missing)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {item.latest_source_hash ? (
+            <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">The source changed after review. The changes were not applied.</p>
+          ) : null}
+          {item.rejection_reason ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Rejected: {item.rejection_reason}</p> : null}
+
+          {description ? (
+            <section aria-labelledby={`desc-${item._id}`}>
+              <h4 id={`desc-${item._id}`} className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9a6b3f]">Description</h4>
+              <div className={`relative rounded-2xl border border-[#efe4d3] bg-white px-5 py-4 ${longDescription && !expanded ? 'max-h-72 overflow-hidden' : ''}`}>
+                <MarkdownText text={description} />
+                {longDescription && !expanded ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" /> : null}
+              </div>
+              {longDescription ? (
+                <button type="button" className="mt-2 text-sm font-semibold text-[#2f241f] underline underline-offset-2" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>
+                  {expanded ? 'Show less' : 'Read full description'}
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
+      </div>
 
       {actions.includes('approve') && (suggestion || suggestError) ? (
-        <div className="mt-4 rounded-2xl border border-[#d8c8b4] bg-[#faf5ee] p-3 text-sm" data-testid="pkr-suggestion">
+        <div className="mx-6 mb-4 rounded-2xl border border-[#d8c8b4] bg-[#faf5ee] p-4 text-sm" data-testid="pkr-suggestion">
           {suggestion ? (
             <>
               <p className="font-semibold">{formatSuggestion(suggestion)}</p>
               <p className="mt-1 text-[#6f625a]">{suggestion.note}</p>
-              <Button type="button" variant="outline" className="mt-2" onClick={() => setPrice(String(suggestion.suggested_pkr))}>Use as starting price</Button>
+              <Button type="button" variant="outline" className="mt-3" onClick={() => setPrice(String(suggestion.suggested_pkr))}>Use as starting price</Button>
             </>
           ) : <p role="alert" className="text-red-700">{suggestError}</p>}
         </div>
       ) : null}
 
       {actions.length > 0 ? (
-        <div className="mt-5 flex flex-wrap items-end gap-3">
+        <footer className="flex flex-wrap items-end gap-x-8 gap-y-4 border-t border-[#efe4d3] bg-[#fbf7f1] px-6 py-5">
           {actions.includes('approve') ? (
-            <fieldset className="flex flex-wrap items-end gap-2" disabled={busy}>
-              <label className="text-sm">Retail price (PKR)
-                <input className="mt-1 block w-32 rounded-lg border border-[#d8c8b4] px-2 py-1" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <fieldset className="flex flex-wrap items-end gap-3" disabled={busy}>
+              <legend className="sr-only">Approve</legend>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[#6f625a]">Retail price (PKR)
+                <input className="mt-1 block w-36 rounded-xl border border-[#d8c8b4] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#2f241f]" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
               </label>
               {canSuggest ? <Button type="button" variant="outline" onClick={() => void loadSuggestion()}>Suggest from source price</Button> : null}
-              <label className="text-sm">Stock
-                <input className="mt-1 block w-20 rounded-lg border border-[#d8c8b4] px-2 py-1" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value)} />
+              <label className="text-xs font-semibold uppercase tracking-wide text-[#6f625a]">Stock
+                <input className="mt-1 block w-24 rounded-xl border border-[#d8c8b4] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#2f241f]" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value)} />
               </label>
               <Button disabled={busy || !approveReady} onClick={() => fire('approve', { price: priceValue, stock: Number(stock) })}>
                 <Check className="h-4 w-4" /> Approve
@@ -125,9 +196,9 @@ export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetc
             </fieldset>
           ) : null}
           {actions.includes('reject') ? (
-            <fieldset className="flex flex-wrap items-end gap-2" disabled={busy}>
-              <label className="text-sm">Rejection reason
-                <input className="mt-1 block w-56 rounded-lg border border-[#d8c8b4] px-2 py-1" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <fieldset className="flex flex-wrap items-end gap-3 sm:ml-auto" disabled={busy}>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[#6f625a]">Rejection reason
+                <input className="mt-1 block w-60 rounded-xl border border-[#d8c8b4] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#2f241f]" value={reason} onChange={(e) => setReason(e.target.value)} />
               </label>
               <Button variant="outline" disabled={busy || !rejectReady} onClick={() => fire('reject', { reason: reason.trim() })}>
                 <X className="h-4 w-4" /> Reject
@@ -143,7 +214,7 @@ export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetc
           {actions.includes('archive') ? (
             <Button variant="outline" disabled={busy} onClick={() => fire('archive')}><Archive className="h-4 w-4" /> Archive</Button>
           ) : null}
-        </div>
+        </footer>
       ) : null}
     </article>
   );
@@ -206,7 +277,7 @@ export const StagedProductReview = () => {
     <section className="space-y-6">
       <div>
         <h2 className="font-heading text-3xl font-semibold">Staged products</h2>
-        <p className="mt-2 text-sm text-[#6f625a]">Imported products stay hidden until approved and published here.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6f625a]">Imported products stay hidden until you approve and publish them. Check the details, set the PKR price and stock, then approve.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-3xl border border-[#e7dac8] bg-white p-4">
@@ -228,7 +299,7 @@ export const StagedProductReview = () => {
       {error ? <p role="alert" className="rounded-2xl bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
       {notice ? <p role="status" className="rounded-2xl bg-green-50 p-3 text-sm text-green-800">{notice}</p> : null}
 
-      <div className="space-y-4">
+      <div className="space-y-8">
         {!loading && items.length === 0 && !error ? <p className="text-sm text-[#6f625a]">No staged products for this filter.</p> : null}
         {items.map((item) => <StagedProductCard key={item._id} item={item} busy={busyId === item._id} onAction={act} />)}
       </div>

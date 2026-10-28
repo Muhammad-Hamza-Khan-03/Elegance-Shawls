@@ -37,7 +37,7 @@ describe('staged product review card', () => {
     expect(html).toContain('Unknown — reviewer must set');
     expect(html).toContain('pending review');
     expect(html).toContain('Hand-finished cashmere.');
-    expect(html.match(/<img /g)).toHaveLength(2);
+    expect(html.match(/<img /g)).toHaveLength(3); // large photo + one thumbnail per image
     expect(html).toContain('Retail price (PKR) — set on approval');
     expect(html).toContain('Weight');
   });
@@ -73,7 +73,8 @@ describe('staged product review card', () => {
 
   it('offers nothing for archived products', () => {
     const html = render({ status: 'archived' });
-    expect(html).not.toContain('<button');
+    for (const label of ['Approve', 'Reject', 'Publish', 'Unpublish', 'Archive']) expect(html).not.toContain(`> ${label}</button>`);
+    expect(html).not.toContain('<footer');
   });
 
   it('flags a source change that was not applied', () => {
@@ -103,5 +104,45 @@ describe('PKR suggestion control', () => {
 
   it('is not offered once a product is past approval', () => {
     expect(renderToStaticMarkup(<StagedProductCard item={item({ status: 'approved' })} />)).not.toContain('Suggest from source price');
+  });
+});
+
+describe('review card layout and description', () => {
+  const markdown = '## Why you will love it\n\nA **soft** wrap.\n\n- Warm colour\n- Fringed edges';
+
+  it('renders the description as headings, paragraphs and lists, not one block of text', () => {
+    const html = render({ product: { ...item().product, main_description: markdown } });
+    expect(html).toContain('<h4');
+    expect(html).toContain('Why you will love it');
+    expect(html).toContain('<strong>soft</strong>');
+    const list = html.slice(html.indexOf('<ul class="list-disc'));
+    expect(list.slice(0, list.indexOf('</ul>')).match(/<li>/g)).toHaveLength(2);
+    expect(html).not.toContain('## ');
+    expect(html).not.toContain('**');
+  });
+
+  it('collapses a long description behind a toggle but keeps it in the page', () => {
+    const long = Array.from({ length: 30 }, (_, i) => `Paragraph ${i} with some descriptive text about the shawl.`).join('\n\n');
+    const html = render({ product: { ...item().product, main_description: long } });
+    expect(html).toContain('Read full description');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('Paragraph 29');
+    expect(render()).not.toContain('Read full description');
+  });
+
+  it('uses the shared category label, shows the source as host and path, and marks missing details honestly', () => {
+    const html = render({ product: { ...item().product, category: 'scarves' } });
+    expect(html).toContain('Scarves');
+    expect(html).toContain('shop.example/products/pearl');
+    expect(html).toContain('Not provided');
+    expect(html).toContain('aria-label="Product photos"');
+  });
+
+  it('never turns description markup into elements or links', () => {
+    const html = render({ product: { ...item().product, main_description: '<img src=x onerror=alert(1)> [click](https://evil.example) <script>alert(1)</script>' } });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).not.toContain('<img src="x"');
+    expect(html).toContain('&lt;img src=x');
+    expect(html).not.toContain('href="https://evil.example"');
   });
 });
