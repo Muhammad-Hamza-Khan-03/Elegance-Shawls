@@ -1,0 +1,34 @@
+[
+  {"id": "p01", "name": "Brown Pashmina Stole", "category": "stoles", "status": "active", "material": "Pure pashmina", "description": "Soft hand-woven stole.", "item_number": "ST-01", "created_at": "2026-10-01T10:00:00+00:00",
+   "variants": [
+     {"id": "p01a", "name": "Brown", "color": "Brown", "price": 3500, "currency": "PKR", "stock": 5},
+     {"id": "p01b", "name": "Camel", "color": "Camel", "price": 3500, "currency": "PKR", "stock": 2}]},
+  {"id": "p02", "name": "Black Wool Shawl", "category": "shawls", "status": "active", "material": "100% wool", "description": "Warm winter shawl.", "item_number": "SH-02", "created_at": "2026-10-02T10:00:00+00:00",
+   "variants": [
+     {"id": "p02a", "name": "Black", "color": "Black", "price": 6000, "currency": "PKR", "stock": 3},
+     {"id": "p02b", "name": "Black sale", "color": "Black", "price": 4500, "currency": "PKR", "stock": 0}]},
+  {"id": "p03", "name": "Maroon Embroidered Shawl", "category": "shawls", "status": "active", "material": null, "description": "Embroidered border.", "item_number": "SH-03", "created_at": "2026-10-03T10:00:00+00:00",
+   "variants": [
+     {"id": "p03a", "name": "Maroon", "color": "Maroon", "price": 8000, "currency": "PKR", "stock": 2},
+     {"id": "p03b", "name": "Black", "color": "Black", "price": 3900, "currency": "PKR", "stock": 0}]},
+  {"id": "p04", "name": "Cream Silk Scarf", "category": "scarves", "status": "active", "material": "Silk", "description": "Light scarf.", "item_number": "SC-04", "created_at": "2026-10-04T10:00:00+00:00",
+   "variants": [{"id": "p04a", "name": "Cream", "color": "Cream", "price": 1800, "currency": "PKR", "stock": 10}]},
+  {"id": "p05", "name": "Grey Wool Stole", "category": "stoles", "status": "active", "material": "Wool blend", "description": "Everyday stole.", "item_number": "ST-05", "created_at": "2026-10-05T10:00:00+00:00",
+   "variants": [
+     {"id": "p05a", "name": "Grey", "color": "Grey", "price": 2900, "currency": "PKR", "stock": 0},
+     {"id": "p05b", "name": "Beige", "color": "Beige", "price": 2400, "currency": "PKR", "stock": 4}]},
+  {"id": "p06", "name": "Pink Cotton Shawl", "category": "shawls", "status": "active", "material": "Cotton", "description": "Light cotton shawl.", "item_number": "SH-06", "created_at": "2026-10-06T10:00:00+00:00",
+   "variants": [
+     {"id": "p06a", "name": "Pink", "color": "Pink", "price": 2000, "currency": "PKR", "stock": 4},
+     {"id": "p06b", "name": "White", "color": "White", "price": 2000, "currency": "PKR", "stock": 1}]},
+  {"id": "p07", "name": "Red Scarf (draft)", "category": "scarves", "status": "draft", "material": null, "description": "Not published.", "item_number": "SC-07", "created_at": "2026-10-07T10:00:00+00:00",
+   "variants": [{"id": "p07a", "name": "Red", "color": "Red", "price": 900, "currency": "PKR", "stock": 5}]},
+  {"id": "p08", "name": "Plain Stole", "category": "stoles", "status": "active", "material": null, "description": "Colour not recorded.", "item_number": "ST-08", "created_at": "2026-10-08T10:00:00+00:00",
+   "variants": [{"id": "p08a", "name": "Standard", "color": null, "price": 1500, "currency": "PKR", "stock": 3}]},
+  {"id": "p09", "name": "Two Tone Wool Shawl", "category": "shawls", "status": "active", "material": "Wool", "description": "Black is dear, brown is cheap but sold out.", "item_number": "SH-09", "created_at": "2026-10-09T10:00:00+00:00",
+   "variants": [
+     {"id": "p09a", "name": "Black", "color": "Black", "price": 9000, "currency": "PKR", "stock": 5},
+     {"id": "p09b", "name": "Brown", "color": "Brown", "price": 3000, "currency": "PKR", "stock": 0}]},
+  {"id": "p10", "name": "Imported Shawl", "category": "shawls", "status": "active", "material": "Cotton", "description": "Priced in dollars.", "item_number": "SH-10", "created_at": "2026-10-10T10:00:00+00:00",
+   "variants": [{"id": "p10a", "name": "Brown", "color": "Brown", "price": 30, "currency": "USD", "stock": 2}]}
+]

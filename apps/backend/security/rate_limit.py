@@ -67,7 +67,8 @@ class RateLimitMiddleware:
         client = request.client.host if request.client else "unknown"
         # Event batches are anonymous POSTs with their own, tighter limit (never exempted).
         is_events = request.url.path.startswith("/v1/events")
-        is_admin = not is_events and (
+        is_search = request.url.path.rstrip("/") == "/v1/search"  # anonymous read-only POST: public limit
+        is_admin = not is_events and not is_search and (
             request.url.path.startswith(("/products/admin", "/v1/admin")) or request.method != "GET"
         )
         limit = (

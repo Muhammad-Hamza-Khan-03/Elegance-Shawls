@@ -3,10 +3,12 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import func, select, tuple_, update
+from sqlalchemy import exists, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from catalog.query import ParsedQuery
+from catalog.search import CURRENCY
 from models.relational_model import Product, StagedProduct, Variant
 from repositories import Conflict, InvalidDraft, NotFound
 
@@ -208,3 +210,35 @@ async def replace_product(session: AsyncSession, product_id: uuid.UUID, data: Pr
             raise Conflict("Product slug already exists", Conflict.SLUG_EXISTS) from exc
         raise InvalidDraft(str(exc.orig)) from exc
     return await reload(session, product_id)
+
+
+async def search_batch(session: AsyncSession, q: ParsedQuery, after: Key | None, n: int) -> list[Product]:
+    """Read-only: the next `n` active products in catalogue order that MAY match `q`.
+
+    The predicates only ever narrow to a superset of the true matches (category, numeric/stock bounds on
+    one variant, ASCII text tokens as substrings); catalog.search.evaluate decides exactly. Same
+    (created_at, id) order and keyset as list_products.
+    """
+    stmt = select(Product).where(Product.status == "active")
+    if q.categories:
+        stmt = stmt.where(Product.category.in_(q.categories))
+    variant = [Variant.product_id == Product.id, Variant.is_active]
+    if q.min_price is not None or q.max_price is not None:
+        variant.append(Variant.currency == CURRENCY)
+    if q.min_price is not None:
+        variant.append(Variant.price >= q.min_price)
+    if q.max_price is not None:
+        variant.append(Variant.price <= q.max_price)
+    if q.in_stock:
+        variant.append(Variant.stock > 0)
+    if len(variant) > 2:
+        stmt = stmt.where(exists().where(*variant))
+    for token in q.text:
+        if token.isascii():  # other scripts are normalised in Python only, so they are left to evaluate()
+            stmt = stmt.where(or_(
+                *[c.icontains(token, autoescape=True) for c in (Product.name, Product.main_description, Product.material, Product.item_number)],
+                exists().where(Variant.product_id == Product.id, Variant.name.icontains(token, autoescape=True))))
+    if after is not None:
+        stmt = stmt.where(tuple_(Product.created_at, Product.id) < tuple_(*after))
+    stmt = stmt.order_by(Product.created_at.desc(), Product.id.desc()).limit(n)
+    return list((await session.execute(stmt)).scalars())

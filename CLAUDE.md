@@ -45,6 +45,7 @@ alembic upgrade head | downgrade base         # needs DATABASE_URL; migrations l
 arq workers.settings.WorkerSettings           # Redis/arq worker for new AI workloads only
 python scripts/llm_smoke.py --fake            # LLM gateway smoke test, no keys
 python evals/run_evals.py [--release-ready]   # from the repo root; recorded responses, "not evaluated" blocks release
+python evals/run_retrieval_evals.py           # Phase 1 deterministic retrieval/constraint gate (offline; not model evidence, does not change release_ready)
 docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait   # local Postgres + Redis (internal network)
 ```
 Plans and decisions: `plans/` holds the roadmap; `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` is the single canonical architecture document (no separate ADR files).
@@ -62,6 +63,7 @@ Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `produ
 - Optional services never gate startup: `database/redis_client.py`, `llm/` (gateway) and `workers/` (arq) degrade to disabled when unconfigured or unreachable (PostgreSQL, by contrast, is required). New endpoints live under `/v1` (events, admin jobs). Flat package layout is intentional (architecture doc 3.2).
 - `routes/product_routes.py` has a public router plus a nested `admin_router` (`/products/admin/...`) guarded by `security/admin_auth.require_admin_api_key`, which does a constant-time `X-Admin-Key` comparison and returns 503 if `ADMIN_API_KEY` is unset.
 - Public visibility means `is_active=True` **and** `status=="active"`. Admin "delete" is a soft delete (archive).
+- `POST /v1/search` `{q, limit<=50, cursor}` is read-only catalogue search (public rate limit, exempted from the non-GET admin bucket in `security/rate_limit.py`). `catalog/vocab.yaml` is the reviewed English/Urdu/Roman Urdu vocabulary; `catalog/query.py` parses it deterministically (no LLM) into hard constraints; `catalog/search.py` matches them exactly on one active variant (never relaxed; unknown colour/material never matches). Results are newest first with the house `(created_at, id)` keyset cursor. PostgreSQL narrows candidates (`repositories.products.search_batch`, a conservative superset) and the matcher verifies at most 2000 rows per request, so a page can be short while `next_cursor` is set: keep paging until it is null. Unrecognised words must appear as whole words in the product text; there is no relevance ranking yet.
 - IDs are UUIDs, exposed as opaque strings under the unchanged `_id` key. Pagination is keyset on `(created_at, id)` descending with opaque, checksummed cursors (`utils/pagination.py`; malformed or tampered cursors are a 400). List responses are `{items, next_cursor}`.
 
 ### Frontend

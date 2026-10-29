@@ -9,6 +9,7 @@ from routes.product_routes import router as product_router
 from routes.ingestion_routes import router as ingestion_router
 from routes.event_routes import router as event_router
 from routes.job_routes import router as job_router
+from routes.search_routes import router as search_router
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
 from observability.request_log import RequestLogMiddleware
 from observability.tracing import configure_exporters
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(llm_router)
     app.include_router(llm_admin_router)
     app.include_router(event_router)
+    app.include_router(search_router)
 
     # Health Check
     @app.get("/health/", tags=["Health"])
