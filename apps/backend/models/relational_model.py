@@ -31,6 +31,7 @@ JOB_STATUSES = ("queued", "running", "succeeded", "retrying", "failed", "cancell
 STAGED_STATUSES = ("pending_review", "approved", "rejected", "published", "unpublished", "archived")
 ATTRIBUTE_KEYS = ("color_name", "color_family", "fabric", "composition", "pattern", "occasion", "season", "style", "authenticity")
 ATTRIBUTE_SOURCES = ("visual_suggestion", "supplier_declared", "staff_approved", "imported")
+ENRICHMENT_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
 # States that only exist once a reviewer has approved a price and a catalogue product has been created.
 STAGED_APPROVED_STATES = ("approved", "published", "unpublished")
 
@@ -444,3 +445,36 @@ class StagedProductAudit(Base):
     to_status: Mapped[str | None] = mapped_column(Text)
     actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="admin")
     note: Mapped[str | None] = mapped_column(Text)
+
+
+class EnrichmentSuggestion(Base):
+    """Reviewable, non-authoritative model suggestions for one staged product. Never read by the catalogue."""
+    __tablename__ = "enrichment_suggestions"
+    __table_args__ = (
+        UniqueConstraint("staged_product_id", "input_content_hash", "prompt_version", "model",
+                         name="uq_enrichment_suggestions_idempotency"),
+        CheckConstraint(_in("status", ENRICHMENT_STATUSES), name="status"),
+        CheckConstraint("attempts BETWEEN 0 AND 2", name="attempts_bounded"),
+        Index("ix_enrichment_suggestions_active", "staged_product_id", unique=True,
+              postgresql_where=text("status IN ('queued', 'running')")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    staged_product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("staged_products.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    suggestions: Mapped[dict | None] = mapped_column(JSONB)
+    validation_errors: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    vocabulary_version: Mapped[str] = mapped_column(Text, nullable=False)
+    input_content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

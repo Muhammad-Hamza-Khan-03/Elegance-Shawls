@@ -7,6 +7,7 @@ from database.pg import close_postgres, connect_to_postgres, database_is_ready, 
 from database.redis_client import close_redis, redis_configured, redis_is_ready
 from routes.product_routes import router as product_router
 from routes.ingestion_routes import router as ingestion_router
+from routes.enrichment_routes import router as enrichment_router
 from routes.event_routes import router as event_router
 from routes.job_routes import router as job_router
 from routes.search_routes import router as search_router
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(product_router)
     app.include_router(ingestion_router)
+    app.include_router(enrichment_router)
     app.include_router(job_router)
     app.include_router(llm_router)
     app.include_router(llm_admin_router)

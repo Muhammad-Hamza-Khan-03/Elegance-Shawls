@@ -74,6 +74,10 @@ class settings(BaseSettings):
     llm_price_per_million_output_usd: float = 0.0
     llm_max_attempts: int = 3
     llm_timeout_seconds: float = 20.0
+    # Staged-product enrichment suggestions (P1-S3). Empty model = disabled. Attempts (2) are fixed by the contract.
+    enrichment_model: str = ""
+    enrichment_backoff_seconds: float = 1.0
+    enrichment_backoff_cap_seconds: float = 8.0
     # Advisory provider model discovery; cache is fresh for 6h and serveable stale for 48h.
     llm_discovery_fresh_ttl_seconds: int = 6 * 3600
     llm_discovery_stale_ceiling_seconds: int = 48 * 3600
