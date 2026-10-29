@@ -5,7 +5,11 @@ import {
   STAGED_STATUSES,
   StagingApiError,
   availableActions,
+  canRequestEnrichment,
+  cancelEnrichment,
   describeMissing,
+  fetchEnrichment,
+  requestEnrichment,
   formatSourcePrice,
   formatSuggestion,
   listStaged,
@@ -119,5 +123,46 @@ describe('PKR suggestion', () => {
   it('is described as an approximate reference with its rate and date', () => {
     expect(formatSuggestion({ source_price: 125, source_currency: 'AUD', rate: 194.9163, rate_date: '2026-10-28', suggested_pkr: 24365, note: 'x' }))
       .toBe('≈ PKR 24,365 (1 AUD = 194.92 PKR, rate of 2026-10-28)');
+  });
+});
+
+describe('enrichment client', () => {
+  const sid = '22222222-2222-4222-8222-222222222222';
+  const rid = '11111111-1111-4111-8111-111111111111';
+
+  it('treats a missing suggestion (404) as the empty state but surfaces other errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ detail: 'No enrichment suggestion for this staged product' }, 404)));
+    expect(await fetchEnrichment(sid)).toBeNull();
+    for (const status of [409, 502, 503]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ detail: 'nope' }, status)));
+      await expect(fetchEnrichment(sid)).rejects.toMatchObject({ status });
+    }
+  });
+
+  it('requests with POST and cancels via the dedicated route only', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => json({ id: rid, status: 'queued' }, 202));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await requestEnrichment(sid)).toMatchObject({ status: 'queued' });
+    await cancelEnrichment(sid, rid);
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
+      [`/api/admin/ingestion/staged/${sid}/enrichment`, 'POST'],
+      [`/api/admin/ingestion/staged/${sid}/enrichment/${rid}/cancel`, 'POST'],
+    ]);
+  });
+
+  it('keeps 409 and 503 distinct', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ detail: 'Cannot enrich a staged product that is archived' }, 409)));
+    await expect(requestEnrichment(sid)).rejects.toMatchObject({ status: 409, message: 'Cannot enrich a staged product that is archived' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ detail: 'Job queue is unavailable' }, 503)));
+    await expect(requestEnrichment(sid)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('applies request rules', () => {
+    expect(canRequestEnrichment('pending_review', null)).toBe(true);
+    expect(canRequestEnrichment('published', { status: 'failed' })).toBe(true);
+    expect(canRequestEnrichment('pending_review', { status: 'queued' })).toBe(false);
+    expect(canRequestEnrichment('pending_review', { status: 'running' })).toBe(false);
+    expect(canRequestEnrichment('rejected', null)).toBe(false);
+    expect(canRequestEnrichment('archived', null)).toBe(false);
   });
 });

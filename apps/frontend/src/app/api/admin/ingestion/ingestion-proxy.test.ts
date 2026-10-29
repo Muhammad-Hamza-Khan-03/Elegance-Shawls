@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as listStagedRoute } from './staged/route';
 import { GET as pkrSuggestion } from './staged/[stagedId]/pkr-suggestion/route';
 import { POST as stagedAction } from './staged/[stagedId]/[action]/route';
+import { GET as getEnrichment, POST as postEnrichment } from './staged/[stagedId]/enrichment/route';
+import { POST as cancelEnrichmentRoute } from './staged/[stagedId]/enrichment/[suggestionId]/cancel/route';
 import { GET as listJobs, POST as createJob } from './jobs/route';
 import { ADMIN_SESSION_COOKIE, issueAdminSession } from '@/lib/admin-session';
 
 const origin = 'https://store.example.invalid';
 const id = '507f1f77bcf86cd799439011';
+const uuid = '22222222-2222-4222-8222-222222222222';
+const suggestionId = '11111111-1111-4111-8111-111111111111';
 
 const routes = [
   { name: 'list staged', method: 'GET', path: '/api/admin/ingestion/staged?status=pending_review', backend: '/products/admin/ingestion/staged?status=pending_review', handler: listStagedRoute },
@@ -16,6 +20,11 @@ const routes = [
   { name: 'unpublish', method: 'POST', path: `/api/admin/ingestion/staged/${id}/unpublish`, backend: `/products/admin/ingestion/staged/${id}/unpublish`, handler: stagedAction },
   { name: 'archive', method: 'POST', path: `/api/admin/ingestion/staged/${id}/archive`, backend: `/products/admin/ingestion/staged/${id}/archive`, handler: stagedAction },
   { name: 'pkr suggestion', method: 'GET', path: `/api/admin/ingestion/staged/${id}/pkr-suggestion`, backend: `/products/admin/ingestion/staged/${id}/pkr-suggestion`, handler: pkrSuggestion },
+  { name: 'uuid approve', method: 'POST', path: `/api/admin/ingestion/staged/${uuid}/approve`, backend: `/products/admin/ingestion/staged/${uuid}/approve`, handler: stagedAction },
+  { name: 'uuid pkr suggestion', method: 'GET', path: `/api/admin/ingestion/staged/${uuid}/pkr-suggestion`, backend: `/products/admin/ingestion/staged/${uuid}/pkr-suggestion`, handler: pkrSuggestion },
+  { name: 'get enrichment', method: 'GET', path: `/api/admin/ingestion/staged/${uuid}/enrichment`, backend: `/products/admin/ingestion/staged/${uuid}/enrichment`, handler: getEnrichment },
+  { name: 'request enrichment', method: 'POST', path: `/api/admin/ingestion/staged/${uuid}/enrichment`, backend: `/products/admin/ingestion/staged/${uuid}/enrichment`, handler: postEnrichment },
+  { name: 'cancel enrichment', method: 'POST', path: `/api/admin/ingestion/staged/${uuid}/enrichment/${suggestionId}/cancel`, backend: `/products/admin/ingestion/staged/${uuid}/enrichment/${suggestionId}/cancel`, handler: cancelEnrichmentRoute },
   { name: 'list jobs', method: 'GET', path: '/api/admin/ingestion/jobs', backend: '/products/admin/ingestion/jobs', handler: listJobs },
   { name: 'queue job', method: 'POST', path: '/api/admin/ingestion/jobs', backend: '/products/admin/ingestion/jobs', handler: createJob },
 ] as const;
@@ -93,6 +102,28 @@ describe('ingestion admin proxy', () => {
     });
     expect((await stagedAction(request)).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['get', getEnrichment, 'GET', '/staged/not-an-id/enrichment'],
+    ['get 24-hex', getEnrichment, 'GET', `/staged/${id}/enrichment`],
+    ['request', postEnrichment, 'POST', '/staged/..%2f/enrichment'],
+    ['cancel bad staged', cancelEnrichmentRoute, 'POST', `/staged/nope/enrichment/${suggestionId}/cancel`],
+    ['cancel bad suggestion', cancelEnrichmentRoute, 'POST', `/staged/${uuid}/enrichment/${id}/cancel`],
+  ])('does not forward malformed enrichment ids (%s)', async (_name, handler, method, path) => {
+    const session = issueAdminSession()!;
+    const request = new Request(`${origin}/api/admin/ingestion${path}`, { method, headers: { cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`, origin } });
+    expect((await handler(request)).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([404, 409, 502, 503])('relays enrichment backend %i unchanged', async (status) => {
+    const session = issueAdminSession()!;
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: `backend ${status}` }), { status, headers: { 'content-type': 'application/json' } }));
+    const route = routes.find((r) => r.name === 'request enrichment')!;
+    const response = await route.handler(make(route, session.token, origin));
+    expect(response.status).toBe(status);
+    expect((await response.json()).detail).toBe(`backend ${status}`);
   });
 
   it('relays backend state errors unchanged', async () => {

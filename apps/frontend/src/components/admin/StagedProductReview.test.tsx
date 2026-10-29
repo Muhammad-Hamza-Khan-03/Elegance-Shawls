@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StagedProductCard } from './StagedProductReview';
-import type { StagedProduct } from '@/lib/staging';
+import { EnrichmentView, StagedProductCard } from './StagedProductReview';
+import type { Enrichment, StagedProduct } from '@/lib/staging';
 
 const item = (over: Partial<StagedProduct> = {}): StagedProduct => ({
   _id: '507f1f77bcf86cd799439011',
@@ -144,5 +144,93 @@ describe('review card layout and description', () => {
     expect(html).not.toContain('<img src="x"');
     expect(html).toContain('&lt;img src=x');
     expect(html).not.toContain('href="https://evil.example"');
+  });
+});
+
+const run = (over: Partial<Enrichment> = {}): Enrichment => ({
+  id: '11111111-1111-4111-8111-111111111111',
+  staged_product_id: '22222222-2222-4222-8222-222222222222',
+  status: 'succeeded',
+  authoritative: false,
+  suggestions: {
+    pattern: { value: 'floral', reason: 'Embroidered flowers <b>visible</b>', source: 'visual_suggestion' },
+    season: { value: null, reason: 'Cannot tell from the photo', source: 'visual_suggestion' },
+  },
+  validation_errors: [],
+  provider: 'fixture-provider',
+  model: 'fixture-model',
+  prompt_version: 'p1',
+  vocabulary_version: 'v1',
+  input_content_hash: 'abc123hash',
+  attempts: 1,
+  trace_id: 'trace-9',
+  created_at: '2026-01-01T00:00:00Z',
+  started_at: '2026-01-01T00:00:05Z',
+  finished_at: '2026-01-01T00:00:09Z',
+  ...over,
+});
+
+const view = (data: Enrichment | null | undefined, over: Partial<Parameters<typeof EnrichmentView>[0]> = {}) =>
+  renderToStaticMarkup(
+    <EnrichmentView stagedStatus="pending_review" data={data} busy={false} error={null} notice={null} onRequest={() => {}} onCancel={() => {}} onRefresh={() => {}} {...over} />
+  );
+
+describe('enrichment panel', () => {
+  it('shows the advisory label, provenance, metadata and escaped text', () => {
+    const html = view(run());
+    for (const text of ['Advisory suggestion — not catalogue truth', 'succeeded', 'floral', 'Reason: Embroidered flowers &lt;b&gt;visible&lt;/b&gt;', 'Source: visual_suggestion',
+      'No suggestion', 'fixture-provider', 'fixture-model', 'abc123hash', 'trace-9', 'Attempts:', '2026-01-01 00:00:09 UTC']) expect(html).toContain(text);
+    expect(html).not.toContain('<b>visible</b>');
+  });
+
+  it('never offers apply, edit or approval controls', () => {
+    expect(view(run())).not.toMatch(/Apply|Auto-fill|Approve|Publish|<input|<textarea/);
+  });
+
+  it('shows an intentional empty state and offers a request', () => {
+    const html = view(null);
+    expect(html).toContain('No suggestions have been requested');
+    expect(html).toContain('Request suggestions');
+    expect(html).not.toContain('Cancel run');
+  });
+
+  it('offers cancel but no request while queued or running', () => {
+    for (const status of ['queued', 'running'] as const) {
+      const html = view(run({ status, suggestions: null }));
+      expect(html).toContain('Cancel run');
+      expect(html).not.toContain('Request new suggestions');
+    }
+  });
+
+  it('allows re-request after a terminal state', () => {
+    for (const status of ['succeeded', 'failed', 'cancelled'] as const) expect(view(run({ status }))).toContain('Request new suggestions');
+  });
+
+  it.each(['rejected', 'archived'] as const)('does not offer a request for %s products', (stagedStatus) => {
+    const html = view(run(), { stagedStatus });
+    expect(html).not.toContain('Request new suggestions');
+    expect(html).toContain('cannot be requested');
+  });
+
+  it('shows validation warnings and failures as alerts', () => {
+    const html = view(run({ status: 'failed', suggestions: null, validation_errors: ['pattern: value is not in the canonical vocabulary'], last_error: 'provider_timeout' }));
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('pattern: value is not in the canonical vocabulary');
+    expect(html).toContain('The run failed: provider_timeout');
+  });
+
+  it('announces errors, notices and loading', () => {
+    expect(view(undefined)).toContain('role="status"');
+    expect(view(null, { error: 'Job queue is unavailable. Try again shortly.' })).toContain('role="alert"');
+    expect(view(run(), { notice: 'Suggestion run requested.' })).toContain('role="status"');
+  });
+
+  it('disables the request button while busy', () => {
+    expect(view(null, { busy: true })).toMatch(/<button[^>]*disabled=""[^>]*>[^]*Request suggestions/);
+  });
+
+  it('is only mounted for UUID staged ids', () => {
+    expect(renderToStaticMarkup(<StagedProductCard item={item()} />)).not.toContain('Enrichment suggestions');
+    expect(renderToStaticMarkup(<StagedProductCard item={item({ _id: '22222222-2222-4222-8222-222222222222' })} />)).toContain('Enrichment suggestions');
   });
 });
