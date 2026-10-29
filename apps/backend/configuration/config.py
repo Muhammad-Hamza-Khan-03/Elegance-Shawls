@@ -78,6 +78,17 @@ class settings(BaseSettings):
     enrichment_model: str = ""
     enrichment_backoff_seconds: float = 1.0
     enrichment_backoff_cap_seconds: float = 8.0
+    # Catalogue embeddings (P1-S4b). Off and provider-less by default: nothing embeds until an operator opts in.
+    embedding_enabled: bool = False
+    embedding_provider: str = ""
+    embedding_dimensions: int = 768  # must equal the vector column width (models.relational_model.EMBEDDING_DIMENSIONS)
+    embedding_index_version: str = "hnsw-cosine-m16-efc64-v1"
+    embedding_max_jobs: int = 2
+    embedding_job_timeout_seconds: int = 60
+    embedding_max_attempts: int = 3
+    embedding_lease_seconds: int = 90
+    embedding_backoff_seconds: float = 30.0
+    embedding_backfill_max_limit: int = 500
     # Advisory provider model discovery; cache is fresh for 6h and serveable stale for 48h.
     llm_discovery_fresh_ttl_seconds: int = 6 * 3600
     llm_discovery_stale_ceiling_seconds: int = 48 * 3600

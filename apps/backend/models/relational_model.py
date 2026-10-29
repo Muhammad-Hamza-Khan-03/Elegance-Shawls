@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 CUSTOMER_STATUSES = ("anonymous", "registered")
@@ -478,3 +479,78 @@ class EnrichmentSuggestion(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# --------------------------------------------------------------------------------------------
+# Embeddings (S4b): derived, rebuildable vectors. Nothing here is catalogue truth and nothing reads back into it.
+# --------------------------------------------------------------------------------------------
+EMBEDDING_DIMENSIONS = 768  # the column width; a different width needs a new column and index (new migration)
+EMBEDDING_STATUSES = ("queued", "running", "succeeded", "failed", "stale")
+HNSW_M, HNSW_EF_CONSTRUCTION = 16, 64
+EMBEDDING_KEY = ("source_revision", "representation_version", "representation_hash", "provider", "model",
+                 "model_revision", "index_version")
+
+
+class _EmbeddingColumns:
+    """Shared by both tables. status: queued -> running -> succeeded | failed | stale (the source moved on)."""
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    source_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    representation_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    model_revision: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False, server_default=str(EMBEDDING_DIMENSIONS))
+    index_version: Mapped[str] = mapped_column(Text, nullable=False)
+    distance_metric: Mapped[str] = mapped_column(Text, nullable=False, server_default="cosine")
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_error_retryable: Mapped[bool | None] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+def _embedding_table_args(table: str, owner: str) -> tuple:
+    return (
+        UniqueConstraint(owner, *EMBEDDING_KEY, name=f"uq_{table}_identity"),
+        CheckConstraint(_in("status", EMBEDDING_STATUSES), name="status"),
+        CheckConstraint(f"dimensions = {EMBEDDING_DIMENSIONS}", name="dimensions"),
+        CheckConstraint("distance_metric = 'cosine'", name="distance_metric"),
+        CheckConstraint("source_revision >= 1", name="source_revision_positive"),
+        CheckConstraint("attempts >= 0 AND max_attempts >= 1 AND attempts <= max_attempts", name="attempts_bounded"),
+        CheckConstraint("status <> 'succeeded' OR embedding IS NOT NULL", name="succeeded_has_vector"),
+        CheckConstraint("status <> 'running' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+                        name="lease_present_while_running"),
+        Index(f"ix_{table}_embedding_hnsw", "embedding", postgresql_using="hnsw",
+              postgresql_with={"m": HNSW_M, "ef_construction": HNSW_EF_CONSTRUCTION},
+              postgresql_ops={"embedding": "vector_cosine_ops"}, postgresql_where=text("status = 'succeeded'")),
+        Index(f"ix_{table}_claimable", "available_at", postgresql_where=text("status = 'queued'")),
+    )
+
+
+class ProductEmbedding(_EmbeddingColumns, Base):
+    __tablename__ = "product_embeddings"
+    __table_args__ = (*_embedding_table_args("product_embeddings", "product_id"),
+                      Index("ix_product_embeddings_product_id", "product_id"))
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+
+
+class VariantEmbedding(_EmbeddingColumns, Base):
+    __tablename__ = "variant_embeddings"
+    __table_args__ = (
+        *_embedding_table_args("variant_embeddings", "variant_id"),
+        # product_id is the variant's own product (composite FK), so a vector can never point at another product's variant.
+        ForeignKeyConstraint(["variant_id", "product_id"], ["variants.id", "variants.product_id"], ondelete="CASCADE",
+                             name="fk_variant_embeddings_variant_id_variants"),
+        Index("ix_variant_embeddings_product_id", "product_id"),
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
