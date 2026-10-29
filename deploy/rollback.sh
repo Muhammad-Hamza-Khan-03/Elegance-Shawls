@@ -1,6 +1,6 @@
 #!/bin/bash
 # Coordinated application rollback (or roll-forward) to existing immutable images.
-# Replaces only the backend and frontend containers: MongoDB data, the proxy and
+# Replaces only the backend and frontend containers: PostgreSQL data, the proxy and
 # its certificates are untouched. Run from the repository root next to .env.
 #
 # Usage: deploy/rollback.sh <APP_VERSION>

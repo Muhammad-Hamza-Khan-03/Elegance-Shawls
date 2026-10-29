@@ -4,7 +4,7 @@
 
 Ingest products from **one explicitly authorized, configurable source** into an isolated staging area. A human approves each product, then manually publishes it. Nothing becomes public automatically.
 
-Development uses fixtures and `mongomock_motor` only. No real source is configured: `INGESTION_SOURCE_DOMAIN` is empty by default and the source record must have `authorized=true`, set deliberately by an operator.
+Development uses fixtures and a throwaway PostgreSQL (Testcontainers) only. No real source is configured: `INGESTION_SOURCE_DOMAIN` is empty by default and the source record must have `authorized=true`, set deliberately by an operator.
 
 ## Excluded
 

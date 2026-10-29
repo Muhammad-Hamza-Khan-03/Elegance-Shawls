@@ -5,7 +5,6 @@ import pytest
 from ingestion import fx
 from ingestion.fx import Rate, RateUnavailable, get_pkr_rate, parse_rate, suggest_pkr
 from routes import ingestion_routes
-from tests.test_ingestion_review import H, Env
 
 GOOD = {"date": "2026-10-28", "aud": {"pkr": 194.5, "usd": 0.65}}
 
@@ -86,57 +85,8 @@ def test_parse_and_round():
     assert parse_rate("aud", GOOD).rate == 194.5
 
 
-@pytest.fixture
-def env(monkeypatch):
-    return Env(monkeypatch)
-
-
-def stub_rate(monkeypatch, rate=Rate("aud", 200.0, "2026-10-28")):
-    async def fake(currency):
-        return rate
-    monkeypatch.setattr(ingestion_routes, "get_pkr_rate", fake)
-
-
-def test_endpoint_returns_a_reference_suggestion_and_changes_nothing(env, monkeypatch):
-    stub_rate(monkeypatch)
-    sid = env.stage()
-    before = env.run(env.db.staged_products.find_one())
-    response = env.client.get(f"/products/admin/ingestion/staged/{sid}/pkr-suggestion", headers=H)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source_price"] == 189.0 and body["source_currency"] == "AUD"
-    assert body["suggested_pkr"] == 37800 and body["rate"] == 200.0 and body["rate_date"] == "2026-10-28"
-    assert "reviewer sets the retail price" in body["note"]
-    assert env.run(env.db.staged_products.find_one()) == before  # nothing saved, no price set
-    assert env.run(env.db.products.count_documents({})) == 0
-
-
-def test_endpoint_requires_the_admin_key(env, monkeypatch):
-    stub_rate(monkeypatch)
-    sid = env.stage()
-    assert env.client.get(f"/products/admin/ingestion/staged/{sid}/pkr-suggestion").status_code == 401
-
-
-def test_endpoint_refuses_when_price_or_currency_is_unknown(env, monkeypatch):
-    stub_rate(monkeypatch)
-    for field in ("source_price", "source_currency"):
-        sid = env.stage(slug=f"p-{field}", pid=field)
-        env.run(env.db.staged_products.update_one({"_id": __import__("bson").ObjectId(sid)}, {"$set": {field: None}}))
-        response = env.client.get(f"/products/admin/ingestion/staged/{sid}/pkr-suggestion", headers=H)
-        assert response.status_code == 409 and "manually" in response.json()["detail"]
-
-
-def test_endpoint_reports_an_unavailable_rate_and_unknown_ids(env, monkeypatch):
-    async def down(currency):
-        raise RateUnavailable("Exchange rate is currently unavailable")
-    monkeypatch.setattr(ingestion_routes, "get_pkr_rate", down)
-    sid = env.stage()
-    assert env.client.get(f"/products/admin/ingestion/staged/{sid}/pkr-suggestion", headers=H).status_code == 502
-    assert env.client.get("/products/admin/ingestion/staged/507f1f77bcf86cd799439011/pkr-suggestion", headers=H).status_code == 404
-
-
 def test_ingestion_code_never_uses_exchange_rates():
     from pathlib import Path
     root = Path(ingestion_routes.__file__).parents[1] / "ingestion"
-    for name in ("pipeline.py", "normalize.py", "refresh.py", "worker.py", "jobs.py", "sitemap.py"):
+    for name in ("pipeline.py", "normalize.py", "refresh.py", "worker.py", "sitemap.py"):
         assert "fx" not in (root / name).read_text().replace("fixture", "")

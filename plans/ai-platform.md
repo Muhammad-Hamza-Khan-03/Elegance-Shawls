@@ -1,5 +1,12 @@
 # Elegance Shawls: AI Commerce Platform Plan
 
+> **Status: HISTORICAL / SUPERSEDED for the database architecture — do not use as current instructions.**
+> - PostgreSQL is now the **sole runtime database** (`DATABASE_URL` is required).
+> - MongoDB removal was **completed in S4** (code, dependencies, compose, CI and backup scripts).
+> - Every MongoDB, Motor, Atlas, archive-to-R2 and Mongo-backup instruction below is **historical only**, kept for audit value. This document must not be used as deployment instructions.
+> - Authoritative documents: `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md`, `DEPLOYMENT.md`, `OPERATIONS.md`.
+> - The roadmap content below is otherwise unchanged.
+
 > Turning a catalogue + WhatsApp storefront into a shop that understands its customers, built mostly on free and open-source tooling, and used as a structured path through AI engineering, data science, ML/LLMOps and DevOps.
 
 | | |

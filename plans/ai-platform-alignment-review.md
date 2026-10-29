@@ -1,5 +1,9 @@
 # Plan alignment review
 
+> **HISTORICAL / SUPERSEDED — do not use as current instructions.** This review compares the plan with the repository as it was when the catalogue and ingestion jobs ran on MongoDB.
+> The current authoritative architecture is **PostgreSQL-only**: PostgreSQL is required at runtime (`DATABASE_URL`; the backend will not start without it). MongoDB removal was completed in S4 (code, dependencies, compose, CI and backup scripts). References below to MongoDB, Motor, Mongo-backed jobs or `MONGODB_URI`/`MONGO_DB_NAME` describe the earlier design and are kept only for audit and history.
+> For the current design see `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md`; for deployment see `DEPLOYMENT.md`. This document must not be used as a deployment guide.
+
 Compares `elegance-shawls-ai-platform-plan.md` (v1.0, 2026-10-29) against the repository on branch `phase-1/one-source-ingestion`.
 
 Verdict: the plan matches the **foundation** very well. It diverges on **backend shape, queueing, and what "Phase 1" means**. It does not mention the ingestion pipeline that is already built.
@@ -95,3 +99,11 @@ Verdict: the plan matches the **foundation** very well. It diverges on **backend
 | Workers, enrichment, backend layout, API paths, admin identity | Partial: needs ADRs |
 | Ingestion pipeline | Not in the plan |
 | LLM / agent / memory / voice / MLOps / k8s | Greenfield; consistent with the repo, nothing to conflict with |
+
+## 6. Decisions recorded after review (2026-10-29)
+
+1. **Database:** follow plan v1.2 / ADR-002. PostgreSQL is the single source of truth (catalogue, variants, AI data). MongoDB is archived to R2 and removed only after staging verification. Issues #93, #94, #95 and the #92 ADR scope must say this, not "Postgres alongside Mongo".
+2. **Queues:** keep the Mongo-backed ingestion jobs for now. Use Redis/arq for new AI workloads only. Migrate ingestion in a separate scoped task. The coexistence is documented in an ADR and `OPERATIONS.md`.
+3. **Phase names:** the finished ingestion work is **Phase 0.5, One-source ingestion**. Then: Phase 0 Platform foundation, 1 Catalogue intelligence, 2 Agentic UI, 3 Identity and memory, 4 Voice, 5 Operational maturity.
+4. **Approval-gated, never bundled into normal implementation:** #103 (GHCR/security workflows), #104 (staging), #105 (backups/R2), #106 (VPS purchase, production infra), #112 (k3s/GitOps). No production deployment, paid service, credential change, staging repoint or infrastructure purchase is approved.
+5. **Order:** #92 (with ADRs: catalogue to PostgreSQL, ingestion jobs vs arq, backend layout, `/v1`, admin identity) → #97 → #93 → #94 → #95 → #96 → #102 → #98 → #99 → #101 → #100 → #107. Then, after independent QA: #108, #109, #110, #111; #112 only after infrastructure approval.

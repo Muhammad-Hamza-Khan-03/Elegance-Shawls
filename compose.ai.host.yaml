@@ -1,0 +1,13 @@
+# Optional override for running the API / worker / Alembic ON YOUR HOST against the local database.
+# Publishes PostgreSQL on loopback only (127.0.0.1) and lifts the network's "internal" flag, which
+# otherwise forbids published ports. Local development only; never use it on a server.
+#   docker compose --env-file .env.ai -f compose.ai.yaml -f compose.ai.host.yaml up -d --wait postgres
+#   DATABASE_URL=postgresql+asyncpg://elegance_app:<POSTGRES_APP_PASSWORD>@127.0.0.1:5433/elegance_shawls
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+
+networks:
+  data:
+    internal: false

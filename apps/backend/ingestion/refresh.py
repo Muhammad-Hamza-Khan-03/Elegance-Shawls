@@ -19,7 +19,7 @@ from configuration.config import settings
 from ingestion.normalize import source_url_for_path
 from ingestion.safe_fetch import SafeFetcher, SourcePolicy
 from ingestion.sitemap import Discovery, DiscoveryError, canonical_product_path, discover_products
-from ingestion.staging_guard import STAGING_NAME, StagingGuardError, assert_staging  # noqa: F401  (re-exported)
+from ingestion.staging_guard import STAGING_NAME, StagingGuardError, assert_staging, database_name  # noqa: F401  (re-exported)
 from schemas.ingestion_schema import JobStatus
 
 logger = logging.getLogger("ingestion.refresh")
@@ -33,7 +33,7 @@ COUNTERS = (
     "retryable_failures", "non_retryable_failures", "unprocessed_jobs", "missing_from_sitemap",
 )
 MAX_EXPLICIT_PRODUCTS = 5
-URI_PATTERN = re.compile(r"mongodb(?:\+srv)?://\S+|(?i:bearer)\s+\S+|(?i:x-admin-key)\S*\s*[:=]\s*\S+")
+URI_PATTERN = re.compile(r"(?:postgres(?:ql)?(?:\+\w+)?)://\S+|(?i:bearer)\s+\S+|(?i:x-admin-key)\S*\s*[:=]\s*\S+")
 
 
 class ProductSelectionError(ValueError):
@@ -86,7 +86,7 @@ def select_explicit_products(
 
 
 def redact(text: str) -> str:
-    for secret in (settings.MONGODB_URI, settings.admin_api_key, settings.internal_api_token):
+    for secret in (settings.database_url, settings.admin_api_key, settings.internal_api_token):
         if secret and len(secret) >= 4:
             text = text.replace(secret, "[redacted]")
     return URI_PATTERN.sub("[redacted]", text)
@@ -125,11 +125,16 @@ def _blank(source_id: str, host: str) -> dict:
             "missing_sample": [], "error_samples": [], "termination_reason": "completed"}
 
 
-async def _existing_staged(db, source_id: str) -> dict[str, dict]:
-    found = {}
-    async for doc in db.staged_products.find({"source_id": source_id}, {"source_url": 1, "fetched_at": 1, "status": 1}):
-        found[doc["source_url"]] = doc
-    return found
+async def _existing_staged(sessions, source_id: str) -> dict[str, dict]:
+    from sqlalchemy import select
+
+    from models.relational_model import StagedProduct
+
+    async with sessions() as session:
+        rows = (await session.execute(
+            select(StagedProduct.source_url, StagedProduct.fetched_at, StagedProduct.status)
+            .where(StagedProduct.source_id == source_id))).all()
+    return {url: {"fetched_at": fetched, "status": status} for url, fetched, status in rows}
 
 
 def _needs_refresh(existing: dict | None, lastmod: datetime | None) -> bool:
@@ -140,60 +145,73 @@ def _needs_refresh(existing: dict | None, lastmod: datetime | None) -> bool:
     return not (lastmod and fetched and lastmod <= fetched)
 
 
-async def _queue(db, source_id: str, path: str, counts: dict) -> dict | None:
-    from ingestion import jobs
+async def _queue(sessions, source_id: str, path: str, counts: dict):
+    from repositories import jobs
 
-    job, created = await jobs.create_job(db, source_id=source_id, path=path)
-    counts["jobs_created" if created else "jobs_reused"] += 1
-    if not created and job["status"] in TERMINAL:
-        job = await jobs.requeue_job(db, job["_id"])
-    return job if job and job["status"] in PENDING else None
+    async with sessions() as session, session.begin():
+        job, created = await jobs.create_job(session, source_id=source_id, path=path)
+        counts["jobs_created" if created else "jobs_reused"] += 1
+        if not created and job.status in TERMINAL:
+            job = await jobs.requeue_job(session, job.id)
+    return job if job and job.status in PENDING else None
 
 
-async def _process_batch(db, ids: list, fetcher, extractor, *, deadline: float, clock, sleep) -> bool:
+async def _process_batch(sessions, ids: list, fetcher, extractor, *, deadline: float, clock, sleep) -> bool:
     """Run the batch to completion. Returns False if the runtime cap stopped it early."""
+    from sqlalchemy import select
+
     from ingestion.worker import process_next_job, worker_id
+    from models.relational_model import IngestionJob
 
     me = worker_id()
     while clock() < deadline:
-        if await process_next_job(db, me, fetcher, extractor, only_ids=ids):
+        if await process_next_job(sessions, me, fetcher, extractor, only_ids=ids):
             continue
-        waiting = await db.ingestion_jobs.find_one(
-            {"_id": {"$in": ids}, "status": JobStatus.RETRYING.value}, sort=[("available_at", 1)])
-        if not waiting:
+        async with sessions() as session:
+            waiting = (await session.execute(
+                select(IngestionJob.available_at)
+                .where(IngestionJob.id.in_(ids), IngestionJob.status == JobStatus.RETRYING.value)
+                .order_by(IngestionJob.available_at).limit(1))).scalar_one_or_none()
+        if waiting is None:
             return True
-        delay = max((_aware(waiting["available_at"]) - datetime.now(timezone.utc)).total_seconds(), 0)
+        delay = max((_aware(waiting) - datetime.now(timezone.utc)).total_seconds(), 0)
         if clock() + delay >= deadline:
             return False
         await sleep(delay)
     return False
 
 
-async def _tally(db, ids: list, counts: dict) -> None:
-    async for job in db.ingestion_jobs.find({"_id": {"$in": ids}}):
-        status = job["status"]
+async def _tally(sessions, ids: list, counts: dict) -> None:
+    from sqlalchemy import select
+
+    from models.relational_model import IngestionJob
+
+    async with sessions() as session:
+        jobs_ = (await session.execute(select(IngestionJob).where(IngestionJob.id.in_(ids)))).scalars().all()
+    for job in jobs_:
+        status = job.status
         if status == JobStatus.SUCCEEDED.value:
             counts["succeeded"] += 1
-            outcome = (job.get("result") or {}).get("outcome")
+            outcome = (job.result or {}).get("outcome")
             if outcome in OUTCOMES:
                 counts[outcome] += 1
         elif status == JobStatus.FAILED.value:
-            counts["retryable_failures" if job.get("last_error_retryable") else "non_retryable_failures"] += 1
+            counts["retryable_failures" if job.last_error_retryable else "non_retryable_failures"] += 1
         elif status == JobStatus.RETRYING.value:
             counts["retryable_failures"] += 1
         else:
             counts["unprocessed_jobs"] += 1
-        if status != JobStatus.SUCCEEDED.value and job.get("last_error") and len(counts["error_samples"]) < 5:
-            counts["error_samples"].append(redact(f"{job['path']}: {job['last_error']}")[:200])
+        if status != JobStatus.SUCCEEDED.value and job.last_error and len(counts["error_samples"]) < 5:
+            counts["error_samples"].append(redact(f"{job.path}: {job.last_error}")[:200])
 
 
 async def run_refresh(
-    db, *, sources, mode: str = "once", run_id: str | None = None, sha: str | None = None,
+    sessions, *, sources, mode: str = "once", run_id: str | None = None, sha: str | None = None,
     fetcher_factory=SafeFetcher, extractor=None, clock=time.monotonic, sleep=asyncio.sleep,
     max_seconds: int | None = None, product_paths: list[str] | None = None,
     product_urls: list[str] | None = None,
 ) -> dict:
-    """mode: once | dry-run | discovery-only. dry-run and discovery-only never write to MongoDB."""
+    """mode: once | dry-run | discovery-only. dry-run and discovery-only never write to the database."""
     started = clock()
     deadline = started + (settings.ingestion_run_max_seconds if max_seconds is None else max_seconds)
     summary = {"run_id": run_id or os.environ.get("GITHUB_RUN_ID") or uuid.uuid4().hex[:12],
@@ -227,7 +245,7 @@ async def run_refresh(
         if extractor is None:
             from ingestion.extractors import ShopifyHtmlExtractor
             extractor = ShopifyHtmlExtractor()
-        existing = await _existing_staged(db, source_id)
+        existing = await _existing_staged(sessions, source_id)
         urls = {path: source_url_for_path(path, policy) for path in found.products}
         gone = [] if (product_paths or product_urls) else sorted(set(existing) - set(urls.values()))
         counts["missing_from_sitemap"], counts["missing_sample"] = len(gone), gone[:20]  # report only
@@ -239,19 +257,25 @@ async def run_refresh(
             else:
                 batch.append(path)
         if mode == "dry-run":
-            for path in batch:
-                from ingestion import jobs
-                has_job = await db.ingestion_jobs.find_one({"idempotency_key": jobs.idempotency_key_for(source_id, path)})
-                counts["jobs_reused" if has_job else "jobs_created"] += 1
+            from sqlalchemy import select
+
+            from models.relational_model import IngestionJob
+            from repositories import jobs
+
+            async with sessions() as session:
+                for path in batch:
+                    has_job = (await session.execute(select(IngestionJob.id).where(
+                        IngestionJob.idempotency_key == jobs.idempotency_key_for(source_id, path)))).first()
+                    counts["jobs_reused" if has_job else "jobs_created"] += 1
             continue
         for path in batch:
-            job = await _queue(db, source_id, path, counts)
+            job = await _queue(sessions, source_id, path, counts)
             if job:
-                ids.append(job["_id"])
-        if not await _process_batch(db, ids, fetcher, extractor, deadline=deadline, clock=clock, sleep=sleep):
+                ids.append(job.id)
+        if not await _process_batch(sessions, ids, fetcher, extractor, deadline=deadline, clock=clock, sleep=sleep):
             counts["termination_reason"] = "runtime_limit_reached"
             reason = reason or "runtime_limit_reached"
-        await _tally(db, ids, counts)
+        await _tally(sessions, ids, counts)
         if counts["termination_reason"] == "completed" and (
                 counts["retryable_failures"] or counts["non_retryable_failures"] or counts["unprocessed_jobs"]):
             counts["termination_reason"] = "completed_with_failures"
@@ -268,17 +292,16 @@ def render_summary(summary: dict) -> str:
 
 
 async def open_db(mode: str):
-    """Staging database handle. Only a real run creates indexes; dry-run opens read-only."""
-    from motor.motor_asyncio import AsyncIOMotorClient
-    from database.db import ensure_indexes
+    """Staging database handle: (engine, sessions). The schema comes from Alembic, never from this CLI."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    client = AsyncIOMotorClient(settings.MONGODB_URI, maxPoolSize=2, serverSelectionTimeoutMS=5000,
-                                uuidRepresentation="standard")
-    db = client[settings.MONGO_DB_NAME]
-    await client.admin.command("ping")
-    if mode == "once":
-        await ensure_indexes(db)
-    return client, db
+    from database.pg import make_engine
+
+    engine = make_engine()
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
+    return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def run_cli(
@@ -289,18 +312,18 @@ async def run_cli(
     handler.setFormatter(RedactingFormatter("%(levelname)s %(name)s: %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
     try:
-        assert_staging(settings.MONGO_DB_NAME)
-        client = db = None
+        assert_staging(database_name(settings.database_url))
+        engine = sessions = None
         if mode != "discovery-only":
-            client, db = await open_db(mode)
+            engine, sessions = await open_db(mode)
         try:
             summary = await run_refresh(
-                db, sources=enabled_sources(), mode=mode, fetcher_factory=fetcher_factory,
+                sessions, sources=enabled_sources(), mode=mode, fetcher_factory=fetcher_factory,
                 product_paths=product_paths, product_urls=product_urls,
             )
         finally:
-            if client:
-                client.close()
+            if engine:
+                await engine.dispose()
     except StagingGuardError as exc:
         summary = {"termination_reason": "staging_guard_failed", "error": str(exc)}
     except Exception as exc:  # no traceback: it could carry connection details

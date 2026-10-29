@@ -1,0 +1,103 @@
+# Local development services: PostgreSQL 17 + pgvector, Redis, a one-shot migration job and the
+# arq worker. Local only and never deployed (compose.yaml is the production stack).
+#   cp .env.ai.example .env.ai          # then replace the placeholders
+#   docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait
+#   docker compose --env-file .env.ai -f compose.ai.yaml run --rm migrate              # alembic upgrade head
+#   docker compose --env-file .env.ai -f compose.ai.yaml --profile worker up -d worker # arq worker
+# The network is internal and nothing is published, so the services are reachable only
+# from containers on this network (and the worker has no route to external providers).
+x-backend: &backend
+  build: ./apps/backend
+  image: elegance-backend:${APP_VERSION:-local}
+  environment: &backend-env
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_APP_USER:-elegance_app}:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-elegance_shawls}
+    REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
+  networks: [data]
+
+services:
+  postgres:
+    # Tag plus digest: bump both together and re-run the local checks.
+    image: pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-elegance_shawls}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-elegance_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-elegance_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}
+      POSTGRES_BACKUP_USER: ${POSTGRES_BACKUP_USER:-elegance_backup}
+      POSTGRES_BACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:?Set POSTGRES_BACKUP_PASSWORD}
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=128MB"]
+    # Local limits; re-check against the plan 13.4 RAM budget before any hosted use.
+    mem_limit: 512m
+    cpus: 1.0
+    shm_size: 128mb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    # noeviction: a full queue must reject writes, never silently drop jobs. Rate-limit keys expire.
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes
+    mem_limit: 192m
+    cpus: 0.5
+    volumes:
+      - redis_data:/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: docker compose ... run --rm migrate
+  migrate:
+    <<: *backend
+    profiles: [tools]
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # arq worker for new AI workloads only. Catalogue ingestion has its own worker (python -m ingestion.worker).
+  worker:
+    <<: *backend
+    profiles: [worker]
+    restart: unless-stopped
+    command: ["arq", "workers.settings.WorkerSettings"]
+    stop_grace_period: 30s
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "arq", "--check", "workers.settings.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+networks:
+  data:
+    # No route outside Docker.
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:

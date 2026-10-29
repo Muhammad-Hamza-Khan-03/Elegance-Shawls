@@ -1,10 +1,10 @@
+import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from utils.bson import PyObjectId
 from .product_schema import ProductCategory
 
 
@@ -68,6 +68,8 @@ class StagedProductDraft(BaseModel):
 
 
 class AuditEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     at: datetime
     action: str
     from_status: Optional[str] = None
@@ -77,9 +79,9 @@ class AuditEntry(BaseModel):
 
 
 class StagedProductResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
-    id: PyObjectId = Field(alias="_id")
+    id: uuid.UUID = Field(alias="_id")
     source_id: str
     source_name: str
     source_url: str
@@ -87,7 +89,7 @@ class StagedProductResponse(BaseModel):
     source_content_hash: str
     fetched_at: datetime
     normalized_at: datetime
-    ingestion_job_id: PyObjectId
+    ingestion_job_id: Optional[uuid.UUID] = None
     source_price: Optional[float] = None
     source_currency: Optional[str] = None
     status: StagedStatus
@@ -100,7 +102,7 @@ class StagedProductResponse(BaseModel):
     missing_fields: List[str] = Field(default_factory=list)
     stock_known: bool = False
     latest_source_hash: Optional[str] = None
-    product_id: Optional[PyObjectId] = None
+    product_id: Optional[uuid.UUID] = None
     audit: List[AuditEntry] = Field(default_factory=list)
 
 
@@ -131,9 +133,9 @@ class JobCreateRequest(BaseModel):
 
 
 class JobResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
-    id: PyObjectId = Field(alias="_id")
+    id: uuid.UUID = Field(alias="_id")
     source_id: str
     path: str
     status: JobStatus

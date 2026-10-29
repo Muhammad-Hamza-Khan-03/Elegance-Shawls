@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Acceptance tests against a running stack (real Next.js, FastAPI and MongoDB),
+// Acceptance tests against a running stack (real Next.js, FastAPI and PostgreSQL),
 // e.g. the local HTTPS stack from compose.local.yaml. No mocks; see e2e-live/live.ts
 // for the required LIVE_* environment variables.
 export default defineConfig({

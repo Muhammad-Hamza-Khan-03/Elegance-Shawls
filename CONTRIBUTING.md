@@ -4,7 +4,7 @@ Thanks for contributing to Elegance Shawls.
 
 This repository contains a production-oriented commerce stack with:
 - a Next.js storefront in `apps/frontend`
-- a FastAPI + MongoDB product API in `apps/backend`
+- a FastAPI + PostgreSQL product API in `apps/backend`
 
 Please treat contributions as production changes, not casual demo edits.
 

@@ -1,0 +1,17 @@
+{"id": "fp-001", "lang": "en", "query": "brown stole under 4000", "expected": {"category": "stoles", "colors": ["brown"], "max_price": 4000}}
+{"id": "fp-002", "lang": "en", "query": "black shawl", "expected": {"category": "shawls", "colors": ["black"]}}
+{"id": "fp-003", "lang": "en", "query": "something in maroon, not black", "expected": {"colors": ["maroon"], "exclude_colors": ["black"]}}
+{"id": "fp-004", "lang": "en", "query": "in stock scarves under 2500", "expected": {"category": "scarves", "in_stock": true, "max_price": 2500}}
+{"id": "fp-005", "lang": "en", "query": "pashmina shawl between 5000 and 9000", "expected": {"category": "shawls", "min_price": 5000, "max_price": 9000}}
+{"id": "fp-006", "lang": "roman_ur", "query": "bhoora shawal 4000 se kam", "expected": {"category": "shawls", "colors": ["brown"], "max_price": 4000}}
+{"id": "fp-007", "lang": "roman_ur", "query": "safaid stole", "expected": {"category": "stoles", "colors": ["white"]}}
+{"id": "fp-008", "lang": "ur", "query": "بھورا شال ۴۰۰۰ سے کم", "expected": {"category": "shawls", "colors": ["brown"], "max_price": 4000}}
+{"id": "fp-009", "lang": "ur", "query": "کالا اسٹول", "expected": {"category": "stoles", "colors": ["black"]}}
+{"id": "fp-010", "lang": "en", "query": "red scarf not under 1000", "expected": {"category": "scarves", "colors": ["red"], "min_price": 1000}}
+{"id": "fp-011", "lang": "en", "query": "show me everything", "expected": {}}
+{"id": "fp-012", "lang": "en", "query": "available shawls", "expected": {"category": "shawls", "in_stock": true}}
+{"id": "fp-013", "lang": "en", "query": "grey or beige stole", "expected": {"category": "stoles", "colors": ["beige", "grey"]}}
+{"id": "fp-014", "lang": "en", "query": "stole above 3000", "expected": {"category": "stoles", "min_price": 3000}}
+{"id": "fp-015", "lang": "roman_ur", "query": "gulabi shawl, white nahi", "expected": {"category": "shawls", "colors": ["pink"], "exclude_colors": ["white"]}}
+{"id": "fp-016", "lang": "roman_ur", "query": "4500 se zyada ka scarf", "expected": {"category": "scarves", "min_price": 4500}}
+{"id": "fp-017", "lang": "ur", "query": "کریم رنگ کی شال", "expected": {"category": "shawls", "colors": ["cream"]}}

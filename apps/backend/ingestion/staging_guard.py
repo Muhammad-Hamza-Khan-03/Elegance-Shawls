@@ -1,16 +1,25 @@
 """Staging-database guard with no dependency on application settings or database modules.
 
 ``--discovery-only`` must be able to run (and refuse bad database names) before any settings
-object, MongoDB driver or database module is loaded.
+object or database module is loaded.
 """
 import os
 import re
+from urllib.parse import urlsplit
 
 STAGING_NAME = re.compile(r"(^|[_-])staging($|[_-])", re.I)
 
 
 class StagingGuardError(Exception):
     pass
+
+
+def database_name(url: str) -> str:
+    """The database part of a connection URL (postgresql+asyncpg://user:pw@host:5432/NAME). Never raises or echoes the URL."""
+    try:
+        return urlsplit(url or "").path.lstrip("/").split("?")[0]
+    except ValueError:
+        return ""
 
 
 def assert_staging(db_name: str) -> None:
@@ -20,13 +29,11 @@ def assert_staging(db_name: str) -> None:
 
 
 def prepare_discovery_environment() -> None:
-    """Guard the database name, then let the shared settings model load without MongoDB credentials.
+    """Guard the database name, using the ignored local .env like the settings model would.
 
-    Discovery never reads or writes MongoDB, so a blank URI is supplied only when none is
-    configured. The API and every other mode keep the strict required-field behaviour.
+    Discovery never reads or writes the database, so no connection is made; only the name is checked.
     """
     from dotenv import load_dotenv
 
-    load_dotenv()  # same ignored local .env the settings model would read; never overrides the environment
-    assert_staging(os.environ.get("MONGO_DB_NAME", ""))
-    os.environ.setdefault("MONGODB_URI", "")
+    load_dotenv()  # never overrides the environment
+    assert_staging(database_name(os.environ.get("DATABASE_URL", "")))

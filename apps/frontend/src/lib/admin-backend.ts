@@ -11,7 +11,7 @@ const getBackendBaseUrl = () => {
 
 const getAdminKey = () => process.env.ADMIN_API_KEY?.trim() || '';
 
-const hasSameOrigin = (request: Request) => {
+export const hasSameOrigin = (request: Request) => {
   const origin = request.headers.get('origin');
   if (!origin) return false;
 

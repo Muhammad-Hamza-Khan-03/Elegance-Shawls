@@ -3,22 +3,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from configuration.config import settings
-from database.db import connect_to_mongo, close_mongo_connection, database_is_ready
+from database.pg import close_postgres, connect_to_postgres, database_is_ready, postgres_configured
+from database.redis_client import close_redis, redis_configured, redis_is_ready
 from routes.product_routes import router as product_router
 from routes.ingestion_routes import router as ingestion_router
+from routes.event_routes import router as event_router
+from routes.job_routes import router as job_router
+from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
 from observability.request_log import RequestLogMiddleware
+from observability.tracing import configure_exporters
 from security.rate_limit import RateLimitMiddleware
+from workers.queues import close_queue_pool, worker_is_alive
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
-    await connect_to_mongo()
+    configure_exporters()  # no-op unless OTEL_ENABLED and an OTLP endpoint are set
+    # PostgreSQL holds the catalogue, staged products and ingestion jobs, so it is required: a missing
+    # DATABASE_URL is a configuration error and stops startup. A configured but unreachable database
+    # does not (the pool reconnects); /ready/ reports 503 and data routes answer 503 until it is back.
+    if not postgres_configured():
+        raise RuntimeError("DATABASE_URL is required: the catalogue runs on PostgreSQL")
+    await connect_to_postgres()
     yield
     # Shutdown
     print("Shutting down...")
-    await close_mongo_connection()
+    await close_queue_pool()
+    await close_redis()
+    await close_postgres()
+
+
+async def _optional_status(configured: bool, probe, up: str = "connected", down: str = "unavailable") -> str:
+    if not configured:
+        return "disabled"
+    return up if await probe() else down
 
 
 def create_app() -> FastAPI:
@@ -42,6 +62,10 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(product_router)
     app.include_router(ingestion_router)
+    app.include_router(job_router)
+    app.include_router(llm_router)
+    app.include_router(llm_admin_router)
+    app.include_router(event_router)
 
     # Health Check
     @app.get("/health/", tags=["Health"])
@@ -53,7 +77,14 @@ def create_app() -> FastAPI:
         if not await database_is_ready():
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"status": "not_ready", "database": "unavailable"}
-        return {"status": "ready", "database": "connected"}
+        # PostgreSQL is the database: it alone gates readiness. Redis and the AI worker are optional and only reported.
+        return {
+            "status": "ready",
+            "database": "connected",
+            "postgres": "connected",
+            "redis": await _optional_status(redis_configured(), redis_is_ready),
+            "worker": await _optional_status(redis_configured(), worker_is_alive, "alive", "not_seen"),
+        }
 
     return app
 

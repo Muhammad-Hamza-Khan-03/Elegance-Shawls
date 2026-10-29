@@ -1,0 +1,210 @@
+"""Catalogue repository: products and their variants. Callers own the transaction (no commits here)."""
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from sqlalchemy import func, select, tuple_, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.relational_model import Product, StagedProduct, Variant
+from repositories import Conflict, InvalidDraft, NotFound
+
+Key = tuple[datetime, uuid.UUID]  # (created_at, id): the cursor position of a product
+
+
+@dataclass
+class VariantInput:
+    name: str
+    image_url: str
+    price: int
+    stock: int = 0
+    color: str | None = None
+    size: str = "Free Size"
+    currency: str = "PKR"
+    description: str | None = None
+    id: uuid.UUID | None = None  # an existing variant to keep when replacing a product
+
+
+@dataclass
+class ProductInput:
+    slug: str
+    name: str
+    cover_image_url: str
+    variants: list[VariantInput]
+    price: int | None = None
+    category: str = "shawls"
+    status: str = "draft"  # callers must ask for anything else; "active" is a deliberate publish
+    images: list[str] = field(default_factory=list)
+    main_description: str | None = None
+    currency: str = "PKR"
+    material: str | None = None
+    sizing: str | None = None
+    weight: str | None = None
+    item_number: str | None = None
+
+
+@dataclass
+class Page:
+    items: list[Product]
+    next_after: Key | None  # pass back as `after` for the next page
+
+
+def _columns(data: ProductInput) -> dict:
+    """Product columns, normalised like the public schema: cover image listed first, price defaults to the cheapest variant."""
+    if not data.variants:
+        raise InvalidDraft("A product needs at least one variant")
+    images = list(data.images) or [data.cover_image_url]
+    if data.cover_image_url not in images:
+        images.insert(0, data.cover_image_url)
+    price = data.price if data.price is not None else min(v.price for v in data.variants)
+    return {
+        "slug": data.slug, "name": data.name, "category": data.category, "status": data.status,
+        "cover_image_url": data.cover_image_url, "images": images, "main_description": data.main_description,
+        "price": price, "currency": data.currency.upper(), "material": data.material, "sizing": data.sizing,
+        "weight": data.weight, "item_number": data.item_number,
+    }
+
+
+def _variant(position: int, data: VariantInput) -> Variant:
+    return Variant(
+        position=position, name=data.name, color=data.color, size=data.size, image_url=data.image_url,
+        price=data.price, currency=data.currency.upper(), stock=data.stock, description=data.description,
+    )
+
+
+def _is_slug_conflict(exc: IntegrityError) -> bool:
+    return "uq_products_slug" in str(exc.orig)
+
+
+async def reload(session: AsyncSession, product_id: uuid.UUID) -> Product | None:
+    """Fresh read with variants (also picks up generated columns after a write)."""
+    return await session.get(Product, product_id, populate_existing=True)
+
+
+async def create_product(session: AsyncSession, data: ProductInput) -> Product:
+    """Insert a product with its variants (positions follow the submitted order)."""
+    product = Product(**_columns(data), variants=[_variant(i, v) for i, v in enumerate(data.variants)])
+    try:
+        async with session.begin_nested():  # a duplicate slug undoes only this insert
+            session.add(product)
+            await session.flush()
+    except IntegrityError as exc:
+        if _is_slug_conflict(exc):
+            raise Conflict("Product slug already exists", Conflict.SLUG_EXISTS) from exc
+        raise InvalidDraft(str(exc.orig)) from exc
+    return await reload(session, product.id)
+
+
+async def get_product(session: AsyncSession, product_id: uuid.UUID) -> Product | None:
+    """Any lifecycle state (admin)."""
+    return await session.get(Product, product_id)
+
+
+async def get_public_product_by_slug(session: AsyncSession, slug: str) -> Product | None:
+    stmt = select(Product).where(Product.slug == slug.lower(), Product.status == "active")
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def list_products(session: AsyncSession, *, public: bool, limit: int, after: Key | None = None) -> Page:
+    """Newest first with keyset pagination on (created_at, id); public means active products only."""
+    stmt = select(Product).order_by(Product.created_at.desc(), Product.id.desc()).limit(limit + 1)
+    if public:
+        stmt = stmt.where(Product.status == "active")
+    if after is not None:
+        stmt = stmt.where(tuple_(Product.created_at, Product.id) < tuple_(*after))
+    rows = list((await session.execute(stmt)).scalars())
+    if len(rows) <= limit:
+        return Page(rows, None)
+    rows.pop()
+    return Page(rows, (rows[-1].created_at, rows[-1].id))
+
+
+async def _has_unpublished_review(session: AsyncSession, product_id: uuid.UUID) -> bool:
+    status = (await session.execute(
+        select(StagedProduct.status).where(StagedProduct.product_id == product_id).limit(1))).scalar_one_or_none()
+    return status is not None and status != "published"
+
+
+async def set_status(session: AsyncSession, product_id: uuid.UUID, status: str, *, enforce_review: bool = True) -> Product:
+    """Change lifecycle state. Products that came from ingestion go public only through the staged
+    publish action, so activating one directly is refused (enforce_review=False is for that action)."""
+    if enforce_review and status == "active" and await _has_unpublished_review(session, product_id):
+        raise Conflict("Ingested products must be published through the staged review workflow", Conflict.REVIEW_REQUIRED)
+    result = await session.execute(
+        update(Product).where(Product.id == product_id)
+        .values(status=status, updated_at=func.now(), revision=Product.revision + 1).returning(Product.id))
+    if result.scalar_one_or_none() is None:
+        raise NotFound("Product not found")
+    return await reload(session, product_id)
+
+
+async def publish_product(session: AsyncSession, product_id: uuid.UUID) -> Product:
+    return await set_status(session, product_id, "active")
+
+
+async def unpublish_product(session: AsyncSession, product_id: uuid.UUID) -> Product:
+    return await set_status(session, product_id, "draft")
+
+
+async def archive_product(session: AsyncSession, product_id: uuid.UUID) -> Product:
+    """Soft delete: products are archived, never removed."""
+    return await set_status(session, product_id, "archived")
+
+
+async def set_state_unless_archived(session: AsyncSession, product_id: uuid.UUID, status: str) -> bool:
+    """Used by the staged-review actions: never resurrects an archived product. True when a row changed."""
+    result = await session.execute(
+        update(Product).where(Product.id == product_id, Product.status != "archived")
+        .values(status=status, updated_at=func.now(), revision=Product.revision + 1).returning(Product.id))
+    return result.scalar_one_or_none() is not None
+
+
+async def set_variant_stock(session: AsyncSession, product_id: uuid.UUID, variant_id: uuid.UUID, stock: int) -> Product:
+    """Absolute stock set as ONE atomic statement; concurrent updates never corrupt a row and a
+    negative value is refused before any SQL runs."""
+    if stock < 0:
+        raise InvalidDraft("Stock cannot be negative")
+    result = await session.execute(
+        update(Variant).where(Variant.id == variant_id, Variant.product_id == product_id)
+        .values(stock=stock).returning(Variant.id))
+    if result.scalar_one_or_none() is None:
+        raise NotFound("Product or variant not found")
+    await session.execute(
+        update(Product).where(Product.id == product_id)
+        .values(updated_at=func.now(), revision=Product.revision + 1))
+    return await reload(session, product_id)
+
+
+async def replace_product(session: AsyncSession, product_id: uuid.UUID, data: ProductInput) -> Product:
+    """Full replacement (PUT): known variant ids are kept, new ones are created, omitted ones are removed."""
+    product = await session.get(Product, product_id, with_for_update=True, populate_existing=True)
+    if product is None:
+        raise NotFound("Product not found")
+    if data.status == "active" and await _has_unpublished_review(session, product_id):
+        raise Conflict("Ingested products must be published through the staged review workflow", Conflict.REVIEW_REQUIRED)
+    columns = _columns(data)
+    existing = {v.id: v for v in product.variants}
+    try:
+        async with session.begin_nested():
+            for name, value in columns.items():
+                setattr(product, name, value)
+            product.revision = Product.revision + 1
+            product.updated_at = func.now()
+            kept: list[Variant] = []
+            for position, submitted in enumerate(data.variants):
+                row = existing.pop(submitted.id, None) if submitted.id else None
+                if row is None:
+                    kept.append(_variant(position, submitted))
+                    continue
+                row.position, row.name, row.color, row.size = position, submitted.name, submitted.color, submitted.size
+                row.image_url, row.price, row.currency = submitted.image_url, submitted.price, submitted.currency.upper()
+                row.stock, row.description = submitted.stock, submitted.description
+                kept.append(row)
+            product.variants = kept
+            await session.flush()
+    except IntegrityError as exc:
+        if _is_slug_conflict(exc):
+            raise Conflict("Product slug already exists", Conflict.SLUG_EXISTS) from exc
+        raise InvalidDraft(str(exc.orig)) from exc
+    return await reload(session, product_id)

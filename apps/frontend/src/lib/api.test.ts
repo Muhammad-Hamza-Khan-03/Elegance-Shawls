@@ -76,3 +76,36 @@ describe('internal API token', () => {
     expect(internalApiHeaders()).toEqual({});
   });
 });
+
+describe('trace headers on storefront reads', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  const lastHeaders = (fetchMock: ReturnType<typeof vi.fn>) => fetchMock.mock.calls.at(-1)![1].headers as Record<string, string>;
+
+  it('sends a valid traceparent from the browser and never the internal token', async () => {
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api.test');
+    vi.stubEnv('INTERNAL_API_TOKEN', 'server-only-fixture');
+    vi.stubGlobal('window', {});
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ items: [], next_cursor: null }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { api } = await import('./api');
+    await api.getProducts();
+    expect(lastHeaders(fetchMock).traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(lastHeaders(fetchMock)['X-Internal-API-Token']).toBeUndefined();
+  });
+
+  it('sends the internal token but no traceparent from the server', async () => {
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api.test');
+    vi.stubEnv('INTERNAL_API_TOKEN', 'server-only-fixture');
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ items: [], next_cursor: null }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { api } = await import('./api');
+    await api.getProducts();
+    expect(lastHeaders(fetchMock)).toEqual({ 'X-Internal-API-Token': 'server-only-fixture' });
+  });
+});

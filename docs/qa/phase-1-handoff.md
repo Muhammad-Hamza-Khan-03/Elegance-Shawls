@@ -1,5 +1,7 @@
 # Phase 1 QA handoff — one-source product ingestion
 
+> **Historical record (pre-PostgreSQL).** Written when the catalogue ran on MongoDB; those parts no longer apply. Current setup: `DEPLOYMENT.md`.
+
 **Status: implementation complete on fixtures; independent QA NOT yet performed.** Implementation tests below are not independent QA. This record must not be treated as staging evidence.
 
 **Code under test:** branch `phase-1/one-source-ingestion`, commit `32c9520405e4926c91840386b000d5ca7bd06113` (docs-only commits may follow; re-record the SHA QA actually deploys).

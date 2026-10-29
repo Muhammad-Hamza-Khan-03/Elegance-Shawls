@@ -1,27 +1,23 @@
-from datetime import datetime, timezone
+import uuid
 
-from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from configuration.config import settings
-from database.db import get_db
-from ingestion import jobs
+from database.pg import get_pg_session
 from ingestion.fx import RateUnavailable, get_pkr_rate, suggest_pkr
 from ingestion.normalize import InvalidSourceData, source_url_for_path
 from ingestion.safe_fetch import SourcePolicy, UnsafeURL
-from models.ingestion_model import audit_entry
-from models.product_model import build_product_document
-from routes.product_routes import _cursor_query, _object_id
+from repositories import Conflict, InvalidDraft, InvalidTransition, NotFound, ProductUnavailable
+from repositories import jobs
+from repositories import staged as staged_repo
 from schemas.ingestion_schema import (
-    STAGED_TRANSITIONS, ApproveRequest, JobCreateRequest, JobListResponse, JobResponse, PkrSuggestion, RejectRequest,
+    ApproveRequest, JobCreateRequest, JobListResponse, JobResponse, PkrSuggestion, RejectRequest,
     SourceInfo, StagedProductListResponse, StagedProductResponse, StagedStatus,
 )
 from schemas.product_schema import ProductCreateSchema, ProductStatus
 from security.admin_auth import require_admin_api_key
-from utils.pagination import encode_cursor
+from utils.pagination import decode_cursor, encode_cursor
 
 router = APIRouter(
     prefix="/products/admin/ingestion",
@@ -29,41 +25,37 @@ router = APIRouter(
     dependencies=[Depends(require_admin_api_key)],
 )
 S = StagedStatus
+CATALOGUE_FIELDS = ("name", "slug", "cover_image_url", "images", "main_description", "category", "material", "sizing", "weight")
 
 
-def _sources_from(status: StagedStatus) -> list[str]:
-    return [src.value for src, targets in STAGED_TRANSITIONS.items() if status in targets]
+def _uuid(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid identifier") from exc
 
 
-async def _transition(db, staged_id: ObjectId, target: StagedStatus, action: str, *,
-                      set_fields: dict | None = None, note: str | None = None) -> dict:
-    """Atomically move a staged product to `target` if (and only if) the move is allowed."""
-    ts = datetime.now(timezone.utc)
-    current = await db.staged_products.find_one({"_id": staged_id}, {"status": 1})
-    if not current:
-        raise HTTPException(status_code=404, detail="Staged product not found")
-    updated = await db.staged_products.find_one_and_update(
-        {"_id": staged_id, "status": {"$in": _sources_from(target)}},
-        {
-            "$set": {"status": target.value, "updated_at": ts, **(set_fields or {})},
-            "$push": {"audit": audit_entry(action, from_status=current["status"], to_status=target.value, note=note)},
-        },
-        return_document=ReturnDocument.AFTER,
-    )
-    if not updated:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot {action} a staged product that is {current['status']}",
-        )
-    return updated
+def _after(cursor: str | None):
+    if not cursor:
+        return None
+    try:
+        return decode_cursor(cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
 
 
-async def _revert(db, staged_id: ObjectId, to_status: str, set_fields: dict | None = None) -> None:
-    await db.staged_products.update_one(
-        {"_id": staged_id},
-        {"$set": {"status": to_status, "updated_at": datetime.now(timezone.utc), **(set_fields or {})},
-         "$push": {"audit": audit_entry("rolled_back", to_status=to_status, actor="system")}},
-    )
+def _review_error(exc: Exception, action: str) -> HTTPException:
+    """Repository errors -> the status codes and wording the review API has always used."""
+    if isinstance(exc, NotFound):
+        return HTTPException(status_code=404, detail="Staged product not found")
+    if isinstance(exc, InvalidTransition):
+        return HTTPException(status_code=409, detail=f"Cannot {action} a staged product that is {exc.current}")
+    if isinstance(exc, ProductUnavailable):
+        return HTTPException(status_code=409, detail="Catalogue product is missing or archived")
+    if isinstance(exc, Conflict):
+        detail = "A product with this slug already exists" if exc.code == Conflict.SLUG_EXISTS else str(exc)
+        return HTTPException(status_code=409, detail=detail)
+    return HTTPException(status_code=422, detail="Staged product is not valid for the catalogue")
 
 
 # ---- source & jobs --------------------------------------------------------
@@ -77,13 +69,14 @@ async def get_source():
 
 
 @router.post("/jobs", response_model=JobResponse, status_code=201)
-async def create_job(payload: JobCreateRequest, response: Response, db: AsyncIOMotorDatabase = Depends(get_db)):
+async def create_job(payload: JobCreateRequest, response: Response, session: AsyncSession = Depends(get_pg_session)):
     policy = SourcePolicy.from_settings()
     try:
         source_url_for_path(payload.path, policy)
     except (InvalidSourceData, UnsafeURL) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    job, created = await jobs.create_job(db, source_id=settings.ingestion_source_id, path=payload.path)
+    async with session.begin():
+        job, created = await jobs.create_job(session, source_id=settings.ingestion_source_id, path=payload.path)
     if not created:
         # Same source+path already has a job; return it rather than queueing a duplicate.
         response.status_code = 200
@@ -91,30 +84,31 @@ async def create_job(payload: JobCreateRequest, response: Response, db: AsyncIOM
 
 
 @router.get("/jobs", response_model=JobListResponse)
-async def list_jobs(limit: int = Query(default=20, ge=1, le=100), db: AsyncIOMotorDatabase = Depends(get_db)):
-    items = await db.ingestion_jobs.find({}).sort([("created_at", -1), ("_id", -1)]).to_list(length=limit)
-    return JobListResponse(items=items)
+async def list_jobs(limit: int = Query(default=20, ge=1, le=100), session: AsyncSession = Depends(get_pg_session)):
+    return {"items": await jobs.list_jobs(session, limit)}
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    job = await db.ingestion_jobs.find_one({"_id": _object_id(job_id)})
+async def get_job(job_id: str, session: AsyncSession = Depends(get_pg_session)):
+    job = await jobs.get_job(session, _uuid(job_id))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
-async def cancel_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    job = await jobs.cancel_job(db, _object_id(job_id))
+async def cancel_job(job_id: str, session: AsyncSession = Depends(get_pg_session)):
+    async with session.begin():
+        job = await jobs.cancel_job(session, _uuid(job_id))
     if not job:
         raise HTTPException(status_code=409, detail="Job is not queued, retrying or running")
     return job
 
 
 @router.post("/jobs/{job_id}/rerun", response_model=JobResponse)
-async def rerun_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    job = await jobs.requeue_job(db, _object_id(job_id))
+async def rerun_job(job_id: str, session: AsyncSession = Depends(get_pg_session)):
+    async with session.begin():
+        job = await jobs.requeue_job(session, _uuid(job_id))
     if not job:
         raise HTTPException(status_code=409, detail="Only finished jobs can be rerun")
     return job
@@ -127,33 +121,27 @@ async def list_staged(
     status: StagedStatus | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = None,
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    session: AsyncSession = Depends(get_pg_session),
 ):
-    base = {"status": status.value} if status else {}
-    query = _cursor_query(cursor, base)
-    rows = await db.staged_products.find(query).sort([("created_at", -1), ("_id", -1)]).limit(limit + 1).to_list(limit + 1)
-    next_cursor = None
-    if len(rows) > limit:
-        rows.pop()
-        next_cursor = encode_cursor(rows[-1]["created_at"], rows[-1]["_id"])
-    return StagedProductListResponse(items=rows, next_cursor=next_cursor)
+    page = await staged_repo.list_staged(session, status=status.value if status else None, limit=limit, after=_after(cursor))
+    return {"items": page.items, "next_cursor": encode_cursor(*page.next_after) if page.next_after else None}
 
 
 @router.get("/staged/{staged_id}", response_model=StagedProductResponse)
-async def get_staged(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    doc = await db.staged_products.find_one({"_id": _object_id(staged_id)})
-    if not doc:
+async def get_staged(staged_id: str, session: AsyncSession = Depends(get_pg_session)):
+    row = await staged_repo.get_staged(session, _uuid(staged_id))
+    if not row:
         raise HTTPException(status_code=404, detail="Staged product not found")
-    return doc
+    return row
 
 
 @router.get("/staged/{staged_id}/pkr-suggestion", response_model=PkrSuggestion)
-async def pkr_suggestion(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+async def pkr_suggestion(staged_id: str, session: AsyncSession = Depends(get_pg_session)):
     """Reference PKR value of the source price. Read-only: nothing is saved and no price is set."""
-    doc = await db.staged_products.find_one({"_id": _object_id(staged_id)})
-    if not doc:
+    row = await staged_repo.get_staged(session, _uuid(staged_id))
+    if not row:
         raise HTTPException(status_code=404, detail="Staged product not found")
-    price, currency = doc.get("source_price"), doc.get("source_currency")
+    price, currency = row.source_price, row.source_currency
     if price is None or not currency:
         raise HTTPException(status_code=409, detail="The source price or currency is unknown; set the PKR price manually")
     try:
@@ -161,91 +149,72 @@ async def pkr_suggestion(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_
     except RateUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return PkrSuggestion(
-        source_price=price, source_currency=currency.upper(), rate=rate.rate, rate_date=rate.date,
-        suggested_pkr=suggest_pkr(price, rate),
+        source_price=float(price), source_currency=currency.upper(), rate=rate.rate, rate_date=rate.date,
+        suggested_pkr=suggest_pkr(float(price), rate),
         note="Reference conversion only. It excludes margin, shipping, duty and tax; the reviewer sets the retail price.",
     )
 
 
-@router.post("/staged/{staged_id}/approve", response_model=StagedProductResponse)
-async def approve(staged_id: str, payload: ApproveRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
-    """Creates the catalogue product as an inactive draft; publishing is a separate action."""
-    oid = _object_id(staged_id)
-    product_id = ObjectId()
-    staged = await _transition(
-        db, oid, S.APPROVED, "approve",
-        set_fields={"product_id": product_id, "stock_known": True,
-                    "approved_price": payload.price, "approved_stock": payload.stock},
-    )
-    draft = staged["product"]
+def _check_catalogue_ready(draft: dict, price: int, stock: int) -> None:
+    """The same validation the catalogue applies to a created product, so a bad draft is a 422 not a 500."""
     try:
-        body = ProductCreateSchema.model_validate({
-            **{k: draft[k] for k in ("name", "slug", "cover_image_url", "images", "main_description",
-                                     "category", "material", "sizing", "weight")},
-            "price": payload.price,
+        ProductCreateSchema.model_validate({
+            **{k: draft[k] for k in CATALOGUE_FIELDS},
+            "price": price,
             "currency": "PKR",
             "status": ProductStatus.DRAFT.value,
-            "variants": [{**v, "price": payload.price, "stock": payload.stock} for v in draft["variants"]],
+            "variants": [{**v, "price": price, "stock": stock} for v in draft["variants"]],
         })
-    except ValueError as exc:
-        await _revert(db, oid, S.PENDING_REVIEW.value, {"product_id": None, "stock_known": False})
+    except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=422, detail="Staged product is not valid for the catalogue") from exc
 
-    document = build_product_document(body.model_dump(mode="json"))
-    document["_id"] = product_id
+
+@router.post("/staged/{staged_id}/approve", response_model=StagedProductResponse)
+async def approve(staged_id: str, payload: ApproveRequest, session: AsyncSession = Depends(get_pg_session)):
+    """Creates the catalogue product as an inactive draft in ONE transaction; publishing is a separate action."""
+    oid = _uuid(staged_id)
     try:
-        await db.products.insert_one(document)
-    except DuplicateKeyError:
-        await _revert(db, oid, S.PENDING_REVIEW.value, {"product_id": None, "stock_known": False})
-        raise HTTPException(status_code=409, detail="A product with this slug already exists")
-    await db.staged_products.update_one(
-        {"_id": oid},
-        {"$set": {"missing_fields": [f for f in staged["missing_fields"] if f not in ("price", "stock")]}},
-    )
-    return await db.staged_products.find_one({"_id": oid})
+        async with session.begin():
+            current = await staged_repo.get_staged(session, oid)
+            if current is not None and current.status == S.PENDING_REVIEW.value:
+                _check_catalogue_ready(current.product, payload.price, payload.stock)
+            return await staged_repo.approve(session, oid, price=payload.price, stock=payload.stock)
+    except (NotFound, InvalidTransition, Conflict, InvalidDraft) as exc:
+        raise _review_error(exc, "approve") from exc
 
 
 @router.post("/staged/{staged_id}/reject", response_model=StagedProductResponse)
-async def reject(staged_id: str, payload: RejectRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
-    return await _transition(
-        db, _object_id(staged_id), S.REJECTED, "reject",
-        set_fields={"rejection_reason": payload.reason}, note=payload.reason,
-    )
-
-
-async def _set_product_state(db, product_id: ObjectId | None, status: ProductStatus) -> bool:
-    if not product_id:
-        return False
-    result = await db.products.update_one(
-        {"_id": product_id, "status": {"$ne": ProductStatus.ARCHIVED.value}},
-        {"$set": {"status": status.value, "is_active": status is ProductStatus.ACTIVE,
-                  "updated_at": datetime.now(timezone.utc)}},
-    )
-    return result.matched_count == 1
+async def reject(staged_id: str, payload: RejectRequest, session: AsyncSession = Depends(get_pg_session)):
+    try:
+        async with session.begin():
+            return await staged_repo.reject(session, _uuid(staged_id), payload.reason)
+    except (NotFound, InvalidTransition, InvalidDraft) as exc:
+        raise _review_error(exc, "reject") from exc
 
 
 @router.post("/staged/{staged_id}/publish", response_model=StagedProductResponse)
-async def publish(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    oid = _object_id(staged_id)
-    previous = await db.staged_products.find_one({"_id": oid}, {"status": 1})
-    staged = await _transition(db, oid, S.PUBLISHED, "publish")
-    if not await _set_product_state(db, staged.get("product_id"), ProductStatus.ACTIVE):
-        await _revert(db, oid, previous["status"])
-        raise HTTPException(status_code=409, detail="Catalogue product is missing or archived")
-    return staged
+async def publish(staged_id: str, session: AsyncSession = Depends(get_pg_session)):
+    """Explicit, human-triggered: the only route that makes an ingested product public."""
+    try:
+        async with session.begin():
+            return await staged_repo.publish(session, _uuid(staged_id), actor="admin")
+    except (NotFound, InvalidTransition, ProductUnavailable, Conflict) as exc:
+        raise _review_error(exc, "publish") from exc
 
 
 @router.post("/staged/{staged_id}/unpublish", response_model=StagedProductResponse)
-async def unpublish(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    oid = _object_id(staged_id)
-    staged = await _transition(db, oid, S.UNPUBLISHED, "unpublish")
-    await _set_product_state(db, staged.get("product_id"), ProductStatus.DRAFT)
-    return staged
+async def unpublish(staged_id: str, session: AsyncSession = Depends(get_pg_session)):
+    try:
+        async with session.begin():
+            return await staged_repo.unpublish(session, _uuid(staged_id))
+    except (NotFound, InvalidTransition) as exc:
+        raise _review_error(exc, "unpublish") from exc
 
 
 @router.post("/staged/{staged_id}/archive", response_model=StagedProductResponse)
-async def archive(staged_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    oid = _object_id(staged_id)
-    staged = await _transition(db, oid, S.ARCHIVED, "archive")
-    await _set_product_state(db, staged.get("product_id"), ProductStatus.ARCHIVED)
-    return staged
+async def archive(staged_id: str, session: AsyncSession = Depends(get_pg_session)):
+    try:
+        async with session.begin():
+            return await staged_repo.archive(session, _uuid(staged_id))
+    except (NotFound, InvalidTransition) as exc:
+        raise _review_error(exc, "archive") from exc

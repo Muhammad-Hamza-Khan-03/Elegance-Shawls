@@ -1,7 +1,8 @@
-"""Verify real Next.js/FastAPI HTTP integration with in-memory test persistence.
+"""Verify real Next.js/FastAPI HTTP integration on a throwaway PostgreSQL container.
 
-Run with the backend development venv after npm ci in apps/frontend.
-This never connects to Atlas or configures production credentials.
+Run with the backend development venv (testcontainers) and Docker after npm ci in apps/frontend.
+The database is a disposable container migrated with Alembic; this never uses a configured
+DATABASE_URL, a hosted database or production credentials.
 """
 import json
 import os
@@ -26,32 +27,18 @@ def check(name, condition):
     checks.append(name)
 
 
-fixture = '''
-from contextlib import asynccontextmanager
-from mongomock_motor import AsyncMongoMockClient
-import main
-from database.db import get_db
-database = AsyncMongoMockClient().elegance_integration_test
-app = main.create_app()
-@asynccontextmanager
-async def lifespan(app):
-    yield
-async def ready():
-    return True
-app.router.lifespan_context = lifespan
-main.database_is_ready = ready
-app.dependency_overrides[get_db] = lambda: database
-'''
+from testcontainers.postgres import PostgresContainer  # noqa: E402
 
-with tempfile.TemporaryDirectory() as temporary:
-    temp = Path(temporary)
-    (temp / 'fixture_backend.py').write_text(fixture)
+database = PostgresContainer('pgvector/pgvector:0.8.1-pg17', username='verify', password='verify-throwaway', dbname='elegance_verify')
+with database, tempfile.TemporaryDirectory() as temporary:
+    url = f'postgresql+asyncpg://verify:verify-throwaway@{database.get_container_host_ip()}:{database.get_exposed_port(5432)}/elegance_verify'
     backend_path = os.pathsep.join(filter(None, [str(ROOT / 'apps/backend'), os.environ.get('PYTHONPATH')]))
-    backend_env = dict(os.environ, MONGODB_URI='mongodb://localhost/test-fixture-only', MONGO_DB_NAME='elegance_integration_test',
-                       ADMIN_API_KEY=KEY, ALLOWED_ORIGINS=FRONT, PYTHONPATH=backend_path)
+    backend_env = dict(os.environ, DATABASE_URL=url, ADMIN_API_KEY=KEY, ALLOWED_ORIGINS=FRONT, PYTHONPATH=backend_path)
+    subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], cwd=ROOT / 'apps/backend', env=backend_env, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     frontend_env = dict(os.environ, ADMIN_API_KEY=KEY, NEXT_PUBLIC_API_URL=API, NEXT_PUBLIC_SITE_URL=FRONT,
                         NEXT_PUBLIC_WHATSAPP_NUMBER='923001234567')
-    backend = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'fixture_backend:app', '--app-dir', str(temp), '--host', '127.0.0.1', '--port', '4200'],
+    backend = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '4200'],
                                cwd=ROOT / 'apps/backend', env=backend_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     frontend = subprocess.Popen(['npm', 'run', 'dev', '--', '--hostname', '127.0.0.1', '--port', '3200'],
                                 cwd=ROOT / 'apps/frontend', env=frontend_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -104,7 +91,7 @@ with tempfile.TemporaryDirectory() as temporary:
             check('untrusted CORS origin rejected', denied.status_code == 400 and 'access-control-allow-origin' not in denied.headers)
             web.delete('/api/admin/session')
             check('logout revokes proxy access', web.get('/api/admin/products').status_code == 401)
-            print(json.dumps({'passed':len(checks),'checks':checks,'persistence':'mongomock; not live Atlas','services':'real Next.js and FastAPI HTTP servers'}))
+            print(json.dumps({'passed':len(checks),'checks':checks,'persistence':'throwaway PostgreSQL container; not a hosted database','services':'real Next.js and FastAPI HTTP servers'}))
     except Exception as exc:
         print(json.dumps({'passed':len(checks),'failed':str(exc)}))
         raise SystemExit(1)

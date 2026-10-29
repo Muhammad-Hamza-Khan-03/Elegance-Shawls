@@ -12,6 +12,7 @@ import { dedupeImages } from '@/lib/images';
 import { firstParagraph } from '@/lib/markdown';
 import { MarkdownText } from '@/components/common/MarkdownText';
 import { CART_VERIFICATION_TTL_MS } from '@/lib/cart';
+import { installFlushOnHide, track } from '@/lib/tracker';
 import { toast } from 'sonner';
 import {
   buildSingleProductMessage,
@@ -38,6 +39,11 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   const [selectedId, setSelectedId] = useState(firstAvailable?.id || product.variants[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(firstAvailable?.image_url || product.images[0] || '');
+
+  useEffect(() => {
+    track({ type: 'view', payload: { product_id: product.id, slug: product.slug } });
+    return installFlushOnHide();
+  }, [product.id, product.slug]);
 
   const selected = product.variants.find((variant) => variant.id === selectedId);
   const cartLine = items.find((item) => item.productId === product.id && item.variantId === selected?.id);

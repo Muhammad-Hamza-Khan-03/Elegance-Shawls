@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local-only monthly refresh of the authorized source into the STAGING database.
+# Local-only monthly refresh of the authorized source into the STAGING PostgreSQL database.
 #
 #   scripts/monthly_refresh.sh [--once | --dry-run | --discovery-only]     (default: --once)
 #
@@ -37,13 +37,16 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
-# Database name: environment first, then the ignored .env. Read as text, never executed or printed.
-db_name="${MONGO_DB_NAME:-}"
-if [ -z "$db_name" ] && [ -f .env ]; then
-  db_name="$(grep -E '^MONGO_DB_NAME=' .env | tail -1 | cut -d= -f2- | tr -d "\"'" || true)"
+# Database name: taken from DATABASE_URL (environment first, then the ignored .env). The URL is read as
+# text, never executed or printed; only the trailing database name is examined.
+db_url="${DATABASE_URL:-}"
+if [ -z "$db_url" ] && [ -f .env ]; then
+  db_url="$(grep -E '^DATABASE_URL=' .env | tail -1 | cut -d= -f2- | tr -d "\"'" || true)"
 fi
+db_name="${db_url##*/}"
+db_name="${db_name%%\?*}"
 if ! [[ "$db_name" =~ (^|[_-])[Ss][Tt][Aa][Gg][Ii][Nn][Gg]($|[_-]) ]] || [[ "$db_name" =~ [Pp][Rr][Oo][Dd] ]]; then
-  echo "Refusing to run: MONGO_DB_NAME must clearly identify a staging database." >&2
+  echo "Refusing to run: DATABASE_URL must name a database that is clearly staging." >&2
   exit 2
 fi
 

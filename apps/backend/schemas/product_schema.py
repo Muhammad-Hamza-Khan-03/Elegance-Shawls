@@ -1,9 +1,9 @@
-from enum import Enum
 import re
+import uuid
+from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import List, Optional
 from datetime import datetime
-from utils.bson import PyObjectId
 from .variant_schema import VariantCreateSchema, VariantResponseSchema
 
 
@@ -65,8 +65,8 @@ class ProductCreateSchema(BaseModel):
 
 
 class ProductResponseSchema(ProductCreateSchema):
-    model_config = ConfigDict(populate_by_name=True)
-    id: PyObjectId = Field(alias="_id")
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    id: uuid.UUID = Field(alias="_id")
 
     is_active: bool
     created_at: datetime
@@ -87,5 +87,5 @@ class ProductStatusUpdateSchema(BaseModel):
 
 class VariantStockUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    variant_id: PyObjectId
+    variant_id: uuid.UUID
     stock: int = Field(..., ge=0)

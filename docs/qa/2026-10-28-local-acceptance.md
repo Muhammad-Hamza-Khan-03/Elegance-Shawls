@@ -1,5 +1,7 @@
 # Local acceptance record — 2026-10-28
 
+> **Historical record (pre-PostgreSQL).** Written when the catalogue ran on MongoDB; those parts no longer apply. Current setup: `DEPLOYMENT.md`.
+
 **Candidate:** branch `p0/integration-local-qa` (PR #89), commit `0b4d6d8`. It merges #66 and #67 and adds #74, #75, #81, the #72 message fix, #69/#70/#76/#77 tooling and the SSR rate-limit fix.
 **Environment:** local Docker stack equivalent to `compose.yaml` + `compose.local.yaml`; HTTPS through Caddy's local CA at `https://store.localhost:8443` and `https://api.localhost:8443`; authenticated MongoDB 8.0 on an internal network; fresh volumes; images built from `git archive 0b4d6d8`.
 **Scope of this evidence:** local only. It is not staging or production evidence, no WhatsApp message was sent (`wa.me` was intercepted), and no production credentials or data were used. Secrets were generated per run and are not recorded.

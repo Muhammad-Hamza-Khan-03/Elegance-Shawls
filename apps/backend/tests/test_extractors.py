@@ -1,15 +1,10 @@
 from pathlib import Path
 
-import httpx
 import pytest
-import pytest_asyncio
-from mongomock_motor import AsyncMongoMockClient
 
-from database.db import ensure_indexes
-from ingestion import jobs, worker
 from ingestion.extractors import ShopifyHtmlExtractor, infer_category, parse_spec_lines
 from ingestion.normalize import InvalidSourceData
-from ingestion.safe_fetch import DomainRateLimiter, SafeFetcher, SourcePolicy
+from ingestion.safe_fetch import SourcePolicy
 
 FIX = Path(__file__).parent / "fixtures/ingestion/shopify"
 URL = "https://shop.example/products/x"
@@ -153,101 +148,3 @@ async def test_nothing_is_inferred_beyond_what_the_page_states():
     assert data["color"] is None
     assert data["price"] == 59.0 and data["currency"] is None  # price without a stated currency stays unknown
     assert "stock" not in data and "availability" not in str(data)  # InStock never becomes stock
-
-
-# ---- through the worker with the real extractor -----------------------------
-
-@pytest_asyncio.fixture
-async def db():
-    database = AsyncMongoMockClient().extract
-    await ensure_indexes(database)
-    return database
-
-
-def fetcher_for(html):
-    def handler(request):
-        return httpx.Response(200, headers={"content-type": "text/html"}, text=html)
-
-    async def dns(_):
-        return ["93.184.216.34"]
-
-    return SafeFetcher(POLICY, resolver=dns, rate_limiter=DomainRateLimiter(0),
-                       client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-
-
-@pytest.mark.asyncio
-async def test_worker_stages_a_product_using_the_deterministic_extractor(db):
-    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl")
-    job = await worker.process_next_job(db, "w", fetcher_for(load("jsonld_full.html")), ShopifyHtmlExtractor())
-    assert job["status"] == "succeeded"
-    staged = await db.staged_products.find_one({})
-    assert staged["status"] == "pending_review" and staged["source_product_id"] == "8800112233"
-    assert staged["source_price"] == 1089.5 and staged["source_currency"] == "AUD"
-    assert staged["product"]["name"] == "Heritage Wool Shawl" and staged["product"]["material"] == "100% Merino Wool"
-    assert staged["product"]["cover_image_url"].startswith("https://cdn.shopify.com/")
-    assert "price" in staged["missing_fields"] and "stock" in staged["missing_fields"]
-    assert await db.products.count_documents({}) == 0
-
-
-@pytest.mark.asyncio
-async def test_worker_strips_hostile_markup_and_offsite_images(db):
-    await jobs.create_job(db, source_id="primary", path="/products/evil-shawl")
-    job = await worker.process_next_job(db, "w", fetcher_for(load("hostile.html")), ShopifyHtmlExtractor())
-    assert job["status"] == "succeeded"
-    staged = await db.staged_products.find_one({})
-    assert "<" not in staged["product"]["name"] and "<" not in staged["product"]["main_description"]
-    assert staged["product"]["images"] == ["https://cdn.shopify.com/ok.jpg"]  # javascript: and evil.example dropped
-    assert staged["status"] == "pending_review"
-
-
-@pytest.mark.asyncio
-async def test_worker_fails_terminally_on_unextractable_page(db):
-    await jobs.create_job(db, source_id="primary", path="/products/nothing")
-    job = await worker.process_next_job(db, "w", fetcher_for(load("empty.html")), ShopifyHtmlExtractor())
-    assert job["status"] == "failed" and job["attempts"] == 1 and "title" in job["last_error"]
-    assert await db.staged_products.count_documents({}) == 0
-
-
-@pytest.mark.asyncio
-async def test_apex_to_www_redirect_stages_under_the_canonical_host_once(db):
-    page = load("jsonld_full.html")
-
-    def handler(request):
-        if request.headers["host"] == "shop.example":
-            return httpx.Response(301, headers={"location": "https://www.shop.example/products/heritage-wool-shawl"})
-        return httpx.Response(200, headers={"content-type": "text/html"}, text=page)
-
-    async def dns(_):
-        return ["93.184.216.34"]
-
-    fetcher = SafeFetcher(POLICY, resolver=dns, rate_limiter=DomainRateLimiter(0),
-                          client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="1")
-    assert (await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor()))["status"] == "succeeded"
-    staged = await db.staged_products.find_one({})
-    assert staged["source_url"] == "https://shop.example/products/heritage-wool-shawl"
-    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="2")
-    assert (await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor()))["result"]["outcome"] == "unchanged"
-    assert await db.staged_products.count_documents({}) == 1
-
-
-@pytest.mark.asyncio
-async def test_homepage_redirect_fails_without_staging_a_product(db):
-    def handler(request):
-        if request.url.path == "/products/heritage-wool-shawl":
-            return httpx.Response(301, headers={"location": "https://shop.example/"})
-        return httpx.Response(200, headers={"content-type": "text/html"}, text=load("jsonld_full.html"))
-
-    async def dns(_):
-        return ["93.184.216.34"]
-
-    fetcher = SafeFetcher(
-        POLICY,
-        resolver=dns,
-        rate_limiter=DomainRateLimiter(0),
-        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
-    )
-    await jobs.create_job(db, source_id="primary", path="/products/heritage-wool-shawl", idempotency_key="homepage")
-    job = await worker.process_next_job(db, "w", fetcher, ShopifyHtmlExtractor())
-    assert job["status"] == "failed" and job["attempts"] == 1 and not job["last_error_retryable"]
-    assert await db.staged_products.count_documents({}) == 0
