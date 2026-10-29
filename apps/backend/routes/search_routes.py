@@ -1,5 +1,6 @@
 """POST /v1/search: read-only catalogue search with deterministic hard constraints (no model, no writes)."""
 import uuid
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from catalog import search as catalogue
 from catalog.query import parse_query
+from configuration.config import settings
 from database.pg import get_pg_session
 from repositories import products as repo
 from schemas.product_schema import ProductResponseSchema
+from search import hybrid
 from utils.pagination import decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/v1/search", tags=["Search"])
@@ -57,4 +60,38 @@ async def search_catalogue(body: SearchRequest, session: AsyncSession = Depends(
                          matched_variant_ids=list(h.variant_ids)) for h in hits],
         next_cursor=encode_cursor(*position) if position else None,
         filters=parsed.filters(), text=list(parsed.text), unsupported=list(parsed.unsupported),
+    )
+
+
+class HybridSearchResponse(SearchResponse):
+    """Same item shape as /v1/search; order is fused relevance and next_cursor is a different, opaque token."""
+
+    semantic: bool   # false: no vector branch ran (disabled or unavailable) and the order is lexical-only
+
+
+@router.post("/hybrid", response_model=HybridSearchResponse)
+async def search_hybrid(body: SearchRequest, session: AsyncSession = Depends(get_pg_session)):
+    """Exact filters first, then lexical + vector candidates fused by fixed RRF. Read-only; the embedding model and
+    index are server configuration and cannot be chosen by the client."""
+    parsed = parse_query(body.q)
+    k_lex, k_sem, scan = settings.hybrid_lexical_k, settings.hybrid_semantic_k, settings.hybrid_max_scan
+    provider, vector = await hybrid.query_vector(
+        body.q, enabled=settings.embedding_enabled, name=settings.embedding_provider, dimensions=settings.embedding_dimensions)
+    version, qhash = hybrid.search_version(provider, settings.embedding_index_version), hybrid.query_hash(body.q, parsed, k_lex, k_sem, scan)
+    try:
+        after = hybrid.decode_cursor(body.cursor, version=version, qhash=qhash) if body.cursor else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+
+    async def fetch(position, n):
+        return await repo.search_batch(session, replace(parsed, text=()), position, n)
+
+    semantic = hybrid.semantic_from_database(session, provider, vector, settings.embedding_index_version) if provider else None
+    hits, position = await hybrid.hybrid_page(fetch, parsed, semantic, limit=body.limit, after=after,
+                                              k_lexical=k_lex, k_semantic=k_sem, max_scan=scan)
+    return HybridSearchResponse(
+        items=[SearchHit(product=ProductResponseSchema.model_validate(h.product),
+                         matched_variant_ids=list(h.variant_ids)) for h in hits],
+        next_cursor=hybrid.encode_cursor(position, version=version, qhash=qhash) if position else None,
+        filters=parsed.filters(), text=list(parsed.text), unsupported=list(parsed.unsupported), semantic=provider is not None,
     )

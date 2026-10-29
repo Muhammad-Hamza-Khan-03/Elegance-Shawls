@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -89,6 +90,10 @@ class settings(BaseSettings):
     embedding_lease_seconds: int = 90
     embedding_backoff_seconds: float = 30.0
     embedding_backfill_max_limit: int = 500
+    # Hybrid search (P1-S4c). Bounded: K candidates per branch, rows examined while applying the hard filters.
+    hybrid_lexical_k: int = Field(default=50, ge=1, le=200)
+    hybrid_semantic_k: int = Field(default=50, ge=1, le=200)
+    hybrid_max_scan: int = Field(default=2000, ge=1, le=5000)
     # Advisory provider model discovery; cache is fresh for 6h and serveable stale for 48h.
     llm_discovery_fresh_ttl_seconds: int = 6 * 3600
     llm_discovery_stale_ceiling_seconds: int = 48 * 3600

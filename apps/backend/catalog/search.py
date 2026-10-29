@@ -46,10 +46,14 @@ def _variant_ok(v, q: ParsedQuery, vocab: Vocabulary) -> bool:
     return not q.in_stock or v.stock > 0
 
 
+def product_words(product) -> set[str]:
+    return set(tokenize(" ".join(filter(None, [product.name, product.main_description, product.material,
+                                               product.item_number, *[v.name for v in product.variants]]))))
+
+
 def _text_ok(product, q: ParsedQuery) -> bool:
     """Every unrecognised query token must appear as a whole word in the product's text."""
-    words = set(tokenize(" ".join(filter(None, [product.name, product.main_description, product.material,
-                                                product.item_number, *[v.name for v in product.variants]]))))
+    words = product_words(product)
     return all(t in words for t in q.text)
 
 
