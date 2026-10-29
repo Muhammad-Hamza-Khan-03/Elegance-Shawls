@@ -37,6 +37,18 @@ def _active_query() -> dict:
     return {"is_active": True, "status": ProductStatus.ACTIVE.value}
 
 
+async def _guard_ingested_activation(db, object_id: ObjectId, new_status: ProductStatus) -> None:
+    """Products that came from ingestion go public only through the staged publish action."""
+    if new_status is not ProductStatus.ACTIVE:
+        return
+    staged = await db.staged_products.find_one({"product_id": object_id}, {"status": 1})
+    if staged and staged["status"] != "published":
+        raise HTTPException(
+            status_code=409,
+            detail="Ingested products must be published through the staged review workflow",
+        )
+
+
 def _cursor_query(cursor: str | None, base: dict) -> dict:
     query = dict(base)
     if not cursor:
@@ -119,6 +131,7 @@ async def update_product(
     existing = await db.products.find_one({"_id": object_id}, {"variants._id": 1})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
+    await _guard_ingested_activation(db, object_id, payload.status)
     replacement = build_product_document(
         payload.model_dump(mode="json"),
         existing_variant_ids=[variant["_id"] for variant in existing.get("variants", [])],
@@ -145,6 +158,7 @@ async def update_product_status(
     payload: ProductStatusUpdateSchema,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    await _guard_ingested_activation(db, _object_id(product_id), payload.status)
     product = await db.products.find_one_and_update(
         {"_id": _object_id(product_id)},
         {"$set": {

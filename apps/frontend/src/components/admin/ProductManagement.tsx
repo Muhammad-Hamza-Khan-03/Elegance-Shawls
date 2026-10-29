@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, Check, Edit3, Loader2, Plus, RefreshCcw, Search, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ActionErrorBanner } from '@/components/admin/ActionErrorBanner';
 import { formatCurrency } from '@/lib/whatsapp';
+import { PRODUCT_CATEGORIES, CATEGORY_LABELS, type ProductCategory } from '@/lib/categories';
 
 const productStatuses = ['active', 'draft', 'out_of_stock', 'archived'] as const;
-const productCategories = ['shawls', 'stoles'] as const;
 
 type ProductStatus = (typeof productStatuses)[number];
-type ProductCategory = (typeof productCategories)[number];
 type AdminVariant = {
   _id?: string;
   id?: string;
@@ -244,6 +244,7 @@ export function AdminProductManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const loadProducts = async (preserveId?: string | null) => {
     setLoading(true);
@@ -353,12 +354,12 @@ export function AdminProductManager() {
   const saveProduct = async () => {
     const validationError = validateForm();
     if (validationError) {
-      setError(validationError);
+      setActionError(validationError);
       return;
     }
 
     setSaving(true);
-    setError('');
+    setActionError('');
     setNotice('');
 
     try {
@@ -377,7 +378,7 @@ export function AdminProductManager() {
       setSelectedId(savedId);
       setForm(toForm(saved));
     } catch (err) {
-      setError(normalizeError(err));
+      setActionError(normalizeError(err));
     } finally {
       setSaving(false);
     }
@@ -385,7 +386,7 @@ export function AdminProductManager() {
 
   const updateStatus = async (product: AdminProduct, nextStatus: ProductStatus) => {
     const productId = getProductId(product);
-    setError('');
+    setActionError('');
     setNotice('');
 
     try {
@@ -410,7 +411,7 @@ export function AdminProductManager() {
       setNotice(`${updated.name} moved to ${statusLabel[nextStatus].toLowerCase()}.`);
       await loadProducts(productId);
     } catch (err) {
-      setError(normalizeError(err));
+      setActionError(normalizeError(err));
     }
   };
 
@@ -491,8 +492,8 @@ export function AdminProductManager() {
                 className="w-full bg-transparent text-[#2f241f] outline-none"
               >
                 <option value="all">All categories</option>
-                {productCategories.map((category) => (
-                  <option key={category} value={category}>{category}</option>
+                {PRODUCT_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{CATEGORY_LABELS[category]}</option>
                 ))}
               </select>
             </label>
@@ -511,6 +512,7 @@ export function AdminProductManager() {
             </label>
           </div>
 
+          <ActionErrorBanner message={actionError} />
           {loading ? (
             <div role="status" aria-live="polite" className="rounded-3xl border border-dashed border-[#e7dac8] p-10 text-center text-[#6f625a]">
               <Loader2 className="mx-auto h-6 w-6 animate-spin" />
@@ -633,8 +635,8 @@ export function AdminProductManager() {
             <label className="space-y-2 text-sm font-medium">
               <span>Category</span>
               <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as ProductCategory }))} className="w-full rounded-2xl border border-[#d8c8b4] bg-white px-4 py-3">
-                {productCategories.map((category) => (
-                  <option key={category} value={category}>{category}</option>
+                {PRODUCT_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{CATEGORY_LABELS[category]}</option>
                 ))}
               </select>
             </label>

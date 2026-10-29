@@ -1,3 +1,5 @@
+import type { ProductCategory } from '@/lib/categories';
+
 export interface Product {
   id: string;
   name: string;
@@ -5,7 +7,7 @@ export interface Product {
   description: string;
   price: number;
   currency: string;
-  category: 'shawls' | 'stoles';
+  category: ProductCategory;
   images: string[];
   variants: ProductVariant[];
   stock: number;

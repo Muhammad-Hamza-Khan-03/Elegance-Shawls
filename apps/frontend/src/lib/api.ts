@@ -1,4 +1,6 @@
 import { Product } from '@/types/types';
+import { normalizeCategory } from '@/lib/categories';
+import { dedupeImages } from '@/lib/images';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -85,15 +87,6 @@ const handleResponse = async (response: Response) => {
   return response.json();
 };
 
-const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
-  const raw =
-    typeof category === 'object' && category !== null && 'name' in category
-      ? String((category as { name?: string }).name || '')
-      : String(category || '');
-
-  return raw.toLowerCase().includes('stole') ? 'stoles' : 'shawls';
-};
-
 // Mapper: Backend/Quill Product -> Storefront Product
 export const mapBackendProduct = (bp: BackendProduct): Product => {
   const rawVariations = bp.variations || bp.variants || [];
@@ -132,7 +125,7 @@ export const mapBackendProduct = (bp: BackendProduct): Product => {
     price: variants[0]?.price || productPrice,
     currency,
     category: normalizeCategory(bp.category || bp.type),
-    images,
+    images: dedupeImages(images),
     variants,
     stock: variants.reduce((acc: number, v) => acc + Number(v.stock || 0), 0),
     status,

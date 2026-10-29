@@ -66,3 +66,15 @@ async def test_admin_auth_rejects_invalid_and_accepts_valid_key(monkeypatch):
         await require_admin_api_key("wrong")
     assert error.value.status_code == 401
     assert await require_admin_api_key("a-long-production-secret") is None
+
+
+@pytest.mark.parametrize("category", ["shawls", "stoles", "scarves"])
+def test_contract_accepts_every_first_class_category(category: str):
+    product = ProductCreateSchema.model_validate({**product_payload(), "category": category})
+    assert build_product_document(product.model_dump(mode="json"))["category"] == category
+
+
+@pytest.mark.parametrize("category", ["scarf", "Scarves", "wraps", "wallets"])
+def test_contract_rejects_non_canonical_categories(category: str):
+    with pytest.raises(ValidationError):
+        ProductCreateSchema.model_validate({**product_payload(), "category": category})

@@ -31,6 +31,7 @@ export const Footer = () => (
             <li><Link href="/products" className="hover:text-primary">All products</Link></li>
             <li><Link href="/products?category=shawls" className="hover:text-primary">Shawls</Link></li>
             <li><Link href="/products?category=stoles" className="hover:text-primary">Stoles</Link></li>
+            <li><Link href="/products?category=scarves" className="hover:text-primary">Scarves</Link></li>
           </ul>
         </div>
         <div>

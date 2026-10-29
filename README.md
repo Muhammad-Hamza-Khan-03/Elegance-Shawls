@@ -51,6 +51,7 @@ This README is written for:
 - `OPERATIONS.md` — health, backup, restore, monitoring, and incident-response guidance
 - `LAUNCH_RUNBOOK.md` — launch gates and end-to-end acceptance checks
 - `plans/` — all system and store plans (start with `plans/README.md`)
+- `docs/phase-1-one-source-ingestion.md` — staged product ingestion design, states and security rules
 
 ## Core capabilities
 

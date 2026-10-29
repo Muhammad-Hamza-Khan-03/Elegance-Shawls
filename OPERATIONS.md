@@ -58,3 +58,34 @@ Create a new random `ADMIN_API_KEY`, update backend and Quill secret stores in a
 ## Routine maintenance
 
 Review Dependabot pull requests weekly. Merge only after CI and compatibility review. Apply security updates promptly, avoid unreviewed major upgrades, review rate-limit behavior and logs monthly, and rehearse rollback and restore procedures before high-traffic campaigns.
+
+## Product ingestion (Phase 1)
+
+Ingestion is off until an operator sets `INGESTION_SOURCE_DOMAIN` and `INGESTION_SOURCE_AUTHORIZED=true`; do this only for a source the business is authorized to use, and only on an isolated staging environment first. Staged products are never public; a reviewer approves and then publishes them in the admin UI (`/admin/staging`). The worker is a separate process (`python -m ingestion.worker`). Roll back by stopping the worker; staged and job collections are additive and can be left in place. See `docs/phase-1-one-source-ingestion.md`.
+
+### Monthly one-shot refresh (local, no always-on worker)
+
+`python -m ingestion.worker --once` (run from `apps/backend`) refreshes every enabled and authorized source, then exits. It reads the source's sitemap, queues idempotent jobs only for new or changed product URLs, processes that finite batch one product at a time and prints a sanitized JSON summary (`--summary-file PATH` also saves it). It never approves, publishes, archives or deletes: new and changed products land in `pending_review`, reviewed products are only flagged `source_changed`, and products missing from the sitemap are reported, not touched.
+
+- `--dry-run` plans the run with no MongoDB writes; `--discovery-only` reads sitemaps only and needs no database access.
+- It refuses to run unless `MONGO_DB_NAME` contains the word `staging` (and not `prod`). Secrets come from the environment or the ignored `apps/backend/.env`, never from arguments.
+- Limits: 500 product URLs per source (more fails with `discovery_limit_exceeded`, nothing is processed), 45 minutes total, 3 attempts per job, 2 seconds between requests, one request at a time. Exit code is 0 only for a fully completed run.
+- The run happens on a trusted local machine whose IP is on the Atlas allow-list. Do not use GitHub-hosted runners or open Atlas to `0.0.0.0/0`, and do not run a paid always-on worker.
+
+**Local helper.** `apps/backend/scripts/monthly_refresh.sh [--once|--dry-run|--discovery-only]` wraps the command: it re-checks the staging database name, takes a `flock` lock so two runs cannot overlap (exit 75), writes a timestamped sanitized summary to `apps/backend/.refresh-output/` (a self-ignoring directory) and returns the command's exit code. It accepts no other arguments, so secrets can never be passed on the command line.
+
+`apps/backend/.env` (ignored by git) needs, with real values only on your machine: `MONGODB_URI` (staging cluster user), `MONGO_DB_NAME=elegance_shawls_staging`, `INGESTION_SOURCE_ID=scarves-australia`, `INGESTION_SOURCE_NAME`, `INGESTION_SOURCE_DOMAIN=scarvesaustralia.com.au`, `INGESTION_ALLOWED_HOSTS=www.scarvesaustralia.com.au`, `INGESTION_IMAGE_HOSTS=cdn.shopify.com` and `INGESTION_SOURCE_AUTHORIZED=true`. Run `--discovery-only`, then `--dry-run`, before the first `--once`.
+
+Example crontab entry (install it yourself; nothing installs it automatically). It runs at 02:00 on the 1st of each month. Use your own paths:
+
+```
+0 2 1 * * cd /path/to/Elegance-Shawls/apps/backend && flock -n /tmp/elegance-monthly-refresh.lock python3.11 -m ingestion.worker --once --summary-file /path/to/local/ignored/refresh-summary.json >> /path/to/local/ignored/refresh.log 2>&1
+```
+
+or, using the helper (which also keeps its own lock and output directory):
+
+```
+0 2 1 * * /path/to/Elegance-Shawls/apps/backend/scripts/monthly_refresh.sh >> /path/to/local/ignored/refresh.log 2>&1
+```
+
+Review: open `/admin/staging`, check each `pending_review` product, set the PKR price and stock, approve (creates an inactive draft), then publish separately.

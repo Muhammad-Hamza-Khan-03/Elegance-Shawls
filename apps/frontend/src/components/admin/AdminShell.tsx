@@ -3,13 +3,14 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Package, LayoutDashboard, ShoppingBag } from 'lucide-react';
+import { LogOut, Package, LayoutDashboard, ShoppingBag, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/products', label: 'Products', icon: Package },
+  { href: '/admin/staging', label: 'Staged products', icon: ClipboardCheck },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
 ];
 

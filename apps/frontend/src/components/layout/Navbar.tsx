@@ -11,6 +11,7 @@ const navLinks = [
   { href: '/products', label: 'All products' },
   { href: '/products?category=shawls', label: 'Shawls' },
   { href: '/products?category=stoles', label: 'Stoles' },
+  { href: '/products?category=scarves', label: 'Scarves' },
 ];
 
 export const Navbar = () => {

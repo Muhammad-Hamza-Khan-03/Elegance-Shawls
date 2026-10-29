@@ -10,6 +10,7 @@ from .variant_schema import VariantCreateSchema, VariantResponseSchema
 class ProductCategory(str, Enum):
     SHAWLS = "shawls"
     STOLES = "stoles"
+    SCARVES = "scarves"
 
 
 class ProductStatus(str, Enum):
