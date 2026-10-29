@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, Identity, Index, Integer, MetaData, Numeric, Text,
+    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
     UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -29,6 +29,8 @@ PRODUCT_CATEGORIES = ("shawls", "stoles", "scarves")
 PRODUCT_STATUSES = ("active", "draft", "out_of_stock", "archived")
 JOB_STATUSES = ("queued", "running", "succeeded", "retrying", "failed", "cancelled")
 STAGED_STATUSES = ("pending_review", "approved", "rejected", "published", "unpublished", "archived")
+ATTRIBUTE_KEYS = ("color_name", "color_family", "fabric", "composition", "pattern", "occasion", "season", "style", "authenticity")
+ATTRIBUTE_SOURCES = ("visual_suggestion", "supplier_declared", "staff_approved", "imported")
 # States that only exist once a reviewer has approved a price and a catalogue product has been created.
 STAGED_APPROVED_STATES = ("approved", "published", "unpublished")
 
@@ -262,6 +264,7 @@ class Variant(Base):
     __table_args__ = (
         # Deferred so a reorder inside one transaction can swap positions.
         UniqueConstraint("product_id", "position", deferrable=True, initially="DEFERRED"),
+        UniqueConstraint("id", "product_id"),  # target of catalog_attributes' composite FK: a variant attribute stays in its own product
         CheckConstraint("position >= 0", name="position_nonnegative"),
         CheckConstraint("char_length(name) >= 1", name="name_present"),
         CheckConstraint("char_length(color) >= 1", name="color_not_empty"),
@@ -286,6 +289,38 @@ class Variant(Base):
     )
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class CatalogAttribute(Base):
+    """One normalised attribute of a product (variant_id NULL) or of one of its variants. value NULL = explicitly unknown."""
+    __tablename__ = "catalog_attributes"
+    __table_args__ = (
+        ForeignKeyConstraint(["variant_id", "product_id"], ["variants.id", "variants.product_id"],
+                             ondelete="CASCADE", name="fk_catalog_attributes_variant_id_variants"),
+        CheckConstraint(_in("key", ATTRIBUTE_KEYS), name="key"),
+        CheckConstraint(_in("source", ATTRIBUTE_SOURCES), name="source"),
+        CheckConstraint("char_length(value) BETWEEN 1 AND 200", name="value_length"),
+        CheckConstraint("char_length(model_version) BETWEEN 1 AND 100 AND char_length(approved_by) BETWEEN 1 AND 200",
+                        name="provenance_length"),
+        CheckConstraint(
+            "(source = 'staff_approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL) "
+            "OR (source <> 'staff_approved' AND approved_by IS NULL AND approved_at IS NULL)", name="approval"),
+        Index("ix_catalog_attributes_product_key", "product_id", "key", unique=True, postgresql_where=text("variant_id IS NULL")),
+        Index("ix_catalog_attributes_variant_key", "variant_id", "key", unique=True, postgresql_where=text("variant_id IS NOT NULL")),
+        Index("ix_catalog_attributes_product_id", "product_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    model_version: Mapped[str | None] = mapped_column(Text)
+    approved_by: Mapped[str | None] = mapped_column(Text)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class IngestionJob(Base):
