@@ -2,8 +2,9 @@ from ..config import EvalConfig
 from ..provider import EmbeddingLimits, EmbeddingProvider, UnsupportedProviderError
 from .gemini import GeminiEmbeddingProvider
 from .groq import GroqEmbeddingProvider
+from .openai import OpenAIEmbeddingProvider
 
-_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider}
+_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider, "openai": OpenAIEmbeddingProvider}
 
 
 def build_provider(config: EvalConfig, dimension: int, limits: EmbeddingLimits | None = None,

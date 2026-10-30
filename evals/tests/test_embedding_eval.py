@@ -438,3 +438,55 @@ def test_provenance_record_and_review_doc_make_no_false_claims():
     doc = (EVALS.parent / "docs/qa/embedding-provider-evaluation-template.md").read_text(encoding="utf-8")
     assert THR["fixture"]["sha256"] in doc  # the reviewed checksum is the pinned one
     assert "No external human, native-speaker or domain-expert review" in doc
+
+
+# --- OpenAI last-resort comparison (mock transport only; no live call) --------------------------------------------
+
+OPENAI_ENV = {"EMBEDDING_EVAL_LIVE": "1", "EMBEDDING_EVAL_ALLOWED_MODELS": "openai/text-embedding-3-small",
+              "OPENAI_API_KEY": SECRET}
+OPENAI_ARGS = flag(flag(flag(flag(LIVE_ARGS, "--provider", "openai"), "--model", "text-embedding-3-small"),
+                        "--dimension", "768"), "--max-cost-usd", "0.25")
+
+
+def openai_transport(table, log):
+    def handler(request):
+        log.append((str(request.url), request.headers["authorization"]))
+        texts = json.loads(request.content)["input"]
+        data = [{"object": "embedding", "index": i, "embedding": table[t] + [0.0] * (768 - len(table[t]))}
+                for i, t in enumerate(texts)]
+        return httpx.Response(200, json={"object": "list", "model": "text-embedding-3-small", "data": data})
+    return httpx.MockTransport(handler)
+
+
+def test_openai_live_path_is_pinned_and_bounded(tmp_path):
+    calls = []
+    code, r = live(tmp_path, OPENAI_ARGS, env=OPENAI_ENV, tr=openai_transport(oracle_table(), calls))
+    assert code == 0 and r["outcome"] == "passed", r
+    assert r["candidate"] == {"provider": "openai", "model": "text-embedding-3-small"}
+    assert r["release_ready"] is False and r["release_flags_changed"] is False and r["fallback"] == {"allowed": False, "used": False}
+    assert {u for u, _ in calls} == {"https://api.openai.com/v1/embeddings"} and len(calls) == r["usage"]["requests"]
+    assert r["usage"]["estimated_cost_usd"] <= 0.25
+    assert SECRET not in json.dumps(r)
+
+
+def test_openai_refusals_and_policy_make_no_calls(tmp_path):
+    calls = []
+    tr = openai_transport(oracle_table(), calls)
+    assert live(tmp_path, flag(OPENAI_ARGS, "--max-cost-usd", "0.26"), env=OPENAI_ENV, tr=tr)[0] == 2  # above the openai ceiling
+    assert live(tmp_path, flag(OPENAI_ARGS, "--usd-per-million-tokens", "0"), env=OPENAI_ENV, tr=tr)[0] == 2  # price must be explicit
+    assert live(tmp_path, flag(OPENAI_ARGS, "--usd-per-million-tokens"), env=OPENAI_ENV, tr=tr)[0] == 2
+    for env in ({k: v for k, v in OPENAI_ENV.items() if k != "OPENAI_API_KEY"},
+                {**OPENAI_ENV, "EMBEDDING_EVAL_ALLOWED_MODELS": "openai/text-embedding-3-large"},
+                {**OPENAI_ENV, "EMBEDDING_EVAL_ALLOWED_MODELS": "gemini/synthetic-model"}):
+        assert live(tmp_path, env=env, args=OPENAI_ARGS, tr=tr)[0] == 2
+    code, r = live(tmp_path, flag(OPENAI_ARGS, "--dimension", "1536"), env=OPENAI_ENV, tr=tr)
+    assert code == 2 and r["outcome"] == "blocked_by_policy"
+    assert calls == []
+
+
+def test_openai_cost_preflight_fails_closed_before_any_call(tmp_path):
+    calls = []
+    code, r = live(tmp_path, flag(OPENAI_ARGS, "--usd-per-million-tokens", "100"), env=OPENAI_ENV,
+                   tr=openai_transport(oracle_table(), calls))
+    assert code == 1 and r["errors"] == ["preflight_cap"] and calls == []
+    assert ev.est_cost(1000, 1.0, 1) == 4 * ev.est_cost(1000, 1.0)  # openai assumes the worst case, one token per char
