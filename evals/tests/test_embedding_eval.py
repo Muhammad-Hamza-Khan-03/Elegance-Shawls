@@ -427,6 +427,19 @@ def test_boundary_and_gold_consistency_are_enforced_by_the_evaluator():
     assert any("SYN-Q049" in e and "gold differs" in e for e in ev.check_fixture(rows, recs, qs, THR))
 
 
+def test_queries_per_cohort_accepts_scalar_or_mapping_and_ignores_excluded_queries():
+    rows = [json.loads(line) for line in (EVALS / "datasets/embedding_synthetic.jsonl").read_text(encoding="utf-8").splitlines()]
+    recs = [r for r in rows if r["kind"] == "record"]
+    qs = [r for r in rows if r["kind"] == "query"]
+    rows.append({**qs[0], "id": "SYN-Q900", "kind": "excluded_query"})  # never counted: only kind=query rows are
+    thr = json.loads(json.dumps(THR))
+    assert ev.check_fixture(rows, recs, qs, thr) == []
+    thr["fixture"]["queries_per_cohort"] = {c: 16 for c in thr["fixture"]["cohorts"]}
+    assert ev.check_fixture(rows, recs, qs, thr) == []
+    thr["fixture"]["queries_per_cohort"]["synonym"] = 5
+    assert ev.check_fixture(rows, recs, qs, thr) == ["cohort synonym: 16 queries"]
+
+
 def test_provenance_record_and_review_doc_make_no_false_claims():
     rows = [json.loads(line) for line in (EVALS / "datasets/embedding_synthetic.jsonl").read_text(encoding="utf-8").splitlines()]
     meta = [r for r in rows if r["kind"] == "meta"]
@@ -438,3 +451,78 @@ def test_provenance_record_and_review_doc_make_no_false_claims():
     doc = (EVALS.parent / "docs/qa/embedding-provider-evaluation-template.md").read_text(encoding="utf-8")
     assert THR["fixture"]["sha256"] in doc  # the reviewed checksum is the pinned one
     assert "No external human, native-speaker or domain-expert review" in doc
+
+
+# --- local e5 (model loader mocked: no download, no network) -----------------------------------------------------
+
+LOCAL_ENV = {"EMBEDDING_EVAL_LIVE": "1"}
+LOCAL_ARGS = ["--synthetic-only", "--live", "--no-fallback", "--provider", "local_e5", "--model", "intfloat/multilingual-e5-base",
+              "--batch-size", "16", "--timeout", "20", "--max-input-chars", "256", "--repeats", "2", "--max-requests", "32"]
+
+
+class LocalFake:
+    def __init__(self):
+        self.seen = []
+
+    def encode(self, texts, **kw):
+        self.seen.append(list(texts))
+        return [[(b - 128) / 128 for b in hashlib.sha256(t.encode()).digest()] * 24 for t in texts]  # 32 * 24 = 768 dims
+
+
+@pytest.fixture
+def local_model(monkeypatch):
+    from embeddings.providers import local_e5
+    m = LocalFake()
+    monkeypatch.setattr(local_e5, "_load_model", lambda ref, cache: m)
+    return m
+
+
+@pytest.fixture
+def mdir(tmp_path):
+    d = tmp_path / "e5"
+    d.mkdir()
+    (d / "config.json").write_text("{}")
+    from embeddings.providers.local_e5 import model_tree_digest
+    return d, model_tree_digest(d)
+
+
+def test_local_e5_is_local_only_prefixed_and_reported_without_raw_data(tmp_path, local_model, mdir, capsys):
+    d, rev = mdir
+    code, r = live(tmp_path, LOCAL_ARGS + ["--local-model-path", str(d), "--local-model-revision", rev], env=LOCAL_ENV)
+    assert code == 1 and r["outcome"] == "failed_quality"  # a hash is not semantic; the evaluator must still run end to end
+    assert r["candidate"] == {"provider": "local_e5", "model": "intfloat/multilingual-e5-base", "model_revision": rev,
+                              "timeout_enforcement": "thread_abandoned_fail_closed_no_hard_kill"}
+    assert r["vectors"]["dimension"] == 768
+    assert r["release_ready"] is False and r["release_flags_changed"] is False and r["fallback"] == {"allowed": False, "used": False}
+    batches = local_model.seen
+    assert {t.split(": ")[0] for b in batches for t in b} == {"passage", "query"}
+    assert all(len({t.split(": ")[0] for t in b}) == 1 for b in batches)  # a batch never mixes queries and passages
+    assert sum(t.startswith("query: ") for b in batches for t in b) == 2 * len(QUERIES)
+    blob = json.dumps(r, ensure_ascii=False) + capsys.readouterr().out
+    assert not any(q["text"] in blob for q in QUERIES) and str(d) not in blob
+
+
+def test_local_e5_refusals_and_typed_blocks(tmp_path, local_model, mdir):
+    d, rev = mdir
+    ok = LOCAL_ARGS + ["--local-model-path", str(d), "--local-model-revision", rev]
+    assert live(tmp_path, ok, env={**LOCAL_ENV, "EMBEDDING_EVAL_GEMINI_API_KEY": SECRET})[0] == 2  # credential present
+    assert live(tmp_path, flag(ok, "--no-fallback"), env=LOCAL_ENV)[0] == 2
+    assert live(tmp_path, ok, env={**LOCAL_ENV, "DATABASE_URL": "x"})[0] == 2
+    assert live(tmp_path, LIVE_ARGS + ["--local-model-path", "/m"])[0] == 2  # local flags with a remote provider
+    assert live(tmp_path, LIVE_ARGS + ["--local-model-revision", rev])[0] == 2
+    assert ev.main(["--synthetic-only", "--recorded", "--local-model-path", "/m"], env={}) == 2
+    assert ev.main(["--synthetic-only", "--recorded", "--local-model-revision", rev], env={}) == 2
+    code, r = live(tmp_path, flag(ok, "--model", "intfloat/multilingual-e5-small"), env=LOCAL_ENV)
+    assert code == 2 and r["outcome"] == "blocked_by_policy" and local_model.seen == []
+    for args, env, err in ((LOCAL_ARGS, {}, "missing_local_model"),  # nothing given: no discovery by model name
+                           (LOCAL_ARGS + ["--local-model-path", str(tmp_path / "absent")], {}, "missing_local_model"),
+                           (LOCAL_ARGS + ["--local-model-path", str(d)], {}, "unpinned_model"),
+                           (LOCAL_ARGS + ["--local-model-path", str(d), "--local-model-revision", "0" * 64], {}, "model_revision_mismatch"),
+                           (LOCAL_ARGS, {"EMBEDDING_EVAL_LOCAL_MODEL_PATH": str(d), "EMBEDDING_EVAL_LOCAL_MODEL_REVISION": "0" * 64},
+                            "model_revision_mismatch")):
+        code, r = live(tmp_path, args, env={**LOCAL_ENV, **env})
+        assert code == 2 and r["outcome"] == "blocked_by_policy" and r["errors"] == [err], err
+    assert local_model.seen == []
+    code, r = live(tmp_path, LOCAL_ARGS, env={**LOCAL_ENV, "EMBEDDING_EVAL_LOCAL_MODEL_PATH": str(d),
+                                              "EMBEDDING_EVAL_LOCAL_MODEL_REVISION": rev})
+    assert code == 1 and r["candidate"]["model_revision"] == rev  # env fallbacks work

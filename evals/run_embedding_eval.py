@@ -229,18 +229,18 @@ class FakeResult:
         self.vectors, self.request = vectors, {"attempts": 1}
 
 
-def fake_embed(texts):
+def fake_embed(texts, **_):
     return FakeResult([fake_vector(t) for t in texts])
 
 
-def embed_all(embed: Callable, texts: list[str], batch: int, meter: Meter, caps: dict) -> list:
+def embed_all(embed: Callable, segments: list[tuple[list[str], dict]], batch: int, meter: Meter, caps: dict) -> list:
+    """Each segment is (texts, embed kwargs) and is batched on its own, so a query batch never mixes with passages."""
     out: list = []
-    for i in range(0, len(texts), batch):
-        chunk = texts[i:i + batch]
+    for chunk, kw in [(t[i:i + batch], kw) for t, kw in segments for i in range(0, len(t), batch)]:
         if meter.requests >= caps["max_requests"]:
             raise Stop("failed_budget_or_timeout", "request_cap")
         start = time.perf_counter()
-        res = embed(chunk)
+        res = embed(chunk, **kw)
         meter.latency.append(time.perf_counter() - start)
         meter.requests += 1
         meter.chars += sum(map(len, chunk))
@@ -256,16 +256,19 @@ def est_cost(chars: int, price_per_million: float) -> float:
     return math.ceil(chars / 4) * price_per_million / 1e6  # shortcut: chars/4 token estimate, not billed usage
 
 
-def run(records, queries, embed, thr, *, repeats, batch, dim, caps, include_stale, semantic) -> dict:
+def run(records, queries, embed, thr, *, repeats, batch, dim, caps, include_stale, semantic, split_kinds=False) -> dict:
     """Embed the scorable records and every query `repeats` times, then validate, rank and gate. Raises Stop."""
     embedded = [r for r in records if r["vector_state"] == "ok" or (include_stale and r["vector_state"] == "stale")]
     texts = [r["text"] for r in embedded] + [q["text"] for q in queries]
-    per_repeat = -(-len(texts) // batch)
+    # Local e5 needs `passage: ` vs `query: ` prefixes, so those two are embedded (and batched) separately; others get one list.
+    segments = ([([r["text"] for r in embedded], {"kind": "passage"}), ([q["text"] for q in queries], {"kind": "query"})]
+                if split_kinds else [(texts, {})])
+    per_repeat = sum(-(-len(t) // batch) for t, _ in segments)
     if per_repeat * repeats > caps["max_requests"] or est_cost(sum(map(len, texts)) * repeats, caps["usd_per_million_tokens"]) > caps["max_cost_usd"]:
         raise Stop("failed_budget_or_timeout", "preflight_cap")
     meter, rv_all, qv_all, vec_rates = Meter(), [], [], []
     for _ in range(repeats):
-        vecs = embed_all(embed, texts, batch, meter, caps)
+        vecs = embed_all(embed, segments, batch, meter, caps)
         vec_rates.append(check_vectors(vecs, dim))
         if len(vecs) != len(texts) or vec_rates[-1]["finite"] < 1 or vec_rates[-1]["stable_dimension"] < 1:
             break
@@ -320,18 +323,28 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None, tr
     p.add_argument("--max-requests", type=int)
     p.add_argument("--max-cost-usd", type=float)
     p.add_argument("--usd-per-million-tokens", type=float)
+    p.add_argument("--local-model-path", default=env.get("EMBEDDING_EVAL_LOCAL_MODEL_PATH"))  # local_e5 only; offline model dir
+    p.add_argument("--local-cache-dir", default=env.get("EMBEDDING_EVAL_LOCAL_CACHE_DIR"))
+    p.add_argument("--local-model-revision", default=env.get("EMBEDDING_EVAL_LOCAL_MODEL_REVISION"))  # tree digest of the model dir
     a = p.parse_args(argv)
     if not a.synthetic_only:
         p.error("--synthetic-only is required: only the fictional corpus may be evaluated")
     live_flags = {k: getattr(a, k) for k in ("provider", "model", "dimension", "batch_size", "timeout", "max_input_chars",
                                              "repeats", "max_requests", "max_cost_usd", "usd_per_million_tokens")}
+    local = a.live and a.provider == "local_e5"
+    if local:  # local-only: free and fixed-size, so these have safe defaults; everything else stays explicit
+        for k, v in (("dimension", 768), ("usd_per_million_tokens", 0.0)):
+            setattr(a, k, v if getattr(a, k) is None else getattr(a, k))
+        live_flags.update({k: getattr(a, k) for k in ("dimension", "usd_per_million_tokens")})
     thr = yaml.safe_load((a.thresholds or a.root / "embedding_thresholds.yaml").read_text(encoding="utf-8"))
     b = thr["bounds"]
+    if local and a.max_cost_usd is None:
+        a.max_cost_usd = live_flags["max_cost_usd"] = b["max_cost_usd"]
     base = {"gate": "embedding_synthetic", "mode": "live" if a.live else "recorded", "release_ready": False,
             "release_flags_changed": False, "fallback": {"allowed": False, "used": False}, "candidate": None}
 
     if a.recorded:
-        if any(v is not None for v in live_flags.values()):
+        if any(v is not None for v in live_flags.values()) or a.local_model_path or a.local_cache_dir or a.local_model_revision:
             return refuse("recorded mode takes no provider, model or live caps")
         repeats, batch, dim, include_stale, embed = 2, b["max_batch"], FAKE_DIM, True, fake_embed
         caps = {"max_requests": b["max_requests"], "max_cost_usd": b["max_cost_usd"], "usd_per_million_tokens": 0.0}
@@ -344,6 +357,10 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None, tr
             return refuse("live mode needs --no-fallback")
         if present := [k for k in APP_ENV if env.get(k)]:
             return refuse("app/database configuration is set (" + ", ".join(present) + "); run live with a clean environment")
+        if local and (keys := [k for k, v in env.items() if v and re.fullmatch(r"EMBEDDING_EVAL_[A-Z0-9]+_API_KEY", k)]):
+            return refuse("local_e5 is local-only; unset provider credentials (" + ", ".join(sorted(keys)) + ")")
+        if (a.local_model_path or a.local_cache_dir or a.local_model_revision) and not local:
+            return refuse("--local-model-path, --local-cache-dir and --local-model-revision are only for --provider local_e5")
         for name, val, hi, lo in (("batch-size", a.batch_size, b["max_batch"], 1), ("timeout", a.timeout, b["timeout_s"], 0.001),
                                   ("max-input-chars", a.max_input_chars, b["max_input_chars"], 1), ("repeats", a.repeats, b["max_repeats"], 2),
                                   ("max-requests", a.max_requests, b["max_requests"], 1), ("max-cost-usd", a.max_cost_usd, b["max_cost_usd"], 0.0001),
@@ -371,26 +388,32 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None, tr
     outcome, codes, transport_errs, eval_errs = None, [], (), ()
     if a.live:
         sys.path.insert(0, str(HERE.parent / "apps" / "backend"))  # explicit provider interface only; no app settings
-        from embeddings.config import load_eval_config
+        from embeddings.config import EvalConfig, load_eval_config
         from embeddings.provider import (ConfigError, EmbeddingEvalError, EmbeddingLimits, ProviderRequestError,
                                          UnsupportedProviderError)
         from embeddings.providers import build_provider
         transport_errs, eval_errs = ProviderRequestError, EmbeddingEvalError
         base["candidate"] = {"provider": a.provider, "model": a.model}
         try:
-            cfg = load_eval_config(a.provider, a.model, env)
+            if local:  # pinned model, no credential, no allowlist: the provider rejects any other model name
+                cfg = EvalConfig("local_e5", a.model, "")
+            else:
+                cfg = load_eval_config(a.provider, a.model, env)
             limits = EmbeddingLimits(max_batch=batch, max_chars=a.max_input_chars, timeout_s=a.timeout,
                                      max_retries=b["max_transport_retries"])
-            provider = build_provider(cfg, dim, limits, transport)
+            provider = build_provider(cfg, dim, limits, {"model_path": a.local_model_path, "cache_dir": a.local_cache_dir, "revision": a.local_model_revision} if local else transport)
         except UnsupportedProviderError as e:
             outcome, codes = "unsupported", [e.code]
         except ConfigError as e:
             outcome, codes = "blocked_by_policy", [e.code]
         embed = provider.embed if outcome is None else None
+        if local and outcome is None:  # provenance and the honest timeout mode, recorded with the candidate
+            from embeddings.providers.local_e5 import TIMEOUT_ENFORCEMENT
+            base["candidate"] |= {"model_revision": provider.revision, "timeout_enforcement": TIMEOUT_ENFORCEMENT}
     if outcome is None:
         try:
             m = run(records, queries, embed, thr, repeats=repeats, batch=batch, dim=dim, caps=caps,
-                    include_stale=include_stale, semantic=a.live)
+                    include_stale=include_stale, semantic=a.live, split_kinds=local)
         except Stop as e:
             outcome, codes, m = e.outcome, [e.code], None
         except transport_errs as e:

@@ -2,8 +2,9 @@ from ..config import EvalConfig
 from ..provider import EmbeddingLimits, EmbeddingProvider, UnsupportedProviderError
 from .gemini import GeminiEmbeddingProvider
 from .groq import GroqEmbeddingProvider
+from .local_e5 import LocalE5EmbeddingProvider
 
-_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider}
+_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider, "local_e5": LocalE5EmbeddingProvider}
 
 
 def build_provider(config: EvalConfig, dimension: int, limits: EmbeddingLimits | None = None,
