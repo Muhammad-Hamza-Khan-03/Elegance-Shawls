@@ -76,7 +76,12 @@ async def main() -> int:
     if not postgres_configured():
         print("DATABASE_URL is not set", file=sys.stderr)
         return 2
-    provider = provider_for(settings.embedding_provider, settings.embedding_dimensions)
+    if settings.embedding_provider == "local_e5":   # local-only; refuses unless flagged in a local environment
+        from search.local_e5 import local_provider
+
+        provider = local_provider("passage")
+    else:
+        provider = provider_for(settings.embedding_provider, settings.embedding_dimensions)
     engine = make_engine()
     try:
         summary = await backfill(async_sessionmaker(engine, expire_on_commit=False), provider, kind=args.kind,

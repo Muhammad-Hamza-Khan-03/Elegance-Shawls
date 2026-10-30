@@ -7,7 +7,7 @@ from repositories import products as products_repo
 from routes.search_routes import router as search_router
 from search import embedding_service as svc
 from search import hybrid
-from search.providers import FakeEmbeddingProvider
+from search.providers import FakeEmbeddingProvider, NonRetryableEmbeddingError
 from tests.integration.api_support import ApiEnv
 from tests.integration.repo_helpers import tx
 from tests.integration.test_api_products import variant
@@ -158,3 +158,88 @@ def test_hybrid_search_never_writes_and_leaves_deterministic_search_unchanged(en
     assert [env.sql(f"SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text)) FROM {t} t")[0] for t in TABLES] == before
     det = env.client.post("/v1/search", json={"q": "cozy stole under 4000"}).json()
     assert slugs(det) == ["wool-brown"] and set(det) == {"items", "next_cursor", "filters", "text", "unsupported"}
+
+
+# ---- local_e5 path (flagged, local-only); the model is replaced by a pinned stub carrying the local_e5 identity ----
+
+class LocalStub(Pinned):
+    name, model, model_revision = "local_e5", "intfloat/multilingual-e5-base", "b" * 64
+
+
+def seed_local(env):
+    add(env, "wool-brown", "Brown Cozy Stole", "stoles", [variant("Brown", price=3000)])
+    add(env, "cashmere", "Cashmere Wrap", "stoles", [variant("Brown", price=3500), variant("Black", price=3600)])
+    add(env, "pricey", "Luxury Stole", "stoles", [variant("Brown", price=9000)])
+    add(env, "unindexed", "Cozy Unindexed Stole", "stoles", [variant("Brown", price=2500)])   # no vector: never semantic
+    owners = [pid(env, s) for s in ("wool-brown", "cashmere", "pricey")]
+
+    async def work(sessions):
+        for owner in owners:
+            async with tx(sessions) as s:
+                row, _ = await svc.ensure_pending(s, "product", owner, LocalStub("x"), index_version=INDEX, max_attempts=3)
+            assert (await svc.process(sessions, LocalStub("x"), "product", row.id, lease_seconds=60,
+                                      backoff_seconds=0))["status"] == "succeeded"
+    env.run(work)
+    env.texts = {s: text_of(env, s) for s in ("wool-brown", "cashmere", "pricey")}
+
+
+def local_env(env, monkeypatch, nearest="cashmere"):
+    for key, value in {"local_semantic_search_enabled": True, "embedding_provider": "local_e5", "environment": "development"}.items():
+        monkeypatch.setattr(settings, key, value)
+    seed_local(env)
+    near(env, monkeypatch, nearest)
+
+
+def near(env, monkeypatch, slug):
+    monkeypatch.setattr(hybrid.local_e5, "local_provider", lambda kind="query": LocalStub(env.texts[slug]))
+
+
+def test_local_flag_on_ranks_semantically_under_hard_constraints_and_excludes_stale(env, monkeypatch):
+    local_env(env, monkeypatch, "pricey")                  # the nearest vector belongs to an over-budget product
+    body = post(env).json()
+    assert body["semantic"] is True and "pricey" not in slugs(body) and "unindexed" in slugs(body)
+    near(env, monkeypatch, "cashmere")
+    assert set(slugs(post(env).json())) == {"wool-brown", "unindexed", "cashmere"}
+    owner = pid(env, "cashmere")
+    env.run(lambda sessions: bump(sessions, owner))                 # source moved on: the vector is dropped at once
+    assert "cashmere" not in slugs(post(env).json())
+    assert post(env, "cozy stole not over 1000").json()["items"] == []
+
+
+def test_local_flag_off_or_non_local_environment_is_lexical_only(env, monkeypatch):
+    seed_local(env)
+    monkeypatch.setattr(settings, "embedding_provider", "local_e5")
+    body = post(env).json()
+    baseline = slugs(body)
+    assert body["semantic"] is False and baseline == ["unindexed", "wool-brown"]   # flag off (default): real gate refuses
+    monkeypatch.setattr(settings, "local_semantic_search_enabled", True)
+    for name in ("production", "staging"):
+        monkeypatch.setattr(settings, "environment", name)
+        body = post(env).json()
+        assert body["semantic"] is False and slugs(body) == baseline
+
+
+def test_local_provider_failure_falls_back_and_cursors_do_not_cross_modes(env, monkeypatch):
+    local_env(env, monkeypatch)
+    first = post(env, limit=1).json()
+    assert first["semantic"] is True and first["next_cursor"]
+    assert post(env, limit=1, cursor=first["next_cursor"]).status_code == 200
+
+    class Broken(LocalStub):
+        async def embed(self, texts):
+            raise NonRetryableEmbeddingError("boom")
+    monkeypatch.setattr(hybrid.local_e5, "local_provider", lambda kind="query": Broken("x"))
+    body = post(env).json()
+    assert body["semantic"] is False and set(slugs(body)) == {"wool-brown", "unindexed"}
+    assert post(env, limit=1, cursor=first["next_cursor"]).status_code == 400          # semantic cursor, lexical mode
+    near(env, monkeypatch, "cashmere")
+    monkeypatch.setattr(LocalStub, "model_revision", "c" * 64)                          # model revision change
+    assert post(env, limit=1, cursor=first["next_cursor"]).status_code == 400
+
+
+def test_local_path_never_writes(env, monkeypatch):
+    local_env(env, monkeypatch)
+    before = [env.sql(f"SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text)) FROM {t} t")[0] for t in TABLES]
+    for q in ("cozy stole", "", "zzzz", "stole not over 1000"):
+        assert post(env, q).status_code == 200
+    assert [env.sql(f"SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text)) FROM {t} t")[0] for t in TABLES] == before

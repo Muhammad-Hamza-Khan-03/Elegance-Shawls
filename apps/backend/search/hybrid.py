@@ -15,6 +15,7 @@ and the opaque cursor carries the last (score, created_at, id) plus a hash of qu
 version. Tradeoff: a page is exact only within the candidate window (<= 2K products); data that changes between pages can
 move items across the cursor, so a client may see a product late or twice, never one that is ineligible.
 """
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -31,6 +32,7 @@ from catalog.search import BATCH, MAX_LIMIT, Fetch, Hit, evaluate, key, product_
 from models.relational_model import ProductEmbedding, VariantEmbedding
 from repositories import embeddings as emb_repo
 from search import embedding_service as svc
+from search import local_e5
 from search.providers import EmbeddingError, EmbeddingProvider, embed_checked, provider_for
 from search.representations import REPRESENTATION_VERSION
 
@@ -126,7 +128,8 @@ def decode_cursor(cursor: str, *, version: str, qhash: str) -> Position:
 
 def search_version(provider: EmbeddingProvider | None, index_version: str) -> str:
     """Names everything that changes the ranking, so a cursor cannot cross a model or index change."""
-    semantic = f"{provider.name}/{provider.model}/{index_version}" if provider else "lexical-only"
+    revision = getattr(provider, "model_revision", "")
+    semantic = f"{provider.name}/{provider.model}/{index_version}" + (f"/{revision}" if revision else "") if provider else "lexical-only"
     return f"{SEARCH_VERSION}|{semantic}"
 
 
@@ -170,11 +173,17 @@ async def hybrid_page(fetch: Fetch, parsed: ParsedQuery, semantic: Semantic | No
 
 
 async def query_vector(text: str, *, enabled: bool, name: str, dimensions: int) -> tuple[EmbeddingProvider | None, list[float] | None]:
-    """(provider, query vector) from the local fake only; (None, None) when disabled, unconfigured, blank or failing."""
+    """(provider, query vector) from the local fake or, when explicitly flagged, local_e5; (None, None) when disabled,
+    unconfigured, blank or failing (the caller then ranks lexically)."""
     if not enabled or not text.strip():
         return None, None
     try:
-        provider = provider_for(name, dimensions)
+        if name == "local_e5":
+            provider = await asyncio.to_thread(local_e5.local_provider, "query")   # first call loads the model
+            if dimensions != provider.dimensions:
+                return None, None
+        else:
+            provider = provider_for(name, dimensions)
         return provider, (await embed_checked(provider, [text.strip()]))[0]
     except EmbeddingError:
         return None, None

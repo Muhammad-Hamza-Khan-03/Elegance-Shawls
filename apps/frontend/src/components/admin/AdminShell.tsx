@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Package, LayoutDashboard, ShoppingBag, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { AdminSearch } from '@/components/admin/AdminSearch';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -80,6 +81,7 @@ export const AdminShell = ({ children }: { children: ReactNode }) => {
                 <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#9a6b3f]">Authenticated workspace</p>
                 <p className="mt-2 text-sm text-[#6f625a]">Protected by the shared admin key session.</p>
               </div>
+              <AdminSearch />
               <Link href="/" className="text-sm font-semibold text-[#765033] hover:underline">
                 View storefront →
               </Link>

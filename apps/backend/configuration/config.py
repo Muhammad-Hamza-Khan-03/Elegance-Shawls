@@ -40,6 +40,8 @@ class settings(BaseSettings):
     ingestion_max_urls_per_source: int = 500
     ingestion_max_sitemaps: int = 50
     ingestion_run_max_seconds: int = 2700
+    # Comma-separated extracted categories to keep (shawl, stole, scarf). Empty = no category filter.
+    ingestion_allowed_categories: str = ""
 
     # PostgreSQL is the sole database and is required by the API and the ingestion worker.
     database_url: str = ""
@@ -84,6 +86,10 @@ class settings(BaseSettings):
     embedding_provider: str = ""
     embedding_dimensions: int = 768  # must equal the vector column width (models.relational_model.EMBEDDING_DIMENSIONS)
     embedding_index_version: str = "hnsw-cosine-m16-efc64-v1"
+    # Local-only semantic search (offline local_e5). Off by default and refused outside a local ENVIRONMENT; see search/local_e5.py.
+    local_semantic_search_enabled: bool = False
+    local_e5_model_path: str = ""
+    local_e5_model_revision: str = ""
     embedding_max_jobs: int = 2
     embedding_job_timeout_seconds: int = 60
     embedding_max_attempts: int = 3

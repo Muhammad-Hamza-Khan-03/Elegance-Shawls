@@ -11,6 +11,8 @@ from ingestion.quill_scraper import FieldExtractor, ProductShawl, fetch_product_
 from ingestion.safe_fetch import SafeFetcher, SourcePolicy
 from repositories import staged as staged_repo
 
+CATEGORY_REJECTED = "Category not allowed"
+
 
 async def stage_product(sessions, normalized: dict, *, job_id: uuid.UUID | None, source_id: str,
                         source_name: str) -> tuple:
@@ -56,6 +58,10 @@ async def run_job(
     except ValidationError as exc:
         fields = ", ".join(sorted({".".join(map(str, e["loc"])) for e in exc.errors()}))
         raise InvalidSourceData(f"Invalid scraper output: {fields}") from exc
+
+    allowed = {c.strip().lower() for c in settings.ingestion_allowed_categories.split(",") if c.strip()}
+    if allowed and scraped.category not in allowed:  # non-retryable; category is a controlled literal
+        raise InvalidSourceData(f"{CATEGORY_REJECTED}: {scraped.category}")
 
     normalized = normalize(
         scraped, policy=policy, source_product_id=extract_source_product_id(page["raw_html"]),
