@@ -5,7 +5,7 @@
 [![Main Branch](https://img.shields.io/badge/branch-main-111827?style=flat-square)](https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls/tree/main)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js_16-000000?style=flat-square&logo=next.js)](./apps/frontend)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-05998b?style=flat-square&logo=fastapi)](./apps/backend)
-[![Database](https://img.shields.io/badge/database-MongoDB-0f7a43?style=flat-square&logo=mongodb)](./apps/backend)
+[![Database](https://img.shields.io/badge/database-PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white)](./apps/backend)
 [![Ordering](https://img.shields.io/badge/orders-WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white)](./apps/frontend)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](./.github/workflows/ci.yml)
 
@@ -17,7 +17,7 @@ This repository contains the customer-facing storefront and the backend product 
 
 - *Storefront:* Next.js customer experience for browsing and order handoff
 - *API:* FastAPI product service with authenticated admin write routes
-- *Database:* MongoDB-backed product catalogue
+- *Database:* PostgreSQL (required); the sole source of truth for the catalogue and ingestion
 - *Ordering model:* WhatsApp-first purchase intent flow
 - *Ops posture:* health checks, readiness checks, CI, deployment docs, and operations runbooks
 
@@ -44,13 +44,14 @@ This README is written for:
 
 ### Applications
 - `apps/frontend` — Next.js storefront for browsing products and sending order intent to WhatsApp
-- `apps/backend` — FastAPI + MongoDB product API with public catalogue routes and authenticated admin product management routes
+- `apps/backend` — FastAPI + PostgreSQL product API with public catalogue routes and authenticated admin product management routes
 
 ### Production docs
 - `DEPLOYMENT.md` — production environment and rollout requirements
 - `OPERATIONS.md` — health, backup, restore, monitoring, and incident-response guidance
 - `LAUNCH_RUNBOOK.md` — launch gates and end-to-end acceptance checks
 - `plans/` — all system and store plans (start with `plans/README.md`)
+- `docs/phase-1-one-source-ingestion.md` — staged product ingestion design, states and security rules
 
 ## Core capabilities
 
@@ -66,7 +67,7 @@ This README is written for:
 - public product listing with cursor pagination
 - public product lookup by slug
 - authenticated product creation, update, publish/unpublish, stock updates, and archive
-- MongoDB-backed persistence
+- PostgreSQL-backed persistence (SQLAlchemy/asyncpg, Alembic migrations)
 - CORS configuration via environment
 - readiness checks for database connectivity
 - request rate limiting middleware
@@ -83,7 +84,7 @@ Next.js Storefront (apps/frontend)
 FastAPI Product API (apps/backend)
    |
    v
-MongoDB
+PostgreSQL
 
 Admin write operations are authenticated with X-Admin-Key.
 Customer order completion happens through WhatsApp handoff from the storefront.
@@ -102,9 +103,9 @@ Customer order completion happens through WhatsApp handoff from the storefront.
 ### Backend
 - FastAPI
 - Python 3.11
-- Motor / PyMongo
+- SQLAlchemy 2 (async) / asyncpg / Alembic
 - Pydantic v2
-- MongoDB
+- PostgreSQL 17 + pgvector
 - Pytest
 
 ### Delivery / ops
@@ -146,7 +147,7 @@ Elegance-Shawls/
 - Node.js 22 recommended for parity with CI
 - npm
 - Python 3.11
-- MongoDB (local or remote)
+- PostgreSQL 17 (required; local via `compose.ai.yaml`)
 - Git
 
 ## Local development setup
@@ -186,8 +187,7 @@ Backend environment variables:
 
 | Variable | Purpose | Example |
 |---|---|---|
-| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017` |
-| `MONGO_DB_NAME` | Database name | `elegance_shawls` |
+| `DATABASE_URL` | **Required.** PostgreSQL connection string (run `alembic upgrade head` first) | `postgresql+asyncpg://elegance_app:...@localhost:5432/elegance_shawls` |
 | `ALLOWED_ORIGINS` | Comma-separated allowed storefront origins | `http://localhost:3000` |
 | `ADMIN_API_KEY` | Secret required for authenticated admin writes | `replace-with-a-long-random-secret` |
 | `ENVIRONMENT` | Runtime environment label | `development` |
@@ -246,6 +246,33 @@ pytest -q
 python -m compileall -q .
 ```
 
+## Local AI platform services (optional)
+
+PostgreSQL 17 + pgvector, Redis and the arq worker run from `compose.ai.yaml` for local development only (internal network, no published ports; the production stack is `compose.yaml`).
+
+```bash
+cp .env.ai.example .env.ai      # replace placeholders with `openssl rand -hex 32`
+docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait
+docker compose --env-file .env.ai -f compose.ai.yaml run --rm migrate            # alembic upgrade head
+docker compose --env-file .env.ai -f compose.ai.yaml --profile worker up -d worker
+```
+
+To run the API, worker or Alembic **on your host** against that database, add the loopback-only override and use `127.0.0.1:5433`:
+
+```bash
+docker compose --env-file .env.ai -f compose.ai.yaml -f compose.ai.host.yaml up -d --wait postgres
+cd apps/backend && export DATABASE_URL=postgresql+asyncpg://elegance_app:<POSTGRES_APP_PASSWORD>@127.0.0.1:5433/elegance_shawls
+alembic upgrade head && uvicorn main:app --port 8000
+python -m ingestion.worker      # long-running ingestion worker (separate process)
+```
+
+Backend integration tests (real PostgreSQL and Redis through Testcontainers; skipped cleanly without Docker) and the evaluation runner:
+
+```bash
+cd apps/backend && pytest -q -m integration      # default `pytest -q` stays container-free
+python evals/run_evals.py                        # from the repo root; recorded responses, no LLM quota
+```
+
 ## Health and readiness
 
 ### Frontend
@@ -253,8 +280,8 @@ python -m compileall -q .
 - `/api/ready`
 
 ### Backend
-- `/health/`
-- `/ready/`
+- `/health/`: liveness, dependency-free.
+- `/ready/`: 503 when PostgreSQL (the database for the catalogue, staged products and ingestion jobs) is down; `{"status": "not_ready", "database": "unavailable"}`. It also reports `redis` and `worker` as `disabled`, `connected`/`alive` or `unavailable`/`not_seen`; those never fail readiness because the catalogue works without them. Startup fails fast if `DATABASE_URL` is unset.
 
 Use these endpoints for deployment checks, uptime probes, and alerting.
 
@@ -268,7 +295,7 @@ The compose stack expects these values:
 - `API_URL`
 - `WHATSAPP_NUMBER`
 - `ADMIN_API_KEY`
-- `MONGO_DB_NAME`
+- `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD`, `POSTGRES_BACKUP_PASSWORD` (see `.env.example`; the backend gets `DATABASE_URL` from them)
 
 ### Typical flow
 ```bash
@@ -277,11 +304,10 @@ docker compose up -d
 ```
 
 The compose file:
-- runs MongoDB
-- builds the backend from `apps/backend`
-- builds the frontend from `apps/frontend`
-- binds backend to `127.0.0.1:8000`
-- binds frontend to `127.0.0.1:3000`
+- runs PostgreSQL on an internal network with no published port (least-privilege application and backup roles)
+- builds the backend from `apps/backend` and the frontend from `apps/frontend`
+- publishes host ports only on the Caddy proxy
+- ships a one-shot `migrate` service (`alembic upgrade head`) that is never started by `up`; running it is a deliberate, approved step (`DEPLOYMENT.md`, "Database migrations")
 
 For a real production rollout, read `DEPLOYMENT.md` and `OPERATIONS.md` first.
 
@@ -302,7 +328,7 @@ CI definition:
 
 - Never commit `.env` files or real credentials
 - Treat `ADMIN_API_KEY` as a production secret and rotate it if exposed
-- Keep MongoDB private, authenticated, and TLS-enabled in production
+- Keep PostgreSQL private (internal network, no published port) and use the least-privilege application role
 - Restrict `ALLOWED_ORIGINS` to exact HTTPS origins
 - Do not place credentials in screenshots, logs, tickets, or browser-delivered code
 

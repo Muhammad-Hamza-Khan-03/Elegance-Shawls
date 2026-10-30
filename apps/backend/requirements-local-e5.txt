@@ -1,0 +1,10 @@
+# Optional: local intfloat/multilingual-e5-base embedding evaluation (embeddings/providers/local_e5.py).
+# Not in requirements.txt: it pulls in torch, which production never needs. Install only on the evaluation machine.
+# sentence-transformers 5.7.0: latest 5.x release, declares Requires-Python >=3.10 (project runs 3.11 locally, 3.12 in CI),
+# and its numpy>=1.20 floor accepts the numpy already pinned in requirements.txt. Chosen over 6.x to avoid a major bump.
+# Its transitive dependencies (torch, transformers, tokenizers, huggingface-hub, scikit-learn, scipy) are NOT pinned here:
+# lock and `pip-audit` the resolved set on the evaluation machine before use; the repo CI audit does not cover this file.
+# The model weights are never downloaded by the provider: fetch them yourself once, print their revision with
+# `python -m embeddings.providers.local_e5 <model dir>`, and pass --local-model-path and --local-model-revision.
+-r requirements.txt
+sentence-transformers==5.7.0

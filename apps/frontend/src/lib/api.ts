@@ -1,4 +1,7 @@
 import { Product } from '@/types/types';
+import { normalizeCategory } from '@/lib/categories';
+import { dedupeImages } from '@/lib/images';
+import { traceHeaders } from './trace';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -76,6 +79,14 @@ export const internalApiHeaders = (): Record<string, string> => {
   return token ? { 'X-Internal-API-Token': token } : {};
 };
 
+// Browser reads start a W3C trace so the API request span, its database spans and any worker job
+// it enqueues join one trace. Server-rendered reads send none: a per-call header would defeat
+// Next's request deduplication, so their trace starts at the API.
+const apiHeaders = (): Record<string, string> => ({
+  ...internalApiHeaders(),
+  ...(typeof window === 'undefined' ? {} : traceHeaders()),
+});
+
 // Helper to handle API responses
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -83,15 +94,6 @@ const handleResponse = async (response: Response) => {
     throw new Error(error.detail || `API Error: ${response.statusText}`);
   }
   return response.json();
-};
-
-const normalizeCategory = (category: unknown): 'shawls' | 'stoles' => {
-  const raw =
-    typeof category === 'object' && category !== null && 'name' in category
-      ? String((category as { name?: string }).name || '')
-      : String(category || '');
-
-  return raw.toLowerCase().includes('stole') ? 'stoles' : 'shawls';
 };
 
 // Mapper: Backend/Quill Product -> Storefront Product
@@ -132,7 +134,7 @@ export const mapBackendProduct = (bp: BackendProduct): Product => {
     price: variants[0]?.price || productPrice,
     currency,
     category: normalizeCategory(bp.category || bp.type),
-    images,
+    images: dedupeImages(images),
     variants,
     stock: variants.reduce((acc: number, v) => acc + Number(v.stock || 0), 0),
     status,
@@ -159,7 +161,7 @@ const extractItems = (data: unknown): BackendProduct[] => {
 export const api = {
   // GET /products
   getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal, headers: internalApiHeaders() }));
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal, headers: apiHeaders() }));
     return extractItems(data)
       .map((p) => mapBackendProduct(p))
       .filter((p: Product) => p.status === 'active');
@@ -168,7 +170,7 @@ export const api = {
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: internalApiHeaders() }));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: apiHeaders() }));
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
@@ -184,7 +186,7 @@ export const api = {
   // Current published state for checkout: null when the product is not
   // published; throws when the catalogue cannot be reached, so callers block handoff.
   getPublishedProduct: async (slug: string): Promise<Product | null> => {
-    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', headers: internalApiHeaders() });
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', headers: apiHeaders() });
     if (response.status === 404) return null;
     const product = mapBackendProduct(await handleResponse(response));
     return product.status === 'active' ? product : null;

@@ -1,0 +1,10 @@
+# Optional: LiteLLM for providers the built-in client does not cover (Groq, Gemini, OpenRouter and
+# Ollama need nothing here), plus Langfuse. Not in requirements.txt because litellm 1.106.6
+# requires filelock<4.0 and every filelock before 4.0.9/4.2.1 has open CVEs, which would fail
+# the pip-audit gate. Install this only where real providers are needed, once an audited
+# litellm release allows a fixed filelock. Without it the gateway uses fake/ models only and
+# real-provider calls fail over to the "AI unavailable" path.
+-r requirements.txt
+litellm==1.106.6
+# Optional Langfuse tracing (observability/langfuse_client.py); audited clean with pip-audit at 5.0.4.
+langfuse==5.0.4

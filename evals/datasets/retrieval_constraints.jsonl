@@ -1,0 +1,32 @@
+{"id": "rc-001", "lang": "en", "query": "brown stole under 4000", "filters": {"category": "stoles", "colors": ["brown"], "max_price": 4000}, "unsupported": false, "expected_ids": ["p01"]}
+{"id": "rc-002", "lang": "ur", "query": "بھورا اسٹول ۴۰۰۰ سے کم", "filters": {"category": "stoles", "colors": ["brown"], "max_price": 4000}, "unsupported": false, "expected_ids": ["p01"]}
+{"id": "rc-003", "lang": "roman_ur", "query": "bhoora stole 4000 se kam", "filters": {"category": "stoles", "colors": ["brown"], "max_price": 4000}, "unsupported": false, "expected_ids": ["p01"]}
+{"id": "rc-004", "lang": "en", "query": "black shawl in stock", "filters": {"category": "shawls", "colors": ["black"], "in_stock": true}, "unsupported": false, "expected_ids": ["p02", "p09"]}
+{"id": "rc-005", "lang": "en", "query": "black shawl under 4000 in stock", "filters": {"category": "shawls", "colors": ["black"], "max_price": 4000, "in_stock": true}, "unsupported": false, "expected_ids": []}
+{"id": "rc-006", "lang": "roman_ur", "query": "kala shawl 5000 se kam", "filters": {"category": "shawls", "colors": ["black"], "max_price": 5000}, "unsupported": false, "expected_ids": ["p02", "p03"]}
+{"id": "rc-007", "lang": "en", "query": "maroon shawl not black", "filters": {"category": "shawls", "colors": ["maroon"], "exclude_colors": ["black"]}, "unsupported": false, "expected_ids": ["p03"]}
+{"id": "rc-008", "lang": "en", "query": "shawl not black", "filters": {"category": "shawls", "exclude_colors": ["black"]}, "unsupported": false, "expected_ids": ["p03", "p06", "p09", "p10"]}
+{"id": "rc-009", "lang": "en", "query": "wool shawl", "filters": {"category": "shawls", "materials": ["wool"]}, "unsupported": false, "expected_ids": ["p02", "p09"]}
+{"id": "rc-010", "lang": "en", "query": "pashmina", "filters": {"materials": ["pashmina"]}, "unsupported": false, "expected_ids": ["p01"]}
+{"id": "rc-011", "lang": "en", "query": "grey or beige stole", "filters": {"category": "stoles", "colors": ["beige", "grey"]}, "unsupported": false, "expected_ids": ["p05"]}
+{"id": "rc-012", "lang": "en", "query": "stole under 2000", "filters": {"category": "stoles", "max_price": 2000}, "unsupported": false, "expected_ids": ["p08"]}
+{"id": "rc-013", "lang": "en", "query": "navy stole", "filters": {"category": "stoles", "colors": ["navy"]}, "unsupported": false, "expected_ids": []}
+{"id": "rc-014", "lang": "roman_ur", "query": "resham scarf", "filters": {"category": "scarves", "materials": ["silk"]}, "unsupported": false, "expected_ids": ["p04"]}
+{"id": "rc-015", "lang": "ur", "query": "ریشم سکارف", "filters": {"category": "scarves", "materials": ["silk"]}, "unsupported": false, "expected_ids": ["p04"]}
+{"id": "rc-016", "lang": "roman_ur", "query": "gulabi shawl", "filters": {"category": "shawls", "colors": ["pink"]}, "unsupported": false, "expected_ids": ["p06"]}
+{"id": "rc-017", "lang": "roman_ur", "query": "gulabi shawl, white nahi", "filters": {"category": "shawls", "colors": ["pink"], "exclude_colors": ["white"]}, "unsupported": false, "expected_ids": ["p06"]}
+{"id": "rc-018", "lang": "en", "query": "red scarf", "filters": {"category": "scarves", "colors": ["red"]}, "unsupported": false, "expected_ids": []}
+{"id": "rc-019", "lang": "en", "query": "pashmina shawl between 1000 and 2000", "filters": {"category": "shawls", "materials": ["pashmina"], "min_price": 1000, "max_price": 2000}, "unsupported": false, "expected_ids": []}
+{"id": "rc-020", "lang": "en", "query": "zzzzzz", "filters": {}, "unsupported": false, "expected_ids": []}
+{"id": "rc-021", "lang": "en", "query": "", "filters": {}, "unsupported": false, "expected_ids": ["p01", "p02", "p03", "p04", "p05", "p06", "p08", "p09", "p10"]}
+{"id": "rc-022", "lang": "en", "query": "shawl not over 1000", "filters": null, "unsupported": true, "expected_ids": []}
+{"id": "rc-023", "lang": "en", "query": "stole 3000", "filters": {"category": "stoles"}, "unsupported": false, "expected_ids": []}
+{"id": "rc-024", "lang": "en", "query": "in stock scarves under 2500", "filters": {"category": "scarves", "max_price": 2500, "in_stock": true}, "unsupported": false, "expected_ids": ["p04"]}
+{"id": "rc-025", "lang": "roman_ur", "query": "maujood shawl", "filters": {"category": "shawls", "in_stock": true}, "unsupported": false, "expected_ids": ["p02", "p03", "p06", "p09", "p10"]}
+{"id": "rc-026", "lang": "roman_ur", "query": "4500 se zyada shawl", "filters": {"category": "shawls", "min_price": 4500}, "unsupported": false, "expected_ids": ["p02", "p03", "p09"]}
+{"id": "rc-027", "lang": "ur", "query": "کالا شال", "filters": {"category": "shawls", "colors": ["black"]}, "unsupported": false, "expected_ids": ["p02", "p03", "p09"]}
+{"id": "rc-028", "lang": "en", "query": "ST-05", "filters": {}, "unsupported": false, "expected_ids": ["p05"]}
+{"id": "rc-029", "lang": "en", "query": "embroidered shawl", "filters": {"category": "shawls"}, "unsupported": false, "expected_ids": ["p03"]}
+{"id": "rc-030", "lang": "en", "query": "  SHAWL!!!  ", "filters": {"category": "shawls"}, "unsupported": false, "expected_ids": ["p02", "p03", "p06", "p09", "p10"]}
+{"id": "rc-031", "lang": "en", "query": "brown shawl under 3500 in stock", "filters": {"category": "shawls", "colors": ["brown"], "max_price": 3500, "in_stock": true}, "unsupported": false, "expected_ids": []}
+{"id": "rc-032", "lang": "en", "query": "brown shawl under 3500", "filters": {"category": "shawls", "colors": ["brown"], "max_price": 3500}, "unsupported": false, "expected_ids": ["p09"]}

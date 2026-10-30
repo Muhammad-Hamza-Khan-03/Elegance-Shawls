@@ -8,6 +8,12 @@ const products = [
 
 http.createServer((request, response) => {
   response.setHeader('Access-Control-Allow-Origin', '*');
+  if (request.method === 'OPTIONS') {
+    // CORS preflight: the storefront sends W3C trace headers on browser reads.
+    response.setHeader('Access-Control-Allow-Headers', request.headers['access-control-request-headers'] || '*');
+    response.statusCode = 204;
+    return response.end();
+  }
   response.setHeader('Content-Type', 'application/json');
   if (request.url === '/health/' || request.url === '/ready/') return response.end(JSON.stringify({ status: 'ready' }));
   if (request.url?.startsWith('/products/slug/')) {

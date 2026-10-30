@@ -6,32 +6,43 @@ Set these values in the deployment platform's encrypted secret/environment store
 
 | Variable | Service | Requirement |
 |---|---|---|
-| `MONGODB_URI` | backend | TLS-enabled production MongoDB connection string with a least-privilege application user |
-| `MONGO_DB_NAME` | backend | Dedicated production database name |
+| `DATABASE_URL` | backend, ingestion worker, `migrate` | `postgresql+asyncpg://` URL of the least-privilege application role. Required: the backend refuses to start without it. In `compose.yaml` it is built from the `POSTGRES_*` values. |
 | `ADMIN_API_KEY` | backend + frontend server + trusted Quill server if enabled | Matching long random secret (at least 32 random bytes); server-side proxies send it only as `X-Admin-Key`. Never expose it through a `NEXT_PUBLIC_*` variable. |
 | `ALLOWED_ORIGINS` | backend | Exact comma-separated HTTPS storefront origin(s), with no wildcard |
 | `NEXT_PUBLIC_API_URL` | frontend | Public HTTPS backend origin; baked into the frontend build |
 | `NEXT_PUBLIC_SITE_URL` | frontend | Canonical public HTTPS storefront origin; baked into the frontend build |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | frontend | International digits only, without `+` or spaces |
-| `MONGO_ROOT_*`, `MONGO_APP_*`, `MONGO_BACKUP_*` | mongo (compose) | Separate random passwords for the root, application and backup users; see `.env.example` |
+| `POSTGRES_ADMIN_*`, `POSTGRES_APP_*`, `POSTGRES_BACKUP_*`, `POSTGRES_DB` | postgres (compose) | Separate random passwords for the bootstrap superuser, the application role and the read-only backup role; see `.env.example` |
 | `SITE_DOMAIN`, `API_DOMAIN` | proxy (compose) | Public hostnames Caddy serves and obtains certificates for |
 | `INTERNAL_API_TOKEN` | backend + frontend server | Matching random secret. The storefront server sends it on its own reads so server-rendered pages, which all reach the API from one address, are not limited as one client. It only bypasses the public rate limit (never admin routes) and grants no data access. Never expose it through `NEXT_PUBLIC_*`. Unset means no exemption. |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE`, `ADMIN_RATE_LIMIT_PER_MINUTE` | backend | Optional per-client limits (defaults 120 and 60) |
 
 Generate the admin key with `openssl rand -hex 32`. Rotate it immediately if exposed. Because `NEXT_PUBLIC_*` values are public and build-time values, changing them requires rebuilding the frontend image.
 
+PostgreSQL is the only database and is part of `compose.yaml`. Redis, the arq worker, the LLM gateway and events are optional and **not part of the production stack**: their variables (`REDIS_URL`, `SESSION_SIGNING_KEY`, `LLM_*`, `OTEL_ENABLED`) default to disabled. Local services for them live in `compose.ai.yaml`; see the root README and `OPERATIONS.md`.
+
 ## Container deployment
 
-`compose.yaml` runs four services: Caddy (`proxy`, the only service with host ports), the Next.js `frontend`, the FastAPI `backend` and MongoDB (`mongo`).
+`compose.yaml` runs four services: Caddy (`proxy`, the only service with host ports), the Next.js `frontend`, the FastAPI `backend` and PostgreSQL 17 + pgvector (`postgres`), plus a `migrate` one-shot job that `up` never starts.
 
-1. Copy `.env.example` to `.env` (mode 600, never committed) and replace every placeholder. Use `openssl rand -hex 32` for `ADMIN_API_KEY` and each MongoDB password; hex keeps them safe inside the connection string. Set `APP_VERSION` to the release git SHA so images are tagged immutably.
+1. Copy `.env.example` to `.env` (mode 600, never committed) and replace every placeholder. Use `openssl rand -hex 32` for `ADMIN_API_KEY` and each PostgreSQL password; hex keeps them safe inside the connection string. Set `APP_VERSION` to the release git SHA so images are tagged immutably.
 2. Point DNS for `SITE_DOMAIN` and `API_DOMAIN` at the host and open ports 80 and 443. Caddy obtains publicly trusted certificates automatically, redirects HTTP to HTTPS, caps request bodies at 1 MB and writes JSON access logs with the admin key, cookies and authorization headers removed.
-3. Run `docker compose build --pull` and `docker compose up -d`.
-4. Confirm `GET https://$SITE_DOMAIN/api/health` and `/api/ready` and `GET https://$API_DOMAIN/health/` and `/ready/` return 200. Readiness returns 503 within about 2 seconds when MongoDB or the backend is unavailable.
+3. Run `docker compose build --pull`. On a new host, start only the database first (`docker compose up -d --wait postgres`), then apply the schema (see "Database migrations"), then `docker compose up -d`.
+4. Confirm `GET https://$SITE_DOMAIN/api/health` and `/api/ready` and `GET https://$API_DOMAIN/health/` and `/ready/` return 200. Backend readiness returns 503 within about 2 seconds when PostgreSQL is unavailable; `/health/` stays dependency-free.
 5. Create a uniquely named draft through the admin UI, publish it, verify it appears publicly, then archive it.
-6. Schedule backups and the watchdog (`OPERATIONS.md`) and complete the launch checklist before directing traffic.
+6. Set up the watchdog (`OPERATIONS.md`) and complete the launch checklist before directing traffic. PostgreSQL backup and restore automation is not built yet (approval-gated issue #105); it is a launch prerequisite, not an optional extra.
 
-MongoDB requires authentication. On first start of an empty volume, `deploy/mongo/init-users.sh` creates an application user with `readWrite` on `MONGO_DB_NAME` only, and a backup user with the built-in `backup` role. The backend connects as the application user. MongoDB runs on an internal Docker network with no internet egress and no published port, so only the backend can reach it; traffic on that private network is not TLS-encrypted. For a managed provider (for example Atlas), point `MONGODB_URI` at its TLS connection string with a least-privilege user and IP allowlist instead of running the `mongo` service.
+On first start of an empty volume, `deploy/postgres/init-roles.sh` creates the `vector` extension, a least-privilege application role (no superuser, createdb, createrole or replication; it owns its tables in `public` and runs the migrations) and a read-only backup role (`pg_read_all_data`), and revokes public access. The backend connects as the application role. PostgreSQL runs on an internal Docker network with no internet egress and no published port, so only the backend and the `migrate` job can reach it; traffic on that private network is not TLS-encrypted. Pointing `DATABASE_URL` at a managed PostgreSQL instead is a separate, approved decision.
+
+### Database migrations
+
+The schema is managed only by Alembic (`apps/backend/migrations`, reversible, applied with `alembic upgrade head`). Ownership is explicit:
+
+- **The operator runs migrations, never the application.** The backend image does not migrate on start, so a deploy or restart can never change the schema by itself.
+- **Command (production or staging):** `docker compose --profile tools run --rm migrate`. It runs as the application role on the internal network and is idempotent at `head`.
+- **Approval boundary:** running it against staging or production needs separate written approval, a verified backup (once #105 exists) and a reviewed `alembic upgrade --sql` or revision list. Agents and CI never run it against a shared environment. Roll back with `alembic downgrade <revision>` only with the same approval.
+- **Local or throwaway verification** is the only automatic case: `compose.ai.yaml`'s `migrate` service against a local database, and the Testcontainers integration suite.
+- Apply migrations before starting the new backend version; `/ready/` checks connectivity, not the schema revision.
 
 The backend trusts `X-Forwarded-For` (`FORWARDED_ALLOW_IPS=*`) because it is reachable only through Caddy, which replaces any client-supplied value. Do not publish the backend or frontend ports directly.
 
@@ -50,11 +61,11 @@ LIVE_WHATSAPP_NUMBER=$WHATSAPP_NUMBER LIVE_IGNORE_HTTPS_ERRORS=1 \
   npm run test:e2e:live -- admin-lifecycle customer-whatsapp
 ```
 
-`npm run test:e2e:live` drives real Next.js, FastAPI and MongoDB on desktop and mobile; `wa.me` is intercepted so no WhatsApp message is sent. Run `login-throttle` separately and last: it locks the client out of admin sign-in for 15 minutes. Never set `LIVE_IGNORE_HTTPS_ERRORS` against production.
+`npm run test:e2e:live` drives real Next.js, FastAPI and PostgreSQL on desktop and mobile; `wa.me` is intercepted so no WhatsApp message is sent. Run `login-throttle` separately and last: it locks the client out of admin sign-in for 15 minutes. Never set `LIVE_IGNORE_HTTPS_ERRORS` against production.
 
 The storefront reverse proxy must preserve the public `Host` and HTTPS request scheme. Admin product mutations require a signed session and an `Origin` matching that public host and scheme. In staging, verify that same-origin create, edit, status, stock, and archive requests succeed and cross-origin requests return 403 without reaching the backend. If legitimate writes return 403, correct the proxy forwarding configuration before release; do not weaken the origin check.
 
-The included Mongo container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. A managed replica set is preferred for production resilience.
+The included PostgreSQL container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. Backups are not automated yet (issue #105); a managed PostgreSQL service is preferred for production resilience.
 
 ## Admin sign-in protection
 

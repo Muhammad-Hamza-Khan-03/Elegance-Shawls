@@ -12,7 +12,7 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
   await expect(page.getByRole('heading', { name: 'Admin shell overview' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Admin navigation' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Products' }).click();
+  await page.getByRole('link', { name: 'Products', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/products$/);
   await expect(page.getByRole('heading', { name: 'Product management workspace' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'New product' })).toBeVisible();

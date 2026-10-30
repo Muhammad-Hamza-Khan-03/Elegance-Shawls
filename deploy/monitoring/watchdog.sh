@@ -12,7 +12,7 @@ set -uo pipefail
 
 : "${SITE_URL:?Set SITE_URL}"
 : "${API_URL:?Set API_URL}"
-CONTAINERS=${CONTAINERS:-"elegance-shawls-proxy-1 elegance-shawls-frontend-1 elegance-shawls-backend-1 elegance-shawls-mongo-1"}
+CONTAINERS=${CONTAINERS:-"elegance-shawls-proxy-1 elegance-shawls-frontend-1 elegance-shawls-backend-1 elegance-shawls-postgres-1"}
 BACKEND_CONTAINER=${BACKEND_CONTAINER:-elegance-shawls-backend-1}
 STATE_DIR=${STATE_DIR:-/var/tmp/elegance-watchdog}
 PROBE_FAILURE_THRESHOLD=${PROBE_FAILURE_THRESHOLD:-3}

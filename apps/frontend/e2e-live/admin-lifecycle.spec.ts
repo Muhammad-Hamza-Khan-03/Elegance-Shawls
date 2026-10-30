@@ -2,7 +2,7 @@ import { Page, expect, test } from '@playwright/test';
 import { adminApi, fixtureSuffix, image, live, signIn } from './live';
 
 // #71 / #66 / #81: product lifecycle through the built-in admin UI against real
-// FastAPI + MongoDB, with storefront and backend state checked at every step.
+// FastAPI + PostgreSQL, with storefront and backend state checked at every step.
 
 const productCard = (page: Page, slug: string) =>
   page.getByText(slug, { exact: false }).locator('xpath=ancestor::*[.//button[normalize-space()="Edit"]][1]');

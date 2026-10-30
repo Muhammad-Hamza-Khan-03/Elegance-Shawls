@@ -3,7 +3,6 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from configuration.config import settings
-from models.product_model import build_product_document
 from schemas.product_schema import ProductCreateSchema
 from security.admin_auth import require_admin_api_key
 
@@ -24,16 +23,14 @@ def product_payload() -> dict:
     }
 
 
-def test_contract_normalizes_defaults_and_builds_complete_document():
+def test_contract_normalizes_defaults():
     product = ProductCreateSchema.model_validate(product_payload())
-    document = build_product_document(product.model_dump(mode="json"))
     assert product.price == 4500
     assert product.currency == "PKR"
     assert product.images == [product.cover_image_url]
-    assert document["category"] == "shawls"
-    assert document["status"] == "active"
-    assert document["is_active"] is True
-    assert document["variants"][0]["stock"] == 4
+    assert product.category == "shawls"
+    assert product.status == "active"
+    assert product.variants[0].stock == 4
 
 
 @pytest.mark.parametrize("slug", ["Bad Slug", "bad--slug", "-bad", "bad_"])
@@ -66,3 +63,15 @@ async def test_admin_auth_rejects_invalid_and_accepts_valid_key(monkeypatch):
         await require_admin_api_key("wrong")
     assert error.value.status_code == 401
     assert await require_admin_api_key("a-long-production-secret") is None
+
+
+@pytest.mark.parametrize("category", ["shawls", "stoles", "scarves"])
+def test_contract_accepts_every_first_class_category(category: str):
+    product = ProductCreateSchema.model_validate({**product_payload(), "category": category})
+    assert product.category == category
+
+
+@pytest.mark.parametrize("category", ["scarf", "Scarves", "wraps", "wallets"])
+def test_contract_rejects_non_canonical_categories(category: str):
+    with pytest.raises(ValidationError):
+        ProductCreateSchema.model_validate({**product_payload(), "category": category})

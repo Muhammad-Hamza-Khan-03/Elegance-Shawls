@@ -6,11 +6,11 @@ The repository-controlled storefront and API are launch-complete only after the 
 
 ## 1. Infrastructure
 
-- Set final HTTPS `SITE_URL` and `API_URL`, the international-digit `WHATSAPP_NUMBER`, a randomly generated `ADMIN_API_KEY`, and production MongoDB settings.
-- Restrict MongoDB to private authenticated TLS access and use a least-privilege database user.
+- Set final HTTPS `SITE_URL` and `API_URL`, the international-digit `WHATSAPP_NUMBER`, a randomly generated `ADMIN_API_KEY`, and the production PostgreSQL passwords (`POSTGRES_*`).
+- Keep PostgreSQL on the internal network (no published port) with the least-privilege application role, and apply the schema with the approved `migrate` step before the first start.
 - Build immutable frontend/backend images from a commit with green CI.
 - Configure DNS, TLS, reverse proxy request limits and the four documented health/readiness probes.
-- Complete an encrypted backup and an isolated restore drill.
+- Complete an encrypted backup and an isolated restore drill (blocked: PostgreSQL backup tooling is issue #105 and is not built).
 
 ## 2. Quill compatibility — blocking
 
@@ -47,7 +47,7 @@ Use a server-side Quill proxy/session so the browser never receives `ADMIN_API_K
 
 1. Record the deployed commit and immutable image digests.
 2. Confirm CI, health, readiness, logs and alerts are green.
-3. Take a pre-launch database backup.
+3. Take a pre-launch database backup (blocked on #105).
 4. Run one final Quill publish-to-storefront smoke test and remove the test product.
 5. Enable public traffic and watch errors, latency, resources and readiness continuously during the launch window.
 

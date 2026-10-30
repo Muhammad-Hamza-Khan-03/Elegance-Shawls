@@ -55,25 +55,6 @@ def test_access_log_has_request_id_and_no_secrets(monkeypatch):
         assert private not in text
 
 
-def test_readiness_ping_fails_fast_when_database_hangs(monkeypatch):
-    import asyncio
-    import time
-
-    from database import db
-
-    class HangingAdmin:
-        async def command(self, name):
-            await asyncio.sleep(10)
-
-    class HangingClient:
-        admin = HangingAdmin()
-
-    monkeypatch.setattr(db, "_client", HangingClient())
-    monkeypatch.setattr(db, "_db", object())
-    started = time.perf_counter()
-    assert asyncio.run(db.database_is_ready(timeout_seconds=0.2)) is False
-    assert time.perf_counter() - started < 2
-
 
 def test_internal_token_exempts_only_public_reads(monkeypatch):
     monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1)

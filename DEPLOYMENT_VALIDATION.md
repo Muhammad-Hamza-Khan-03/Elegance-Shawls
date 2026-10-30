@@ -1,4 +1,6 @@
 # Production preparation — 25 October 2026
+> **Historical record (pre-PostgreSQL).** Everything below describes the earlier MongoDB/Atlas-backed deployment validation. MongoDB, the Atlas catalogue and `scripts/import_legacy_catalog.py` were retired in S4; the catalogue is now PostgreSQL-only and the legacy data was declared disposable. Kept for audit only; it is not current setup guidance.
+
 
 Release remains blocked until reviewed code, isolated preview/backend validation, WhatsApp configuration and live checks are complete.
 

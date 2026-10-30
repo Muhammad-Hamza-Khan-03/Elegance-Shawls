@@ -1,0 +1,6 @@
+{"id": "rh-001", "lang": "en", "query": "warm brown pashmina stole", "relevant_ids": ["h01"], "decoy_ids": ["d01", "d02", "x01"], "max_price": null, "in_stock": false}
+{"id": "rh-002", "lang": "ur", "query": "گرم بھورا پشمینہ شال", "relevant_ids": ["h02", "h01"], "decoy_ids": ["d02", "x01"], "max_price": null, "in_stock": false}
+{"id": "rh-003", "lang": "roman_ur", "query": "sardi ke liye kali garam chadar", "relevant_ids": ["h03"], "decoy_ids": ["x01"], "max_price": null, "in_stock": false}
+{"id": "rh-004", "lang": "roman_ur", "query": "shaadi ke liye shawl 5000 se kam", "relevant_ids": ["h03"], "decoy_ids": ["d01", "d02", "x01"], "max_price": 5000, "in_stock": false}
+{"id": "rh-005", "lang": "en", "query": "something light to wrap around my shoulders", "relevant_ids": ["h04", "h05"], "decoy_ids": ["x01"], "max_price": null, "in_stock": true}
+{"id": "rh-006", "lang": "en", "query": "scarf exactly 1800", "relevant_ids": ["h04"], "decoy_ids": ["x01"], "max_price": 1800, "in_stock": false}

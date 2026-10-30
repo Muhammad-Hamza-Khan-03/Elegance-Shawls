@@ -1,34 +1,52 @@
 # Self-hosted production stack. Copy .env.example to .env and fill in every
-# value; see DEPLOYMENT.md. Only the Caddy proxy publishes host ports.
+# value; see DEPLOYMENT.md. Only the Caddy proxy publishes host ports (PostgreSQL publishes none).
 services:
-  mongo:
-    image: mongo:8.0
+  postgres:
+    # Same pinned image as compose.ai.yaml. Bump tag and digest together and re-run the checks.
+    image: pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}
-      MONGO_DB_NAME: ${MONGO_DB_NAME:-elegance_shawls}
-      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:-elegance_app}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}
-      MONGO_BACKUP_USERNAME: ${MONGO_BACKUP_USERNAME:-elegance_backup}
-      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:?Set MONGO_BACKUP_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-elegance_shawls}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-elegance_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-elegance_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}
+      POSTGRES_BACKUP_USER: ${POSTGRES_BACKUP_USER:-elegance_backup}
+      POSTGRES_BACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:?Set POSTGRES_BACKUP_PASSWORD}
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=128MB"]
+    shm_size: 128mb
     volumes:
-      - mongo_data:/data/db
-      - ./deploy/mongo/init-users.sh:/docker-entrypoint-initdb.d/10-init-users.sh:ro
+      - postgres_data:/var/lib/postgresql/data
+      # Runs once, on an empty data volume: extension, least-privilege app role, read-only backup role.
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
     networks: [data]
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # One-shot schema migration, never started by `up`. An operator runs it deliberately, after a
+  # backup and an explicit go-ahead (DEPLOYMENT.md "Database migrations"):
+  #   docker compose --profile tools run --rm migrate
+  migrate:
+    build: ./apps/backend
+    image: elegance-backend:${APP_VERSION:-local}
+    profiles: [tools]
+    environment:
+      DATABASE_URL: &database-url postgresql+asyncpg://${POSTGRES_APP_USER:-elegance_app}:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-elegance_shawls}
+    command: ["alembic", "upgrade", "head"]
+    networks: [data]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
     build: ./apps/backend
     image: elegance-backend:${APP_VERSION:-local}
     restart: unless-stopped
     environment:
-      MONGODB_URI: mongodb://${MONGO_APP_USERNAME:-elegance_app}:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}@mongo:27017/${MONGO_DB_NAME:-elegance_shawls}?authSource=${MONGO_DB_NAME:-elegance_shawls}
-      MONGO_DB_NAME: ${MONGO_DB_NAME:-elegance_shawls}
+      DATABASE_URL: *database-url
       ALLOWED_ORIGINS: ${SITE_URL:?Set SITE_URL}
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
       ENVIRONMENT: production
@@ -39,7 +57,7 @@ services:
       FORWARDED_ALLOW_IPS: "*"
     networks: [data, web]
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
 
   frontend:
@@ -85,10 +103,10 @@ services:
 networks:
   web: {}
   data:
-    # No route outside Docker: MongoDB is reachable only from the backend.
+    # No route outside Docker: PostgreSQL is reachable only from the backend and the migrate job.
     internal: true
 
 volumes:
-  mongo_data:
+  postgres_data:
   caddy_data:
   caddy_config:
