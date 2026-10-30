@@ -114,12 +114,26 @@ async def purge_inactive(session: AsyncSession, limit: int) -> int:
 
 
 async def servable_product_ids(session: AsyncSession, target: Target, limit: int) -> list[uuid.UUID]:
-    """Products whose embedding may be used for retrieval: active, this target, revision still current."""
-    stmt = (select(ProductEmbedding.product_id).join(Product, Product.id == ProductEmbedding.product_id)
+    """Products whose embedding matches the current public representation and target."""
+    if limit <= 0:
+        return []
+    stmt = (select(ProductEmbedding.product_id, ProductEmbedding.content_hash, Product)
+            .join(Product, Product.id == ProductEmbedding.product_id)
             .where(Product.status == "active", _on(target, ProductEmbedding),
                    ProductEmbedding.product_revision == Product.revision)
-            .order_by(ProductEmbedding.product_id).limit(limit))
-    return list((await session.execute(stmt)).scalars())
+            .order_by(ProductEmbedding.product_id))
+    rows = (await session.execute(stmt)).all()
+    servable = []
+    for product_id, stored_hash, product in rows:
+        try:
+            current_hash = represent(_product_dict(product))["fingerprint"]
+        except RepresentationError:
+            continue
+        if stored_hash == current_hash:
+            servable.append(product_id)
+            if len(servable) == limit:
+                break
+    return servable
 
 
 async def claim_next(session: AsyncSession, worker_id: str, target: Target,
