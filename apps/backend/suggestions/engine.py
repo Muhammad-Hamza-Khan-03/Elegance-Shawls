@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable, Literal, Sequence
 
 from memory import policy
 
 ENGINE_VERSION = "m4-s4.1"
+# Catalogue data is eligible for suggestions for at most one day from the server-observed
+# freshness timestamp. Missing, future, or older timestamps fail closed.
+CATALOGUE_FRESHNESS_MAX_AGE = timedelta(hours=24)
 _CANDIDATE_NAMESPACE = uuid.UUID("5c1ab2b3-bd04-4c35-8ba6-42d0b3d7ee40")
 
 ReasonCode = Literal["explicit_colour_match", "explicit_size_match", "explicit_category_match", "explicit_style_match"]
@@ -53,6 +56,7 @@ class ProductFact:
     status: str
     is_active: bool
     revision: int
+    catalogue_fresh_at: datetime | None
     variants: tuple["VariantFact", ...] = ()
 
 
@@ -140,6 +144,12 @@ def _matching_facts(memory: MemoryFact, product: ProductFact) -> tuple[ReasonCod
     return None
 
 
+def _memory_key(memory: MemoryFact) -> str:
+    """Canonicalize only the allow-listed key aliases for ambiguity detection."""
+    key = memory.key.casefold()
+    return "colour" if key == "color" else key
+
+
 def build_suggestions(
     *,
     principal_customer_id: uuid.UUID,
@@ -167,9 +177,21 @@ def build_suggestions(
         key=lambda m: str(m.id),
     ))
     current_products = tuple(sorted(
-        (p for p in products if p.status == "active" and p.is_active and p.revision >= 1),
+        (p for p in products
+         if p.status == "active" and p.is_active and p.revision >= 1
+         and p.catalogue_fresh_at is not None
+         and p.catalogue_fresh_at <= generated_at
+         and generated_at - p.catalogue_fresh_at <= CATALOGUE_FRESHNESS_MAX_AGE),
         key=lambda p: str(p.id),
     ))
+    # Multiple active rows for one customer/key are ambiguous even when their values happen
+    # to agree. Do not deduplicate them or let the product-level `seen` guard choose a winner.
+    key_counts: dict[str, int] = {}
+    for memory in usable:
+        key = _memory_key(memory)
+        key_counts[key] = key_counts.get(key, 0) + 1
+    ambiguous_keys = {key for key, count in key_counts.items() if count > 1}
+    usable = tuple(memory for memory in usable if _memory_key(memory) not in ambiguous_keys)
     result: list[SuggestionCandidate] = []
     seen: set[tuple[uuid.UUID, ReasonCode]] = set()
     for memory in usable:

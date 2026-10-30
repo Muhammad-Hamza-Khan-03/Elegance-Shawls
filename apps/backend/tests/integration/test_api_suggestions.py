@@ -58,3 +58,10 @@ def test_suggestions_fail_closed_when_consent_is_revoked(env):
     env.sql("update memory_consents set granted = false where customer_id = :id", id=env.customer)
     response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer)})
     assert response.status_code == 200 and response.json()["items"] == []
+
+
+@pytest.mark.integration
+def test_suggestions_fail_closed_for_stale_catalogue(env):
+    env.sql("update products set updated_at = now() - interval '25 hours' where slug = 'blue-shawl'")
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer)})
+    assert response.status_code == 200 and response.json()["items"] == []

@@ -26,7 +26,7 @@ def memory(**overrides):
 
 def product(**overrides):
     values = dict(id=PRODUCT, slug="blue-shawl", name="Blue Shawl", category="shawls", status="active",
-                  is_active=True, revision=4,
+                  is_active=True, revision=4, catalogue_fresh_at=NOW,
                   variants=(VariantFact(VARIANT, "Standard", "Blue", "Free Size", 2, True),))
     return ProductFact(**(values | overrides))
 
@@ -69,6 +69,26 @@ def test_correction_invalidates_old_fact_and_only_new_explicit_fact_can_match():
     corrected = memory(id=uuid.UUID("30000000-0000-0000-0000-000000000002"), value="blue")
     assert build(memories=(old,)) == ()
     assert len(build(memories=(corrected,))) == 1
+
+
+def test_duplicate_active_memory_key_is_ambiguous_even_when_values_agree():
+    duplicate = memory(id=uuid.UUID("30000000-0000-0000-0000-000000000002"), value="blue")
+    assert build(memories=(memory(), duplicate)) == ()
+    assert build(memories=(memory(), duplicate)) == build(memories=(memory(), duplicate))
+
+
+def test_conflicting_active_memory_key_is_ambiguous():
+    conflicting = memory(id=uuid.UUID("30000000-0000-0000-0000-000000000002"), value="red")
+    assert build(memories=(memory(), conflicting)) == ()
+
+
+def test_catalogue_freshness_is_required_and_boundary_is_inclusive():
+    from suggestions.engine import CATALOGUE_FRESHNESS_MAX_AGE
+
+    assert build(products=(product(catalogue_fresh_at=None),)) == ()
+    assert build(products=(product(catalogue_fresh_at=NOW - CATALOGUE_FRESHNESS_MAX_AGE - timedelta(microseconds=1)),)) == ()
+    assert len(build(products=(product(catalogue_fresh_at=NOW - CATALOGUE_FRESHNESS_MAX_AGE),))) == 1
+    assert build(products=(product(catalogue_fresh_at=NOW + timedelta(microseconds=1)),)) == ()
 
 
 def test_cross_user_memory_is_never_used():

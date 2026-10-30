@@ -28,6 +28,7 @@ def _memory(row) -> MemoryFact:
 def _product(row) -> ProductFact:
     return ProductFact(
         row.id, row.slug, row.name, row.category, row.status, row.is_active, row.revision,
+        row.updated_at,
         tuple(VariantFact(v.id, v.name, v.color, v.size, v.stock, v.is_active) for v in row.variants),
     )
 
