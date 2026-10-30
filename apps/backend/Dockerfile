@@ -2,8 +2,6 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1 \
     ENVIRONMENT=staging \
     EMBEDDING_ENABLED=true \
     EMBEDDING_PROVIDER=local_e5 \
@@ -36,6 +34,7 @@ snapshot_download(
     ],
 )
 PY
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 COPY . .
 RUN rm -rf /opt/e5-model/.cache \
     && test "$(PYTHONPATH=/app python -m embeddings.providers.local_e5 /opt/e5-model 2>/dev/null | tail -n 1)" = "61ed0e3e5b5906e6bd8196f55df9293e4ca28eeaa270c1bcdb43ef610b976870" \
