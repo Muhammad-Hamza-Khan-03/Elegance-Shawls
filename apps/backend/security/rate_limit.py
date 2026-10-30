@@ -66,7 +66,9 @@ class RateLimitMiddleware:
         request = Request(scope)
         client = request.client.host if request.client else "unknown"
         # Event batches are anonymous POSTs with their own, tighter limit (never exempted).
-        is_events = request.url.path.startswith("/v1/events")
+        # /v1/enquiries is the same kind of anonymous write, in its own bucket so tracking cannot starve a handoff.
+        bucket = "enquiries" if request.url.path.startswith("/v1/enquiries") else "events" if request.url.path.startswith("/v1/events") else None
+        is_events = bucket is not None
         is_admin = not is_events and (
             request.url.path.startswith(("/products/admin", "/v1/admin")) or request.method != "GET"
         )
@@ -80,7 +82,7 @@ class RateLimitMiddleware:
         if not is_admin and not is_events and _is_internal(request):
             await self.app(scope, receive, send)
             return
-        key = f"{client}:{'events' if is_events else 'admin' if is_admin else 'public'}"
+        key = f"{client}:{bucket or ('admin' if is_admin else 'public')}"
         allowed = await self._hit_redis(key, limit)
         if allowed is None:
             allowed = self._hit_local(key, limit)

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from configuration.config import settings
 from database.pg import get_pg_session, make_engine
 from routes.admin_routes import accounts_router, audit_router, auth_router
+from routes.enquiry_routes import admin_router as enquiry_admin_router, router as enquiry_router
 from routes.ingestion_routes import router as ingestion_router
 from routes.job_routes import router as job_router
 from routes.llm_routes import admin_router as llm_admin_router, router as llm_router
@@ -26,7 +27,7 @@ class ApiEnv:
         app.include_router(product_router)
         app.include_router(search_router)
         app.include_router(ingestion_router)
-        for router in (auth_router, accounts_router, audit_router, job_router, llm_router, llm_admin_router):
+        for router in (auth_router, accounts_router, audit_router, job_router, llm_router, llm_admin_router, enquiry_router, enquiry_admin_router):
             app.include_router(router)
 
         async def session_per_request():

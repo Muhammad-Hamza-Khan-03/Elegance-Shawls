@@ -12,7 +12,7 @@ const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/staging', label: 'Staged products', icon: ClipboardCheck },
-  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { href: '/admin/enquiries', label: 'Enquiries', icon: ShoppingBag },
 ];
 
 export const AdminShell = ({ children, account }: { children: ReactNode; account?: AdminIdentity }) => {
@@ -34,7 +34,7 @@ export const AdminShell = ({ children, account }: { children: ReactNode; account
               <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#9a6b3f]">Quill Panel</p>
               <h1 className="font-heading mt-2 text-3xl font-semibold">Admin shell</h1>
               <p className="mt-3 max-w-sm text-sm leading-6 text-[#6f625a]">
-                Manage the product catalogue and order operations from one authenticated workspace.
+                Manage the product catalogue and WhatsApp enquiry lookup from one authenticated workspace.
               </p>
             </div>
             <Button variant="outline" className="rounded-full border-[#d8c8b4] bg-transparent px-4" onClick={signOut}>
@@ -69,7 +69,7 @@ export const AdminShell = ({ children, account }: { children: ReactNode; account
           <div className="mt-8 rounded-3xl border border-[#e7dac8] bg-[#fbf7f0] p-4 text-sm text-[#6f625a]">
             <p className="font-semibold text-[#2f241f]">Ready for product management</p>
             <p className="mt-2 leading-6">
-              This shell is wired for product creation, editing, publishing and order follow-up pages.
+              This shell is wired for product creation, editing, publishing and enquiry lookup pages.
             </p>
           </div>
         </aside>

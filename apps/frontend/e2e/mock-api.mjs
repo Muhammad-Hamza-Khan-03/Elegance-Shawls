@@ -27,6 +27,22 @@ http.createServer((request, response) => {
       response.end(JSON.stringify(ok ? { token: SESSION, expires_at: new Date(Date.now() + 8 * 3600e3).toISOString(), account: owner } : { detail: 'Invalid email or password' }));
     });
   }
+  // Enquiries: the real validation is covered by the backend integration tests; this fake stale-checks one price and records the last body.
+  const enquiry = { reference: 'ES-MOCK42', currency: 'PKR', total: 9000, created_at: '2026-07-01T00:00:00Z', items: [{ product: 'Classic Wool Shawl', color: 'Brown', size: 'Free Size', quantity: 2, unit_price: 4500 }] };
+  if (request.url === '/v1/enquiries' && request.method === 'POST') {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    return request.on('end', () => {
+      globalThis.lastEnquiry = JSON.parse(body);
+      const stale = globalThis.lastEnquiry.items.some((item) => item.unit_price === 1);
+      response.statusCode = stale ? 409 : 201;
+      response.end(JSON.stringify(stale ? { detail: { code: 'cart_stale', issues: [{ reason: 'price_changed' }] } } : enquiry));
+    });
+  }
+  if (request.url === '/__last-enquiry') return response.end(JSON.stringify(globalThis.lastEnquiry ?? null));
+  if (request.url?.startsWith('/v1/admin/enquiries') && request.headers['x-admin-session'] === SESSION) {
+    return response.end(JSON.stringify(request.url.toUpperCase().includes('REFERENCE=ES-NOPE22') ? [] : [enquiry]));
+  }
   if (request.url?.startsWith('/v1/admin/auth/') || request.url?.startsWith('/products/admin')) {
     if (request.headers['x-admin-session'] !== SESSION) {
       response.statusCode = 401;

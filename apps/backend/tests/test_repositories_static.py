@@ -11,7 +11,7 @@ def tree(path: Path) -> ast.AST:
 
 
 def test_the_repositories_package_has_the_expected_modules():
-    assert {p.name for p in REPO_FILES} == {"__init__.py", "products.py", "staged.py", "jobs.py", "admin.py"}
+    assert {p.name for p in REPO_FILES} == {"__init__.py", "products.py", "staged.py", "jobs.py", "admin.py", "enquiries.py"}
 
 
 def test_repositories_do_not_depend_on_mongo():

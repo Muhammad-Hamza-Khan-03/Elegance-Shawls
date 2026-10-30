@@ -54,7 +54,7 @@ CI (`.github/workflows/ci.yml`) also runs `npm audit --audit-level=high` and `pi
 ## Architecture
 
 ### Request flow
-Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `products` / `variants` tables (via `repositories/`). Customers have no checkout: the cart (localStorage, `src/lib/cart.ts`) builds a WhatsApp message/URL (`src/lib/whatsapp.ts`) and the order happens off-platform.
+Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `products` / `variants` tables (via `repositories/`). Customers have no checkout: the cart (localStorage, `src/lib/cart.ts`) asks `POST /v1/enquiries` (via the `/api/enquiries` proxy; server re-validates price, stock and availability, stores a non-sensitive snapshot, migration 0008) for a reference, puts it in the WhatsApp message/URL and the order happens off-platform. Staff look references up at `/admin/enquiries`.
 
 ### Backend
 - `main.py` `create_app()` wires CORS (`ALLOWED_ORIGINS`, comma-separated), `RateLimitMiddleware` (separate public, admin and events limits; Redis-shared when `REDIS_URL` is set, otherwise in-process per instance), the product router, `/health/` (liveness, dependency-free) and `/ready/` (PostgreSQL ping, 503 when down).

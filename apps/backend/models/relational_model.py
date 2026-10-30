@@ -1,7 +1,7 @@
 """PostgreSQL relational schema (issues #95, S1): the sole source of truth for the catalogue, ingestion and platform tables.
 
 Enums are constrained text (CHECK), timestamps are timezone-aware UTC, IDs are UUIDs.
-Memory, embeddings, voice, enrichment, enquiries and the catalogue are later phases.
+Memory, embeddings, voice and enrichment are later phases.
 """
 import uuid
 from datetime import datetime
@@ -464,3 +464,24 @@ class StagedProductAudit(Base):
     to_status: Mapped[str | None] = mapped_column(Text)
     actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="admin")
     note: Mapped[str | None] = mapped_column(Text)
+
+
+class Enquiry(Base):
+    """A WhatsApp handoff reference. Deliberately holds no customer details or session identifier, and is not an order."""
+    __tablename__ = "enquiries"
+    __table_args__ = (
+        UniqueConstraint("reference"),
+        CheckConstraint("reference ~ '^ES-[A-Z0-9]{6,12}$'", name="reference_format"),
+        CheckConstraint("currency = upper(currency)", name="currency_upper"),
+        CheckConstraint("total >= 0", name="total_nonnegative"),
+        CheckConstraint("jsonb_typeof(items) = 'array' AND jsonb_array_length(items) BETWEEN 1 AND 50", name="items_array"),
+        Index("ix_enquiries_created_at", text("created_at DESC"), text("id DESC")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    reference: Mapped[str] = mapped_column(Text, nullable=False)
+    # Snapshot of what the server validated: product_id, variant_id, product, color, size, quantity, unit_price.
+    items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    total: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = _created_at()

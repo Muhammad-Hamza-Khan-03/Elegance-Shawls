@@ -8,6 +8,7 @@ from database.redis_client import close_redis, redis_configured, redis_is_ready
 from routes.product_routes import router as product_router, search_router
 from routes.ingestion_routes import router as ingestion_router
 from routes.event_routes import router as event_router
+from routes.enquiry_routes import admin_router as enquiry_admin_router, router as enquiry_router
 from routes.job_routes import router as job_router
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
 from routes.admin_routes import accounts_router, audit_router, auth_router
@@ -71,6 +72,8 @@ def create_app() -> FastAPI:
     app.include_router(llm_router)
     app.include_router(llm_admin_router)
     app.include_router(event_router)
+    app.include_router(enquiry_router)
+    app.include_router(enquiry_admin_router)
     app.include_router(auth_router)
     app.include_router(accounts_router)
     app.include_router(audit_router)

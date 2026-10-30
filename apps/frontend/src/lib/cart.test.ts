@@ -143,3 +143,28 @@ describe('cart WhatsApp message', () => {
     expect(message).toContain('Total: PKR 13,200');
   });
 });
+
+describe('cart WhatsApp message enquiry reference', () => {
+  const items = () => [createCartItem(product, variantA, 2)!, createCartItem(product, variantB, 1)!];
+  const messageOf = (url: string) => decodeURIComponent(url.split('?text=')[1]);
+
+  it('puts the reference in the URL-encoded message and keeps the wa.me handoff', () => {
+    const url = buildCartCheckoutUrl(items(), '923001234567', { reference: 'ES-7F3K9Q' });
+    expect(url.startsWith('https://wa.me/923001234567?text=')).toBe(true);
+    expect(url).toContain('Enquiry%20reference%3A%20ES-7F3K9Q');
+    expect(url).not.toMatch(/[\n ]/);
+    expect(messageOf(url)).toContain('Enquiry reference: ES-7F3K9Q\n');
+    expect(messageOf(url)).toContain('Total: PKR 13,200');
+  });
+
+  it('is unchanged without a reference', () => {
+    expect(messageOf(buildCartCheckoutUrl(items(), '923001234567'))).not.toContain('Enquiry reference');
+  });
+
+  it('keeps multi-item composition and does not claim an order is confirmed', () => {
+    const message = messageOf(buildCartCheckoutUrl(items(), '923001234567', { reference: 'ES-AAAAAA' }));
+    expect(message).toMatch(/1\. Classic Wool Shawl[\s\S]*2\. Classic Wool Shawl/);
+    expect(message).toContain('Please confirm availability and delivery details.');
+    expect(message).not.toMatch(/confirmed|reserved|paid/i);
+  });
+});

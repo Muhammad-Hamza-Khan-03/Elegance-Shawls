@@ -28,7 +28,11 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
   });
   expect(mutationStatus).toBe(200);
 
-  await page.getByRole('link', { name: 'Orders' }).click();
-  await expect(page).toHaveURL(/\/admin\/orders$/);
-  await expect(page.getByRole('heading', { name: 'Order operations scaffold' })).toBeVisible();
+  await page.getByRole('link', { name: 'Enquiries' }).click();
+  await expect(page).toHaveURL(/\/admin\/enquiries$/);
+  await expect(page.getByRole('heading', { name: 'WhatsApp enquiry references' })).toBeVisible();
+  await expect(page.getByText('ES-MOCK42')).toBeVisible();
+  await page.getByLabel('Enquiry reference').fill('es-nope22');
+  await page.getByRole('button', { name: 'Look up' }).click();
+  await expect(page.getByText('No enquiry found.')).toBeVisible();
 });
