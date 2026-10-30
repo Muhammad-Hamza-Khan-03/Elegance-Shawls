@@ -311,3 +311,67 @@ def test_module_has_no_execution_surface_or_external_imports():
         assert banned not in src, banned
     public = [n for n in dir(k) if not n.startswith("_")]
     assert not [n for n in public if any(w in n.lower() for w in ("execute", "dispatch", "send", "checkout", "pay", "commit"))]
+
+
+# --- hostile boundary: malformed anything => deterministic rejection, never an exception
+class _Boom:
+    def get(self, *_):
+        raise RuntimeError("db password=hunter2")
+
+
+def _assert_safe_reject(d, reason):
+    assert (d.outcome, d.reason, d.executed) == ("rejected", reason, False)
+    rec = d.audit()
+    assert set(rec) == set(run(cart()).audit())
+    assert "hunter2" not in json.dumps(rec) and "sess-secret-123" not in json.dumps(rec)
+    assert run_again_equal(d)
+
+
+def run_again_equal(d):
+    return d.audit() == d.audit()
+
+
+@pytest.mark.parametrize("bad", [None, 0, 7, "add_to_cart", b"x", [], (), {}, {"action_type": "add_to_cart"}, object(),
+                                 type("Fake", (), {"action_type": "add_to_cart"})()])
+def test_non_proposal_objects_reject(bad):
+    _assert_safe_reject(k.validate(bad, catalogue(), k.IdempotencyLedger()), "invalid_proposal")
+
+
+@pytest.mark.parametrize("params", [None, 5, "x", [], [item()], {"items": None}, {"items": [None]}, {"items": [[]]},
+                                    {"items": {"a": 1}}, item(product_id=None), item(variant_id=5), item(quantity=[1]),
+                                    item(quantity={"a": 1}), item(currency=["PKR"]), item(expected_revision="7"),
+                                    item(expected_unit_price=object()), {}])
+@pytest.mark.parametrize("action", ["add_to_cart", "start_whatsapp_enquiry", "show_product"])
+def test_malformed_params_reject_never_raise(action, params):
+    d = run(k.ActionProposal(action, KEY, params, ctx()))
+    assert d.outcome == "rejected" and d.executed is False
+    json.dumps(d.audit())
+
+
+@pytest.mark.parametrize("context", [None, 5, "s", {}, {"session_id": "s", "permissions": ALL}, object(),
+                                     ctx(permissions=[["x"]]), ctx(permissions=None), ctx(session_id=None), ctx(user_id=5)])
+def test_malformed_context_rejects(context):
+    assert run(cart(context=context)).reason == "missing_context"
+
+
+@pytest.mark.parametrize("key", [None, 5, [], {}, b"idem_0123456789abcdef"])
+def test_malformed_key_rejects(key):
+    assert run(cart(key=key)).reason == "invalid_idempotency_key"
+
+
+@pytest.mark.parametrize("state", [None, 5, _Boom(), k.InMemoryCatalogue({P1: None}), k.InMemoryCatalogue({P1: 5}),
+                                   k.InMemoryCatalogue({P1: {"status": "active", "is_active": True, "revision": 7, "variants": 5}}),
+                                   k.InMemoryCatalogue({P1: {"status": "active", "is_active": True, "revision": 7, "variants": [None, 3]}})])
+def test_malformed_catalogue_state_rejects_without_leaking(state):
+    d = k.validate(cart(), state, k.IdempotencyLedger())
+    assert d.outcome == "rejected" and d.executed is False
+    assert "hunter2" not in json.dumps(d.audit()) and "RuntimeError" not in json.dumps(d.audit())
+
+
+def test_broken_ledger_rejects_and_is_not_validated():
+    d = k.validate(cart(), catalogue(), None)
+    _assert_safe_reject(d, "invalid_state")
+
+
+def test_kernel_version_bumped_for_rejection_rule_change():
+    assert k.KERNEL_VERSION == 2 and run(cart()).audit()["version"] == 2

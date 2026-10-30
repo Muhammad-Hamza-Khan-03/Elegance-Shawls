@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping, Protocol
 
-KERNEL_VERSION = 1
+KERNEL_VERSION = 2  # 2: non-proposal and malformed state reject (invalid_proposal, invalid_state) instead of raising
 SUPPORTED_CURRENCIES = frozenset({"PKR"})
 MAX_QUANTITY = 1000  # same bound as POST /v1/enquiries
 MAX_LINES = 10
@@ -207,6 +207,8 @@ def validate(proposal: ActionProposal, state: CatalogueState, ledger: Idempotenc
         return Decision("rejected", reason, **base)
 
     try:
+        if not isinstance(proposal, ActionProposal):
+            raise _Reject("invalid_proposal")
         _check_context(proposal.context)
         ctx = proposal.context
         base.update(session_ref=hashlib.sha256(ctx.session_id.encode()).hexdigest()[:16], has_user=ctx.user_id is not None)
@@ -236,8 +238,10 @@ def validate(proposal: ActionProposal, state: CatalogueState, ledger: Idempotenc
             return Decision(**{**prior.__dict__, "replayed": True})
         for line in lines:
             _check_state(state, line, priced=action is not ActionType.SHOW_PRODUCT)
+        decision = Decision("validated", "ok", **base)
+        ledger.put(ctx.session_id, key, decision)
     except _Reject as r:
         return reject(str(r))
-    decision = Decision("validated", "ok", **base)
-    ledger.put(ctx.session_id, key, decision)
+    except Exception:  # fail closed on malformed catalogue/ledger; never echo the error text
+        return reject("invalid_state")
     return decision
