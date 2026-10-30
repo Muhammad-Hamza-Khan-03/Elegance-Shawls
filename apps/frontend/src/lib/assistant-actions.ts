@@ -15,6 +15,7 @@ const FAILURE_TEXT: Record<string, string> = {
   insufficient_stock: 'Not enough stock for that quantity, so nothing was done.',
   idempotency_conflict: 'This request was already used for something different. Please ask again.',
   execution_failed: 'That did not go through. You can try again.',
+  execution_in_progress: 'This is already being processed. Please wait a moment and try again.',
 };
 const DEFAULT_TEXT = 'We could not do that, so nothing was done. Please try again.';
 const fail = (reason: string): ActionOutcome => ({ ok: false, reason, message: FAILURE_TEXT[reason] ?? DEFAULT_TEXT });

@@ -1,11 +1,10 @@
 """M3-S3: POST /v1/assistant/actions/execute against the real catalogue. Disposable data; no message is ever sent."""
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from actions.executor import ExecutionLedger
-from routes import action_routes
 from tests.integration.api_support import ApiEnv
 from tests.integration.test_api_enquiries import make_product
 
@@ -18,8 +17,6 @@ REF = re.compile(r"^ES-[A-HJ-NP-Z2-9]{6}$")
 def env(pg_engine_factory, migrated_url, monkeypatch):
     e = ApiEnv(migrated_url, monkeypatch)
     ENV[:] = [e]
-    ledger = ExecutionLedger()
-    e.app.dependency_overrides[action_routes.get_ledger] = lambda: ledger
     return e
 
 
@@ -96,3 +93,39 @@ def test_unconfirmed_or_unknown_requests_are_422_and_do_nothing(env, bad):
     p = make_product(env)
     assert env.client.post(URL, json={**body("add_to_cart", item(p)), **bad}).status_code == 422
     assert enquiries(env) == 0
+
+
+def test_replay_and_conflict_are_durable_across_independent_workers(env, migrated_url, monkeypatch):
+    p = make_product(env)
+    req = body("start_whatsapp_enquiry", {"items": [item(p, 2)]})
+    first = env.client.post(URL, json=req).json()
+    other = ApiEnv(migrated_url, monkeypatch)             # a second app instance: no shared process memory, same database
+    again = other.client.post(URL, json=req)
+    clash = other.client.post(URL, json=body("start_whatsapp_enquiry", {"items": [item(p, 3)]}))
+    assert again.json()["replayed"] is True and again.json()["result"] == first["result"] and enquiries(env) == 1
+    assert clash.status_code == 409 and clash.json()["detail"]["reason"] == "idempotency_conflict"
+    row = env.sql("select status, attempt, audit->>'enquiry_reference', replay_count from action_executions")
+    assert row == [("committed", 1, first["result"]["reference"], 1)]
+
+
+def test_simultaneous_requests_from_two_workers_create_one_enquiry(env, migrated_url, monkeypatch):
+    p = make_product(env)
+    req = body("start_whatsapp_enquiry", {"items": [item(p, 2)]})
+    clients = [env.client, ApiEnv(migrated_url, monkeypatch).client]
+    with ThreadPoolExecutor(8) as pool:
+        replies = list(pool.map(lambda n: clients[n % 2].post(URL, json=req), range(8)))
+    ok = [r.json() for r in replies if r.status_code == 200]
+    assert ok and {r["result"]["reference"] for r in ok} == {ok[0]["result"]["reference"]} and sum(not r["replayed"] for r in ok) == 1
+    assert all(r.json()["detail"]["reason"] == "execution_in_progress" for r in replies if r.status_code == 409)
+    assert enquiries(env) == 1
+    assert env.client.post(URL, json=req).json()["result"] == ok[0]["result"]
+
+
+def test_stale_state_after_a_committed_execution_still_replays_and_records_nothing_new(env):
+    p = make_product(env)
+    req = body("add_to_cart", item(p, 2))
+    first = env.client.post(URL, json=req).json()
+    env.sql(f"update variants set stock = 0 where id = '{p['variants'][0]['_id']}'")
+    again = env.client.post(URL, json=req)
+    assert again.status_code == 200 and again.json()["replayed"] is True and again.json()["result"] == first["result"]
+    assert env.sql("select count(*) from action_executions") == [(1,)]

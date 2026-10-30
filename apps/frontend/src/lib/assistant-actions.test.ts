@@ -27,6 +27,10 @@ describe('confirmAction', () => {
     expect(r).toEqual({ ok: false, reason: 'stale_price', message: expect.stringContaining('price changed') });
     expect(JSON.stringify(r)).not.toContain('secret');
   });
+  it('tells the user a duplicate that is still running elsewhere is in progress, so they can retry', async () => {
+    const r = await confirmAction(req, reply(409, { detail: { status: 'rejected', reason: 'execution_in_progress' } }));
+    expect(r).toEqual({ ok: false, reason: 'execution_in_progress', message: expect.stringContaining('already being processed') });
+  });
   it.each([
     ['network failure', vi.fn(async () => { throw new Error('boom'); }) as unknown as typeof fetch],
     ['server error', reply(503, { detail: 'down' })],

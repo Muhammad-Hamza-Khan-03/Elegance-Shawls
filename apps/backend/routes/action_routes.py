@@ -2,6 +2,8 @@
 
 add_to_cart returns the server-verified line for the browser to put in its own cart (the cart is client state); the enquiry action
 creates a reference through the existing enquiry repository. Neither sends a message, orders, charges or reserves stock.
+Idempotency and the audit record are durable in PostgreSQL (actions/store.py), so they hold across workers and restarts; this
+route does not wrap a transaction because the store owns its boundaries (claim, effect + commit, fail).
 """
 import uuid
 from typing import Any, Literal
@@ -12,17 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from actions import executor as x
 from actions import kernel as k
+from actions.store import SqlExecutionStore
 from assistant.stream import SERVER_PERMISSIONS  # never taken from the client
 from database.pg import get_pg_session
 from repositories import enquiries as repo
 from repositories.enquiries import Line
 
 router = APIRouter(prefix="/v1/assistant/actions", tags=["Assistant"])
-_LEDGER = x.ExecutionLedger()
-
-
-def get_ledger() -> x.ExecutionLedger:
-    return _LEDGER
 
 
 class ExecuteRequest(BaseModel):
@@ -38,7 +36,7 @@ def _lines(params: dict) -> list[dict]:
 
 
 @router.post("/execute")
-async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_session), ledger: x.ExecutionLedger = Depends(get_ledger)):
+async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_session)):
     proposal = k.ActionProposal(body.action_type, body.idempotency_key, body.params, k.ActionContext(body.session_id, SERVER_PERMISSIONS))
     catalogue: dict = {}
 
@@ -62,8 +60,7 @@ async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_s
             Line(uuid.UUID(l["product_id"]), uuid.UUID(l["variant_id"]), l["quantity"], l["expected_unit_price"], l["currency"]) for l in lines])
         return {"reference": enquiry.reference, "items": items, "total": enquiry.total, "currency": enquiry.currency}
 
-    async with session.begin():
-        out = await x.execute(proposal, confirmed=body.confirmed, load_catalogue=load, perform=perform, ledger=ledger)
+    out = await x.execute(proposal, confirmed=body.confirmed, load_catalogue=load, perform=perform, store=SqlExecutionStore(session))
     if out.outcome != "executed":
         raise HTTPException(status_code=409, detail={"status": "rejected", "reason": out.reason})
     return {"status": "executed", "action_type": out.action_type, "replayed": out.replayed, "result": out.result}

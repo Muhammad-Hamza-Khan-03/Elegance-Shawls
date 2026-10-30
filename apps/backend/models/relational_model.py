@@ -30,6 +30,8 @@ ADMIN_STATUSES = ("active", "disabled")
 AUDIT_OUTCOMES = ("accepted", "success", "failure", "denied")
 OUTBOX_AGGREGATES = ("product", "variant")
 OUTBOX_EVENT_TYPES = ("created", "updated", "archived")
+ACTION_EXECUTION_TYPES = ("add_to_cart", "start_whatsapp_enquiry")
+ACTION_EXECUTION_STATUSES = ("pending", "committed", "failed")
 PRODUCT_CATEGORIES = ("shawls", "stoles", "scarves")
 PRODUCT_STATUSES = ("active", "draft", "out_of_stock", "archived")
 JOB_STATUSES = ("queued", "running", "succeeded", "retrying", "failed", "cancelled")
@@ -486,6 +488,38 @@ class Enquiry(Base):
     currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     total: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = _created_at()
+
+
+class ActionExecution(Base):
+    """Cross-worker idempotency claim and fixed-shape audit record for one confirmed assistant action (M3-S4). Holds only the
+    SHA-256 of the session id, never params, prices or customer details."""
+    __tablename__ = "action_executions"
+    __table_args__ = (
+        UniqueConstraint("session_hash", "idempotency_key"),
+        CheckConstraint(_in("action_type", ACTION_EXECUTION_TYPES), name="action_type"),
+        CheckConstraint(_in("status", ACTION_EXECUTION_STATUSES), name="status"),
+        CheckConstraint("session_hash ~ '^[0-9a-f]{64}$' AND fingerprint ~ '^[0-9a-f]{64}$'", name="hash_format"),
+        CheckConstraint("attempt >= 1 AND replay_count >= 0", name="counters"),
+        CheckConstraint("(status = 'committed') = (result IS NOT NULL)", name="result_iff_committed"),
+        CheckConstraint("(status = 'failed') = (reason IS NOT NULL)", name="reason_iff_failed"),
+        CheckConstraint("jsonb_typeof(audit) = 'object'", name="audit_object"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    action_type: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    # Bumped on every (re)claim; commit/fail only apply to the attempt that still owns the row.
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    result: Mapped[dict | None] = mapped_column(JSONB)  # set iff committed: the non-sensitive payload already returned to the browser
+    reason: Mapped[str | None] = mapped_column(Text)  # set iff failed: a fixed code, never exception text
+    audit: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    replay_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _created_at()
 
 
 class ProductEmbedding(Base):
