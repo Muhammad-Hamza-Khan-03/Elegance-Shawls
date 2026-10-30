@@ -107,9 +107,13 @@ async def get_public_product_by_slug(session: AsyncSession, slug: str) -> Produc
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+def like_pattern(term: str) -> str:
+    return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
 def _term_match(term: str):
     """One search term must appear (case-insensitive substring) in a product field or in one of its variants."""
-    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    like = like_pattern(term)
     fields = (Product.name, Product.slug, Product.material, Product.item_number, Product.main_description)
     in_variant = exists().where(Variant.product_id == Product.id,
                                 or_(Variant.name.ilike(like, escape="\\"), Variant.color.ilike(like, escape="\\")))

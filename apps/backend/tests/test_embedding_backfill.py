@@ -1,5 +1,6 @@
 """Container-free M2-S2 checks: runner behaviour over a faked repository, migration SQL, worker wiring, scope guards."""
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -163,7 +164,9 @@ def test_migration_0009_is_additive_and_its_downgrade_reverses_every_object():
 
 def test_semantic_code_has_no_route_provider_or_request_path_backfill():
     routes = "".join(p.read_text() for p in (BACKEND / "routes").glob("*.py")) + (BACKEND / "main.py").read_text()
-    assert "semantic" not in routes and "embeddings" not in routes
+    # M2-S3 lets routes embed the *query* (validate_vector, fusion) via an injected provider; still no backfill,
+    # no job queue, and no concrete provider constructed in a route.
+    assert not {"backfill", "FakeEmbeddingProvider", "claim_next", "enqueue_stale", "EmbeddingJob"} & set(re.findall(r"\w+", routes))
     for path in (BACKEND / "semantic").glob("*.py"):
         imported = {n.module.split(".")[0] for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.ImportFrom) and n.module}
         assert not imported & {"httpx", "llm", "routes"}, path.name

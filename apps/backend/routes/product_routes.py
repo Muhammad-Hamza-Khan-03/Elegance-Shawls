@@ -1,12 +1,16 @@
+import asyncio
+import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.pg import get_pg_session
 from events.recorder import log_listing
 from repositories import Conflict, InvalidDraft, NotFound
 from repositories import products as repo
+from repositories import search as hybrid
+from repositories.embeddings import Target
 from repositories.products import ProductInput, VariantFilter, VariantInput
 from schemas.product_schema import (
     ProductCreateSchema,
@@ -16,10 +20,14 @@ from schemas.product_schema import (
     VariantStockUpdateSchema,
 )
 from security.admin_auth import require_admin
+from semantic.embeddings import validate_vector
+from semantic.fusion import FusionWeights
+from semantic.representation import REPRESENTATION_VERSION
 from utils.colour_vocabulary import normalize
-from utils.pagination import decode_cursor, encode_cursor
+from utils.pagination import decode_cursor, decode_offset_cursor, encode_cursor, encode_offset_cursor
 
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/products", tags=["Products"])
 search_router = APIRouter(prefix="/v1/search", tags=["Search"])
 admin_router = APIRouter(
@@ -69,13 +77,57 @@ def _http(exc: Exception) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
-async def _public_list(request, background, limit, cursor, q, session, variant=None):
+def get_query_embedder():
+    """The query-embedding provider (object with `.config` and `.embed(text)`), or None for lexical-only search.
+    No live provider exists yet (semantic.embeddings allowlists only the test-only fake), so production is lexical;
+    tests override this dependency."""
+    return None
+
+
+def get_fusion_weights() -> FusionWeights:
+    return FusionWeights()
+
+
+async def _query_vector(embedder, q: str):
+    try:
+        return validate_vector(await asyncio.to_thread(embedder.embed, q.casefold()), embedder.config.dimensions)
+    except Exception:  # provider, transport or vector trouble: degrade to lexical, never fail the search
+        log.warning("query embedding unavailable; using lexical search", exc_info=True)
+        return None
+
+
+async def _hybrid_page(session, embedder, weights, q, cursor, limit, variant):
+    """(page dict, True) when hybrid ranking served the request, else None to fall back to lexical."""
+    vector = await _query_vector(embedder, q)
+    if vector is None:
+        return None
+    cfg = embedder.config
+    target = Target(cfg.provider, cfg.model, REPRESENTATION_VERSION)
+    bound = hybrid.binding(q, variant, target, weights)
+    try:
+        offset = decode_offset_cursor(cursor, bound) if cursor else 0
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+    ids, products = await hybrid.hybrid_ids(session, q=q, query_vector=vector, target=target, variant=variant, weights=weights)
+    items, nxt = hybrid.page_of(ids, products, offset, limit)
+    return {"items": items, "next_cursor": encode_offset_cursor(nxt, bound) if nxt else None}
+
+
+async def _public_list(request, background, limit, cursor, q, session, variant=None, response=None, embedder=None, weights=None):
     q = (q or "").strip()[:100] or None
-    page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor), q=q, **({"variant": variant} if variant else {}))
+    result = None
+    if q and embedder is not None:
+        result = await _hybrid_page(session, embedder, weights or FusionWeights(), q, cursor, limit, variant)
+    if result is None:
+        page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor), q=q, **({"variant": variant} if variant else {}))
+        result = _page(page)
+    elif response is not None:
+        response.headers["X-Search-Mode"] = "hybrid"
+    items = result["items"]
     # Best effort and after the response: an event failure never affects the catalogue.
     background.add_task(log_listing, request, limit=limit, paged=bool(cursor),
-                        product_ids=[str(item.id) for item in page.items])
-    return _page(page)
+                        product_ids=[str(item.id) for item in items])
+    return result
 
 
 @router.get("/", response_model=ProductListResponse)
@@ -100,10 +152,15 @@ async def search_products(
     min_price: int | None = Query(default=None, ge=0),
     max_price: int | None = Query(default=None, ge=0),
     in_stock: bool = False,
+    response: Response = None,
     session: AsyncSession = Depends(get_pg_session),
+    embedder=Depends(get_query_embedder),
+    weights: FusionWeights = Depends(get_fusion_weights),
 ):
     """Same live-published catalogue as GET /products/ plus `q`, under the M1 /v1/search contract path.
-    colour/min_price/max_price/in_stock are ANDed on a single purchasable variant of each product."""
+    colour/min_price/max_price/in_stock are ANDed on a single purchasable variant of each product.
+    With `q` and a configured embedder the ranking is hybrid (X-Search-Mode: hybrid; cursors are offsets into a
+    bounded ranked window); otherwise it is the lexical newest-first keyset search."""
     canonical = None
     if colour is not None:
         canonical = normalize(colour)
@@ -113,7 +170,7 @@ async def search_products(
         raise HTTPException(status_code=422, detail="min_price exceeds max_price")
     variant = VariantFilter(canonical, min_price, max_price, in_stock)
     has_filter = canonical or min_price is not None or max_price is not None or in_stock
-    return await _public_list(request, background, limit, cursor, q, session, variant if has_filter else None)
+    return await _public_list(request, background, limit, cursor, q, session, variant if has_filter else None, response, embedder, weights)
 
 
 @router.get("/slug/{slug}", response_model=ProductResponseSchema)

@@ -50,3 +50,30 @@ def decode_cursor(cursor: str) -> Key:
         return created_at.astimezone(timezone.utc), row_id
     except Exception as exc:  # any malformed input, whatever the cause, is one error to callers
         raise ValueError("Invalid cursor") from exc
+
+
+def encode_offset_cursor(offset: int, binding: str) -> str:
+    """Position in a ranked (non-keyset) result list, bound to the query that produced it."""
+    payload = json.dumps({"v": VERSION, "o": offset, "b": binding}, separators=(",", ":")).encode()
+    return f"{base64.urlsafe_b64encode(payload).decode().rstrip('=')}.{_checksum(payload)}"
+
+
+def decode_offset_cursor(cursor: str, binding: str) -> int:
+    """ValueError unless the token is intact, is an offset cursor, and was issued for this same query."""
+    try:
+        if not isinstance(cursor, str) or not cursor or len(cursor) > MAX_LENGTH:
+            raise ValueError
+        body, dot, checksum = cursor.partition(".")
+        if not dot or "." in checksum:
+            raise ValueError
+        payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+        if not hmac.compare_digest(checksum, _checksum(payload)):
+            raise ValueError
+        data = json.loads(payload)
+        if not isinstance(data, dict) or set(data) != {"v", "o", "b"} or data["v"] != VERSION or data["b"] != binding:
+            raise ValueError
+        if type(data["o"]) is not int or data["o"] < 1:
+            raise ValueError
+        return data["o"]
+    except Exception as exc:
+        raise ValueError("Invalid cursor") from exc
