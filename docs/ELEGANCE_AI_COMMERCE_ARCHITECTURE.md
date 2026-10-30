@@ -6,7 +6,7 @@ Deployment identifiers and release SHAs belong in release records, not here. Sta
 
 ## 1. Current state
 
-Phase 0.5 (one-source ingestion) implementation is present in the repository; its independent staging QA status is tracked separately. The Phase 0 foundation (local PostgreSQL + pgvector, Alembic schema, Redis/arq worker, LLM gateway with fake provider, events endpoint, tracing, evaluation runner) is implemented (S1–S4 of the PostgreSQL consolidation passed independent QA; S4, the MongoDB removal and PostgreSQL-only operational cleanup, is closed; S5 final verification is pending), no agent, search, memory or voice feature exists yet, and PostgreSQL is the sole database: MongoDB has been removed from the code, dependencies, compose and CI (S4).
+Phase 0.5 (one-source ingestion) implementation is present in the repository; its independent staging QA status is tracked separately. The Phase 0 foundation (local PostgreSQL + pgvector, Alembic schema, Redis/arq worker, LLM gateway with fake provider, events endpoint, tracing, evaluation runner) is implemented (S1–S4 of the PostgreSQL consolidation passed independent QA; S4, the MongoDB removal and PostgreSQL-only operational cleanup, is closed; S5 implementation evidence exists: the PostgreSQL backup/restore tooling and disposable restore-drill foundation are built, but nothing is activated and final independent S5 verification is pending), no agent, search, memory or voice feature exists yet, and PostgreSQL is the sole database: MongoDB has been removed from the code, dependencies, compose and CI (S4).
 
 | Component | Responsibility |
 |---|---|
@@ -18,7 +18,7 @@ Phase 0.5 (one-source ingestion) implementation is present in the repository; it
 | `llm/`, `evals/`, `observability/tracing.py` | LiteLLM gateway wrapper (fake provider; real providers need `requirements-llm.txt`), recorded-response eval runner, and PII-scrubbed tracing with exporters off by default. |
 | `compose.yaml`, `compose.local.yaml` | postgres, backend, frontend, Caddy proxy, and a `migrate` one-shot job (profile `tools`, operator-run). Only the proxy publishes ports. |
 | `compose.ai.yaml` | Local-only PostgreSQL, Redis, migration job and worker on an internal network; not a production file. |
-| `deploy/` | Caddyfile, PostgreSQL role bootstrap (`deploy/postgres/init-roles.sh`), rollback and watchdog scripts. No backup tooling yet (issue #105). |
+| `deploy/` | Caddyfile, PostgreSQL role bootstrap (`deploy/postgres/init-roles.sh`), rollback and watchdog scripts. PostgreSQL backup/restore tooling lives in `apps/backend/backup/` and `scripts/pg_backup.py`, with `deploy/postgres/container-pg.sh` (issue #105, M1-S5; not activated, see `OPERATIONS.md`). |
 | `quill-store` (reference repo) | Source of the scraper helpers ported into `apps/backend/ingestion/`. Not deployed, never a second product store. |
 
 The API is authoritative for publication state. Neither the crawler, a browser, the AI layer nor any external tool may make a product public.
@@ -106,7 +106,7 @@ Target: PostgreSQL 17 with pgvector holds products, variants, staged products, i
 3. public IDs become UUIDs and the API keeps the `_id` JSON field for compatibility, **subject to a read-only check that the Quill integration persists no Elegance product IDs** (if it does, a compatibility mapping is added instead of changing IDs blindly);
 4. tests: the default suite stays container-free (`pytest -q`); real-PostgreSQL tests run under `pytest -q -m integration`;
 5. the work is a separate scoped issue and sequence, delivered in reviewable slices; it does not deploy anything and does not change staging or production;
-6. backup and restore for PostgreSQL stay in the approval-gated operations workstream (#105); the Mongo backup tooling has been removed (S4) and nothing replaces it until #105, which is a launch prerequisite.
+6. backup and restore for PostgreSQL stay in the approval-gated operations workstream (#105); the Mongo backup tooling was removed (S4) and replaced by the M1-S5 PostgreSQL foundation: encrypted backup, verify, freshness check, retention and a restore drill into a disposable database, with implementation evidence from disposable containers only. It is **not activated**: no real off-server destination (only a local directory for tests and drills), no credentials or secrets provisioned, no scheduling, no alerting, no hosted or production restore, and no owner approval. #105 activation remains a launch prerequisite, and until it is done and a drill on a real off-server copy has passed, no document may claim an activated off-server or production backup service, or usable off-server backups, exists.
 
 **Status.** The runtime cutover (S3) passed independent QA: routes, ingestion pipeline, worker and refresh run on PostgreSQL, and `/ready/` is gated by it. Removal (S4) deleted `database/db.py`, `utils/bson.py`, the Mongo product builder, the legacy Mongo import script, Motor/PyMongo/mongomock, the Mongo compose service, init script, backup scripts and CI variables; `compose.yaml` now provides PostgreSQL. Nothing has been deployed.
 
@@ -212,7 +212,7 @@ Without explicit written approval for the specific action, none of the following
 - sending real WhatsApp messages;
 - deploying the PostgreSQL stack, running migrations against a shared environment, or decommissioning any hosted MongoDB/Atlas (3.1; the code removal itself is done), migrating ingestion to arq (3.3), enabling customer memory (3.6), enabling k3s, publishing GHCR images.
 
-Operations workstreams #103 (CI images and security scans), #104 (environments), #105 (Postgres backups to R2), #106 (VPS) and #112 (k3s/GitOps) are separate approval-gated tasks, prepared as plans and local validation only until approved.
+Operations workstreams #103 (CI images and security scans), #104 (environments), #105 (Postgres backups to R2; the code foundation exists, activation is still gated), #106 (VPS) and #112 (k3s/GitOps) are separate approval-gated tasks, prepared as plans and local validation only until approved.
 
 ## 6. Postponed and open
 
