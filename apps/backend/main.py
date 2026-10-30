@@ -12,6 +12,7 @@ from routes.enquiry_routes import admin_router as enquiry_admin_router, router a
 from routes.action_routes import router as action_router
 from routes.assistant_routes import router as assistant_router
 from routes.memory_routes import router as memory_router
+from routes.suggestion_routes import router as suggestion_router
 from routes.job_routes import router as job_router
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
 from routes.admin_routes import accounts_router, audit_router, auth_router
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant_router)
     app.include_router(action_router)
     app.include_router(memory_router)
+    app.include_router(suggestion_router)
     app.include_router(enquiry_router)
     app.include_router(enquiry_admin_router)
     app.include_router(auth_router)

@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Iterable
 
 from configuration.config import settings
-from llm.gateway import provider_of
 
 MEMORY_POLICY_VERSION = "2026-10-30"   # bump when what is stored or how long changes; consent records the version it was given under
 DEFAULT_RETENTION_DAYS, MAX_RETENTION_DAYS = 180, 365
@@ -75,6 +74,10 @@ def _declared(raw: str) -> dict[str, TrainingPolicy]:
             parsed = TrainingPolicy.UNKNOWN
         out[name] = parsed if out.get(name, parsed) == parsed else TrainingPolicy.UNKNOWN
     return out
+
+
+def provider_of(model: str) -> str:
+    return model.split("/", 1)[0].lower()
 
 
 def classify(model: object, declared: str, free_tier: str) -> TrainingPolicy:
