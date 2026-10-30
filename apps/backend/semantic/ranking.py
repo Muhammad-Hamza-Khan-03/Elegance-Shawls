@@ -34,9 +34,12 @@ def normalize_weights(lexical: float, semantic: float) -> Weights:
     for w in (lexical, semantic):
         if isinstance(w, bool) or not isinstance(w, (int, float)) or not math.isfinite(w) or w < 0:
             raise ValueError("fusion weights must be finite and non-negative")
-    total = lexical + semantic
-    if total <= 0:
+    top = max(lexical, semantic)
+    if top <= 0:
         raise ValueError("fusion weights must not both be zero")
+    # Scale by the larger weight first so lexical + semantic cannot overflow (e.g. 1.7e308 twice).
+    lexical, semantic = lexical / top, semantic / top
+    total = lexical + semantic
     return Weights(lexical / total, semantic / total)
 
 

@@ -1,4 +1,5 @@
 """Pure hybrid ranking: weights, lexical score, fusion, tie-breaks, paging and ranked cursors."""
+import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -23,6 +24,22 @@ def test_weights_are_normalised_and_validated():
     for bad in [(0, 0), (-1, 1), (float("nan"), 1), (float("inf"), 1), (True, 1), ("1", 1)]:
         with pytest.raises(ValueError):
             normalize_weights(*bad)
+
+
+@pytest.mark.parametrize("pair", [(1.7e308, 1.7e308), (1.7e308, 1.0), (1.0, 1.7e308), (1.7e308, 0), (0, 1.7e308), (5e-324, 5e-324), (1e308, 5e-324)])
+def test_extreme_finite_weights_normalise_without_overflow(pair):
+    w = normalize_weights(*pair)
+    assert 0 <= w.lexical <= 1 and 0 <= w.semantic <= 1
+    assert math.isfinite(w.lexical + w.semantic)
+    assert w.lexical + w.semantic == pytest.approx(1.0, abs=1e-12)
+    assert normalize_weights(1.7e308, 1.7e308) == EQUAL
+
+
+def test_extreme_weights_keep_ranking_order():
+    lex = Candidate(uid(1), T0, lexical=5.0)
+    sem = Candidate(uid(2), T0, distance=0.1)
+    assert fuse([lex, sem], normalize_weights(1.7e308, 1.0))[0][1].id == uid(1)
+    assert fuse([lex, sem], normalize_weights(1.0, 1.7e308))[0][1].id == uid(2)
 
 
 def test_lexical_score_uses_best_field_per_term():
