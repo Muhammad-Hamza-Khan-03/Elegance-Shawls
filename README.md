@@ -86,7 +86,7 @@ FastAPI Product API (apps/backend)
    v
 PostgreSQL
 
-Admin write operations are authenticated with X-Admin-Key.
+Admin operations are authenticated per individual account: the Next.js server signs the admin in and forwards an opaque `X-Admin-Session` token; the browser never calls the backend admin routes. Mutations are role-checked and audited.
 Customer order completion happens through WhatsApp handoff from the storefront.
 ```
 
@@ -189,7 +189,9 @@ Backend environment variables:
 |---|---|---|
 | `DATABASE_URL` | **Required.** PostgreSQL connection string (run `alembic upgrade head` first) | `postgresql+asyncpg://elegance_app:...@localhost:5432/elegance_shawls` |
 | `ALLOWED_ORIGINS` | Comma-separated allowed storefront origins | `http://localhost:3000` |
-| `ADMIN_API_KEY` | Secret required for authenticated admin writes | `replace-with-a-long-random-secret` |
+| `ADMIN_API_KEY` | **Legacy** shared key (`X-Admin-Key`); ignored unless `ADMIN_LEGACY_KEY_EXPIRES_AT` is a future instant. Leave empty once admin accounts exist | empty |
+| `ADMIN_LEGACY_KEY_EXPIRES_AT` | ISO 8601 instant with offset after which the legacy key stops working (no redeploy needed) | `2026-12-31T00:00:00+00:00` |
+| `ADMIN_SESSION_TTL_SECONDS`, `ADMIN_LOGIN_MAX_FAILURES`, `ADMIN_LOGIN_LOCKOUT_SECONDS` | Admin session lifetime (8h), failed sign-ins before lockout (5) and lockout length (15 min) | `28800`, `5`, `900` |
 | `ENVIRONMENT` | Runtime environment label | `development` |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE` | Public route request limit | `120` |
 | `ADMIN_RATE_LIMIT_PER_MINUTE` | Admin route request limit | `60` |
@@ -294,7 +296,7 @@ The compose stack expects these values:
 - `SITE_URL`
 - `API_URL`
 - `WHATSAPP_NUMBER`
-- `ADMIN_API_KEY`
+- `ADMIN_API_KEY` (still required by `compose.yaml`; it is only the legacy fallback)
 - `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD`, `POSTGRES_BACKUP_PASSWORD` (see `.env.example`; the backend gets `DATABASE_URL` from them)
 
 ### Typical flow
@@ -327,7 +329,8 @@ CI definition:
 ## Security notes
 
 - Never commit `.env` files or real credentials
-- Treat `ADMIN_API_KEY` as a production secret and rotate it if exposed
+- Admins sign in with individual accounts (scrypt password hashes, opaque server-side sessions, roles `viewer`/`editor`/`owner`, durable audit log). Create the first owner with `python scripts/admin_accounts.py bootstrap-owner --email you@example.com` from `apps/backend` after `alembic upgrade head` (see `DEPLOYMENT.md`)
+- `ADMIN_API_KEY` is a legacy, expiring fallback: treat it as a production secret, rotate it if exposed, and retire it by leaving it and `ADMIN_LEGACY_KEY_EXPIRES_AT` empty once accounts exist
 - Keep PostgreSQL private (internal network, no published port) and use the least-privilege application role
 - Restrict `ALLOWED_ORIGINS` to exact HTTPS origins
 - Do not place credentials in screenshots, logs, tickets, or browser-delivered code

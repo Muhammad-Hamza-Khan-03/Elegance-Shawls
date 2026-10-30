@@ -1,5 +1,5 @@
 # Production preparation — 25 October 2026
-> **Historical record (pre-PostgreSQL).** Everything below describes the earlier MongoDB/Atlas-backed deployment validation. MongoDB, the Atlas catalogue and `scripts/import_legacy_catalog.py` were retired in S4; the catalogue is now PostgreSQL-only and the legacy data was declared disposable. Kept for audit only; it is not current setup guidance.
+> **Historical record (pre-PostgreSQL).** Everything below describes the earlier MongoDB/Atlas-backed deployment validation. MongoDB, the Atlas catalogue and `scripts/import_legacy_catalog.py` were retired in S4; the catalogue is now PostgreSQL-only and the legacy data was declared disposable. Kept for audit only; it is not current setup guidance. Its admin-authentication notes (signed shared-key session cookie, `ADMIN_API_KEY` attached by the frontend proxy) describe the retired flow: admins now sign in with individual accounts and the frontend forwards an opaque `X-Admin-Session`; `ADMIN_API_KEY` is only an expiring legacy fallback. See `DEPLOYMENT.md` ("Admin sign-in protection").
 
 
 Release remains blocked until reviewed code, isolated preview/backend validation, WhatsApp configuration and live checks are complete.

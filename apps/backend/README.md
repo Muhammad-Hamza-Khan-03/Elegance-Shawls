@@ -4,8 +4,11 @@ Public storefront reads use `GET /products/` and `GET /products/slug/{slug}`.
 List responses use `{ "items": [...], "next_cursor": "..." }`; pass the cursor
 back with `?cursor=...&limit=20`. Only active products are publicly visible.
 
-Administrative operations live under `/products/admin` and require the
-`X-Admin-Key` header:
+Administrative operations live under `/products/admin` and require an admin
+credential: the `X-Admin-Session` header carrying the opaque session token of an
+individual account (roles `viewer` read, `editor` write, `owner` also accounts
+and audit). Only the Next.js server sends it; the browser never calls these
+routes directly. Every mutation and denial is recorded in `audit_log`:
 
 - `POST /products/admin/` — create
 - `GET /products/admin/` and `GET /products/admin/{id}` — inspect all lifecycle states
@@ -14,8 +17,23 @@ Administrative operations live under `/products/admin` and require the
 - `PATCH /products/admin/{id}/stock` — set a variant's stock count
 - `DELETE /products/admin/{id}` — soft-delete by archiving
 
-Configure the same long random `ADMIN_API_KEY` in the API and trusted Quill
-server. Never put this secret in a `NEXT_PUBLIC_` variable or browser bundle.
+Sign-in is `POST /v1/admin/auth/login` (`{email, password}`; scrypt hashes,
+per-account lockout) and returns a session token whose SHA-256 only is stored.
+`/v1/admin/auth/{me,logout,password}` serve the signed-in account;
+`/v1/admin/accounts` and `/v1/admin/audit` are owner-only. Create the first
+owner after `alembic upgrade head`, from this directory:
+
+    python scripts/admin_accounts.py bootstrap-owner --email you@example.com
+    python scripts/admin_accounts.py reset-password --email you@example.com   # recovery; revokes sessions
+
+The password comes from `ADMIN_ACCOUNT_PASSWORD` or a prompt (never an
+argument). `bootstrap-owner` is idempotent and there is no default credential.
+
+`X-Admin-Key` / `ADMIN_API_KEY` is a **legacy** fallback, accepted only while
+`ADMIN_LEGACY_KEY_EXPIRES_AT` (ISO 8601 with offset) is in the future; empty,
+naive or past means it is rejected. It acts as `editor` plus `platform:operate`,
+cannot manage accounts or read the audit log, and is audited as
+`legacy-shared-key`. Never put it in a `NEXT_PUBLIC_` variable or browser bundle.
 Production deployments should also enforce rate limits at the edge; the API's
 in-process limiter protects a single application instance.
 
