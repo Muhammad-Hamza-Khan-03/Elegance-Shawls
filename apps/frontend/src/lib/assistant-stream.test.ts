@@ -68,6 +68,27 @@ describe('ordering', () => {
   });
 });
 
+describe('start frame validation', () => {
+  const start = (o: Record<string, unknown>) => parseFrame(fr(0, 'start', { protocol: 1, ...META, ...o }).slice(0, -2), META);
+  const big = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`k${i}`, i]));
+  it('accepts a valid start frame at the limits', () => {
+    expect(start({})).not.toBeNull();
+    expect(start({ session_id: 'a'.repeat(128), context: { ['k'.repeat(40)]: 'v'.repeat(200), n: 1, b: true, z: null } })).not.toBeNull();
+  });
+  it.each([
+    ['missing protocol', { protocol: undefined }], ['wrong protocol', { protocol: 2 }], ['string protocol', { protocol: '1' }],
+    ['empty session', { session_id: '' }], ['long session', { session_id: 'a'.repeat(129) }], ['bad session chars', { session_id: 'a b/<x>' }],
+    ['short key', { idempotency_key: 'idem_short' }], ['no key prefix', { idempotency_key: 'x'.repeat(20) }], ['long key', { idempotency_key: 'idem_' + 'a'.repeat(65) }],
+    ['array context', { context: [] }], ['nested context', { context: { a: { b: 1 } } }], ['array value', { context: { a: [1] } }],
+    ['float value', { context: { a: 1.5 } }],
+    ['long value', { context: { a: 'v'.repeat(201) } }], ['long context key', { context: { ['k'.repeat(41)]: 1 } }], ['too many keys', { context: big }],
+  ])('rejects %s', (_n, o) => expect(start(o)).toBeNull());
+  it('ends the stream with a fixed invalid_stream error, leaking nothing', async () => {
+    const out = await all(readEvents(body([fr(0, 'start', { protocol: 9, ...META, session_id: 'secret/<x>' })]), META));
+    expect(out).toEqual([{ seq: -1, type: 'error', code: 'invalid_stream' }]);
+  });
+});
+
 describe('proposal validation', () => {
   const parse = (f: string) => parseFrame(f.slice(0, -2), META) as Extract<AssistantEvent, { type: 'proposal' }> | null;
   it('keeps a well-formed validated decision', () => {

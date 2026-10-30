@@ -9,6 +9,8 @@ export const REASONS = [
 export const ERRORS = ['provider_error', 'provider_malformed', 'provider_overrun', 'invalid_stream', 'stream_interrupted', 'cancelled', 'unavailable'] as const;
 export const MAX_FRAME_BYTES = 16_384;
 const KEY = /^idem_[A-Za-z0-9_-]{16,64}$/;
+const SESSION = /^[A-Za-z0-9_.:-]{1,128}$/;
+export const PROTOCOL_VERSION = 1;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export type Meta = { session_id: string; idempotency_key: string; context: Record<string, string | number | boolean | null> };
@@ -23,6 +25,11 @@ export type AssistantEvent =
 
 const rec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const oneOf = <T extends readonly string[]>(list: T, v: unknown): v is T[number] => typeof v === 'string' && (list as readonly string[]).includes(v);
+
+// Backend contract: at most 10 keys (<= 40 chars), values are str (<= 200 chars) | integer | bool | null.
+const validContext = (c: unknown): c is Meta['context'] =>
+  rec(c) && Object.entries(c).length <= 10 && Object.entries(c).every(([k, v]) => k.length <= 40 &&
+    (v === null || typeof v === 'boolean' || Number.isInteger(v) || (typeof v === 'string' && v.length <= 200)));
 
 // Splits a growing buffer into complete `\n\n`-terminated frames; returns the unfinished remainder.
 export function splitFrames(buffer: string): { frames: string[]; rest: string } {
@@ -43,7 +50,8 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
   switch (type) {
     case 'start': {
       const { session_id, idempotency_key, context } = d;
-      if (typeof session_id !== 'string' || typeof idempotency_key !== 'string' || !rec(context)) return null;
+      if (d.protocol !== PROTOCOL_VERSION || typeof session_id !== 'string' || !SESSION.test(session_id)) return null;
+      if (typeof idempotency_key !== 'string' || !KEY.test(idempotency_key) || !validContext(context)) return null;
       return { seq, type, meta: { session_id, idempotency_key, context: context as Meta['context'] } };
     }
     case 'text':
