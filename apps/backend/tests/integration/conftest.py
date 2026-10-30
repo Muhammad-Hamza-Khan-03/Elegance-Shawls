@@ -14,7 +14,7 @@ from database.pg import make_engine
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PG_IMAGE = "pgvector/pgvector:0.8.1-pg17"
 APP_USER, APP_PASSWORD = "app_role", "app-role-test-password"
-TABLES = ("action_executions, embedding_jobs, product_embeddings, enquiries, admin_sessions, admin_accounts, staged_product_audit, staged_products, ingestion_jobs, variants, products, "
+TABLES = ("memory_items, memory_consents, action_executions, embedding_jobs, product_embeddings, enquiries, admin_sessions, admin_accounts, staged_product_audit, staged_products, ingestion_jobs, variants, products, "
           "outbox, audit_log, events, tool_calls, messages, conversations, customer_identities, customers")
 
 

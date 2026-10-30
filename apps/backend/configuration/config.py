@@ -73,6 +73,9 @@ class settings(BaseSettings):
     llm_chain_default: str = ""
     llm_production_chain: str = ""
     llm_free_tier_providers: str = "groq,gemini,openrouter"
+    # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
+    # Empty = every provider unknown = no model may touch customer memory.
+    llm_provider_training_policies: str = ""
     llm_daily_budget_usd: float = 1.0
     llm_environment_budget_usd: float = 10.0
     llm_budget_warn_ratio: float = 0.8

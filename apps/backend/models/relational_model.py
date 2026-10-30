@@ -30,6 +30,9 @@ ADMIN_STATUSES = ("active", "disabled")
 AUDIT_OUTCOMES = ("accepted", "success", "failure", "denied")
 OUTBOX_AGGREGATES = ("product", "variant")
 OUTBOX_EVENT_TYPES = ("created", "updated", "archived")
+MEMORY_CATEGORIES = ("preference", "session_constraint", "purchase_context")  # explicit only; weak signals are inferred, so out of scope
+MEMORY_SOURCES = ("user_explicit", "memory_page")
+MEMORY_STATUSES = ("active", "deleted")  # deleted = tombstone: identity and timestamps only, content scrubbed
 ACTION_EXECUTION_TYPES = ("add_to_cart", "start_whatsapp_enquiry")
 ACTION_EXECUTION_STATUSES = ("pending", "committed", "failed")
 PRODUCT_CATEGORIES = ("shawls", "stoles", "scarves")
@@ -520,6 +523,60 @@ class ActionExecution(Base):
     replay_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _created_at()
+
+
+class MemoryConsent(Base):
+    """Per-customer opt-in to explicit memory. No row means no consent: memory is off by default."""
+    __tablename__ = "memory_consents"
+    __table_args__ = (UniqueConstraint("customer_id"), CheckConstraint("char_length(policy_version) BETWEEN 1 AND 32", name="policy_version"))
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    policy_version: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemoryItem(Base):
+    """One thing a customer explicitly asked to be remembered (M4-S1). Always read and written with customer_id in the predicate.
+    Deleting scrubs key, value, reason, source_ref and fingerprint in place and keeps a tombstone so a replayed create cannot
+    resurrect it; the tombstone holds no content."""
+    __tablename__ = "memory_items"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "idempotency_key"),
+        CheckConstraint(_in("category", MEMORY_CATEGORIES), name="category"),
+        CheckConstraint(_in("source", MEMORY_SOURCES), name="source"),
+        CheckConstraint(_in("status", MEMORY_STATUSES), name="status"),
+        CheckConstraint("idempotency_key ~ '^idem_[A-Za-z0-9_-]{16,64}$'", name="idempotency_key_format"),
+        CheckConstraint("retention_days BETWEEN 1 AND 365 AND version >= 1", name="bounds"),
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        CheckConstraint("status <> 'active' OR (key ~ '^[a-z][a-z0-9_]{0,63}$' AND char_length(value) BETWEEN 1 AND 200 "
+                        "AND (reason IS NULL OR char_length(reason) BETWEEN 1 AND 200) AND fingerprint ~ '^[0-9a-f]{64}$')", name="active_content"),
+        CheckConstraint("status <> 'deleted' OR (key IS NULL AND value IS NULL AND reason IS NULL AND source_ref IS NULL "
+                        "AND fingerprint IS NULL AND deleted_at IS NOT NULL)", name="deleted_is_scrubbed"),
+        Index("ix_memory_items_customer_id_key_active", "customer_id", "key", unique=True, postgresql_where=text("status = 'active'")),
+        Index("ix_memory_items_customer_id_created_at", "customer_id", "created_at", "id"),
+        Index("ix_memory_items_expires_at_active", "expires_at", postgresql_where=text("status = 'active'")),
+        Index("ix_memory_items_deleted_at", "deleted_at", postgresql_where=text("status = 'deleted'")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    key: Mapped[str | None] = mapped_column(Text)
+    value: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False)      # provenance: who stated it, never inferred
+    source_ref: Mapped[str | None] = mapped_column(Text)           # opaque pointer (e.g. a message id), never content
+    reason: Mapped[str | None] = mapped_column(Text)               # why it is remembered; schema only, nothing generates it
+    fingerprint: Mapped[str | None] = mapped_column(CHAR(64))      # SHA-256 of the canonical create request, for idempotency
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _created_at()
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProductEmbedding(Base):
