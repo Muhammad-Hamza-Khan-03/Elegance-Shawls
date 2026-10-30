@@ -11,6 +11,8 @@ test('shared cart supports multiple products, quantity editing and refresh persi
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('2');
 
   await page.goto('/product/light-silk-stole');
+  // The cart restores from localStorage after hydration; adding before that would be overwritten by the restore.
+  await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('2');
   await page.getByRole('button', { name: 'Add to cart' }).click();
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('3');
 
