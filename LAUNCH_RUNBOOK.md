@@ -10,7 +10,7 @@ The repository-controlled storefront and API are launch-complete only after the 
 - Keep PostgreSQL on the internal network (no published port) with the least-privilege application role, and apply the schema with the approved `migrate` step before the first start.
 - Build immutable frontend/backend images from a commit with green CI.
 - Configure DNS, TLS, reverse proxy request limits and the four documented health/readiness probes.
-- Complete an encrypted backup and an isolated restore drill (blocked: PostgreSQL backup tooling is issue #105 and is not built).
+- Complete an encrypted backup to an owner-approved off-server S3-compatible destination and an isolated restore drill, and record the drill evidence file (`OPERATIONS.md`). **Open:** the tooling is built, but the destination, its free-tier/cost approval, credentials, scheduling and production activation are owner actions that have not happened.
 
 ## 2. Quill compatibility — blocking
 
@@ -47,7 +47,7 @@ Use a server-side Quill proxy/session so the browser never receives a backend cr
 
 1. Record the deployed commit and immutable image digests.
 2. Confirm CI, health, readiness, logs and alerts are green.
-3. Take a pre-launch database backup (blocked on #105).
+3. Take a pre-launch database backup with `scripts/pg_backup.py backup` and run `verify` on it (blocked until the off-server destination and credentials above exist; do not skip).
 4. Run one final Quill publish-to-storefront smoke test and remove the test product.
 5. Enable public traffic and watch errors, latency, resources and readiness continuously during the launch window.
 

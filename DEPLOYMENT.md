@@ -30,7 +30,7 @@ PostgreSQL is the only database and is part of `compose.yaml`. Redis, the arq wo
 3. Run `docker compose build --pull`. On a new host, start only the database first (`docker compose up -d --wait postgres`), then apply the schema (see "Database migrations"), then `docker compose up -d`.
 4. Confirm `GET https://$SITE_DOMAIN/api/health` and `/api/ready` and `GET https://$API_DOMAIN/health/` and `/ready/` return 200. Backend readiness returns 503 within about 2 seconds when PostgreSQL is unavailable; `/health/` stays dependency-free.
 5. Create a uniquely named draft through the admin UI, publish it, verify it appears publicly, then archive it.
-6. Set up the watchdog (`OPERATIONS.md`) and complete the launch checklist before directing traffic. PostgreSQL backup and restore automation is not built yet (approval-gated issue #105); it is a launch prerequisite, not an optional extra.
+6. Set up the watchdog (`OPERATIONS.md`) and complete the launch checklist before directing traffic. Encrypted PostgreSQL backup and restore-drill tooling exists in the repository (`apps/backend/scripts/pg_backup.py`, see `OPERATIONS.md`) but is **not activated**: it needs an owner-approved off-server S3-compatible destination (free-tier/cost confirmed), credentials from the secret manager and separately authorized scheduling. Until a drill on a real off-server copy has passed, backups are a launch prerequisite, not a fact.
 
 On first start of an empty volume, `deploy/postgres/init-roles.sh` creates the `vector` extension, a least-privilege application role (no superuser, createdb, createrole or replication; it owns its tables in `public` and runs the migrations) and a read-only backup role (`pg_read_all_data`), and revokes public access. The backend connects as the application role. PostgreSQL runs on an internal Docker network with no internet egress and no published port, so only the backend and the `migrate` job can reach it; traffic on that private network is not TLS-encrypted. Pointing `DATABASE_URL` at a managed PostgreSQL instead is a separate, approved decision.
 
@@ -40,7 +40,7 @@ The schema is managed only by Alembic (`apps/backend/migrations`, reversible, ap
 
 - **The operator runs migrations, never the application.** The backend image does not migrate on start, so a deploy or restart can never change the schema by itself.
 - **Command (production or staging):** `docker compose --profile tools run --rm migrate`. It runs as the application role on the internal network and is idempotent at `head`.
-- **Approval boundary:** running it against staging or production needs separate written approval, a verified backup (once #105 exists) and a reviewed `alembic upgrade --sql` or revision list. Agents and CI never run it against a shared environment. Roll back with `alembic downgrade <revision>` only with the same approval.
+- **Approval boundary:** running it against staging or production needs separate written approval, a verified backup (`OPERATIONS.md`; tooling exists but must first be activated, see above) and a reviewed `alembic upgrade --sql` or revision list. Agents and CI never run it against a shared environment. Roll back with `alembic downgrade <revision>` only with the same approval.
 - **Local or throwaway verification** is the only automatic case: `compose.ai.yaml`'s `migrate` service against a local database, and the Testcontainers integration suite.
 - Apply migrations before starting the new backend version; `/ready/` checks connectivity, not the schema revision.
 
@@ -65,7 +65,7 @@ LIVE_WHATSAPP_NUMBER=$WHATSAPP_NUMBER LIVE_IGNORE_HTTPS_ERRORS=1 \
 
 The storefront reverse proxy must preserve the public `Host` and HTTPS request scheme. Admin product mutations require a valid admin session and an `Origin` matching that public host and scheme. In staging, verify that same-origin create, edit, status, stock, and archive requests succeed and cross-origin requests return 403 without reaching the backend. If legitimate writes return 403, correct the proxy forwarding configuration before release; do not weaken the origin check.
 
-The included PostgreSQL container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. Backups are not automated yet (issue #105); a managed PostgreSQL service is preferred for production resilience.
+The included PostgreSQL container is suitable for a controlled single-host deployment only when backups, access restrictions and disk monitoring are configured. Backups are not scheduled or activated (tooling only, see `OPERATIONS.md`); a managed PostgreSQL service is preferred for production resilience.
 
 ## Admin sign-in protection
 
