@@ -23,6 +23,10 @@ MESSAGE_SCRIPTS = ("en", "ur", "roman_ur")
 TOOL_CALL_STATUSES = ("ok", "error", "rejected", "timeout")
 EVENT_TYPES = ("view", "search", "impression", "click", "add_to_cart", "ui_action", "voice", "handoff")
 ACTOR_TYPES = ("system", "admin", "customer", "agent")
+ADMIN_ROLES = ("viewer", "editor", "owner")
+ADMIN_STATUSES = ("active", "disabled")
+# "accepted" = an authorised mutation was admitted and not yet finalised; a row left there means its outcome was not recorded.
+AUDIT_OUTCOMES = ("accepted", "success", "failure", "denied")
 OUTBOX_AGGREGATES = ("product", "variant")
 OUTBOX_EVENT_TYPES = ("created", "updated", "archived")
 PRODUCT_CATEGORIES = ("shawls", "stoles", "scarves")
@@ -160,6 +164,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
     __table_args__ = (
         CheckConstraint(_in("actor_type", ACTOR_TYPES), name="actor_type"),
+        CheckConstraint(_in("outcome", AUDIT_OUTCOMES), name="outcome"),
         Index("ix_audit_log_created_at", "created_at"),
         Index("ix_audit_log_target_created_at", "target", "created_at"),
     )
@@ -172,6 +177,56 @@ class AuditLog(Base):
     before: Mapped[dict | None] = mapped_column(JSONB)
     after: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
+    outcome: Mapped[str] = mapped_column(Text, nullable=False, server_default="success")
+    # Non-secret context only (HTTP status, reason codes); never credentials, tokens or request bodies.
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class AdminAccount(Base):
+    """An individual administrator. Accounts are disabled, never deleted, so audit attribution stays resolvable."""
+    __tablename__ = "admin_accounts"
+    __table_args__ = (
+        CheckConstraint(_in("role", ADMIN_ROLES), name="role"),
+        CheckConstraint(_in("status", ADMIN_STATUSES), name="status"),
+        CheckConstraint("email = lower(email) AND char_length(email) BETWEEN 3 AND 254", name="email_format"),
+        CheckConstraint("failed_login_count >= 0", name="failed_logins_nonnegative"),
+        UniqueConstraint("email"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)   # scrypt$n$r$p$salt$hash, see security/passwords.py
+    failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime] = _created_at()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin_accounts.id"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AdminSession(Base):
+    """Server-side session. Only the SHA-256 of the bearer token is stored, so a database read cannot replay a session."""
+    __tablename__ = "admin_sessions"
+    __table_args__ = (
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        UniqueConstraint("token_hash"),
+        Index("ix_admin_sessions_account_id_live", "account_id", postgresql_where=text("revoked_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin_accounts.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Outbox(Base):

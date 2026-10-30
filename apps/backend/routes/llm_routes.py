@@ -5,17 +5,17 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from llm.model_discovery import catalog, refresh_models
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import PLATFORM_OPERATE, require_permission
 
 router = APIRouter(prefix="/v1", tags=["LLM models"])
-admin_router = APIRouter(prefix="/v1/admin/llm/models", tags=["LLM models"], dependencies=[Depends(require_admin_api_key)])
+admin_router = APIRouter(prefix="/v1/admin/llm/models", tags=["LLM models"], dependencies=[Depends(require_permission(PLATFORM_OPERATE))])
 
 
 class RefreshResult(BaseModel):
     providers: dict[str, str]
 
 
-@router.get("/llm/models", dependencies=[Depends(require_admin_api_key)])
+@router.get("/llm/models", dependencies=[Depends(require_permission(PLATFORM_OPERATE))])
 async def get_llm_models():
     return await catalog()
 

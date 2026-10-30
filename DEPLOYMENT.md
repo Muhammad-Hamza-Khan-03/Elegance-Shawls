@@ -69,9 +69,9 @@ The included PostgreSQL container is suitable for a controlled single-host deplo
 
 ## Admin sign-in protection
 
-`POST /api/admin/session` compares the submitted key in constant time, accepts only JSON bodies, and returns 429 with `Retry-After` after 5 failed attempts from one client within 15 minutes, including when the next attempt uses the correct key. The client is the right-most `X-Forwarded-For` address, so exactly one trusted reverse proxy (or Vercel) must set or append that header; without it, all clients share one throttle bucket, and if the frontend is reachable without passing through that proxy, clients can choose their own throttle key. The counter lives in each frontend process, so it resets on restart and is not shared between instances. Add an edge/proxy rate limit for `/api/admin/session` in production. A long random `ADMIN_API_KEY` remains the primary defence.
+`POST /api/admin/session` takes `{email, password}` and forwards them to the backend `POST /v1/admin/auth/login`, which verifies the password hash, locks the account after `ADMIN_LOGIN_MAX_FAILURES` (5) failures for `ADMIN_LOGIN_LOCKOUT_SECONDS` (15 min), and issues an opaque server-side session (`ADMIN_SESSION_TTL_SECONDS`, default 8h; only its hash is stored). The frontend keeps a per-process throttle too; add an edge rate limit for `/api/admin/session`.
 
-Sessions are HMAC-signed, `HttpOnly`, `SameSite=Lax`, `Secure` in production, and expire after 8 hours. Signing out clears the cookie but cannot revoke a copied token before it expires; rotate `ADMIN_API_KEY` to invalidate every session.
+The `es_admin_session` cookie holds that opaque token (`HttpOnly`, `SameSite=Lax`, `Secure` in production). Sign-out revokes the session server-side. Roles are `viewer`, `editor`, `owner`; every admin mutation and denial is written to `audit_log`. Run `alembic upgrade head` (0007), then create the first owner from `apps/backend`: `python scripts/admin_accounts.py bootstrap-owner --email you@example.com` (password via `ADMIN_ACCOUNT_PASSWORD` or prompt). `ADMIN_API_KEY` is a legacy fallback accepted only until `ADMIN_LEGACY_KEY_EXPIRES_AT` (ISO 8601 with offset); leave both empty once accounts exist. Downgrading 0007 refuses when accounts/sessions/audit details exist unless `ALEMBIC_ALLOW_ADMIN_DATA_LOSS=1` (pg_dump first).
 
 ## Quill integration
 

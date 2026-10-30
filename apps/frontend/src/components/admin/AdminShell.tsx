@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Package, LayoutDashboard, ShoppingBag, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import type { AdminIdentity } from '@/lib/admin-backend';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,7 +15,7 @@ const navItems = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
 ];
 
-export const AdminShell = ({ children }: { children: ReactNode }) => {
+export const AdminShell = ({ children, account }: { children: ReactNode; account?: AdminIdentity }) => {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -78,7 +79,7 @@ export const AdminShell = ({ children }: { children: ReactNode }) => {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#9a6b3f]">Authenticated workspace</p>
-                <p className="mt-2 text-sm text-[#6f625a]">Protected by the shared admin key session.</p>
+                <p className="mt-2 text-sm text-[#6f625a]">{account ? `Signed in as ${account.email} (${account.role}).` : 'Signed in.'}</p>
               </div>
               <Link href="/" className="text-sm font-semibold text-[#765033] hover:underline">
                 View storefront →

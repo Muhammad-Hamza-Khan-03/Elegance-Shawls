@@ -14,6 +14,7 @@ from tests.integration.conftest import alembic_config
 EXPECTED_TABLES = {
     "customers", "customer_identities", "conversations", "messages", "tool_calls", "events", "audit_log", "outbox",
     "products", "variants", "ingestion_jobs", "staged_products", "staged_product_audit",
+    "admin_accounts", "admin_sessions",
 }
 EXPECTED_INDEXES = {
     "ix_events_type_created_at", "ix_events_customer_id_created_at", "ix_events_session_id_created_at",

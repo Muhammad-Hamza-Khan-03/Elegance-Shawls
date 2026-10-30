@@ -15,6 +15,26 @@ http.createServer((request, response) => {
     return response.end();
   }
   response.setHeader('Content-Type', 'application/json');
+  // Admin accounts: one fixed owner, one fixed session token. The real checks are covered by the backend integration tests.
+  const SESSION = 'es1.mockmockmockmockmockmockmockmockmockmockmock';
+  const owner = { id: 'a1', email: 'owner@example.test', display_name: null, role: 'owner', status: 'active' };
+  if (request.url === '/v1/admin/auth/login' && request.method === 'POST') {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    return request.on('end', () => {
+      const ok = body.includes('"password":"test-owner-password"') && body.includes('owner@example.test');
+      response.statusCode = ok ? 200 : 401;
+      response.end(JSON.stringify(ok ? { token: SESSION, expires_at: new Date(Date.now() + 8 * 3600e3).toISOString(), account: owner } : { detail: 'Invalid email or password' }));
+    });
+  }
+  if (request.url?.startsWith('/v1/admin/auth/') || request.url?.startsWith('/products/admin')) {
+    if (request.headers['x-admin-session'] !== SESSION) {
+      response.statusCode = 401;
+      return response.end(JSON.stringify({ detail: 'Invalid administrative credentials' }));
+    }
+    if (request.url === '/v1/admin/auth/me') return response.end(JSON.stringify({ account: owner, role: 'owner', legacy: false }));
+    if (request.url === '/v1/admin/auth/logout') return response.end(JSON.stringify({ ok: true }));
+  }
   if (request.url === '/health/' || request.url === '/ready/') return response.end(JSON.stringify({ status: 'ready' }));
   if (request.url?.startsWith('/products/slug/')) {
     const product = products.find((item) => item.slug === decodeURIComponent(request.url.split('/').pop() || ''));

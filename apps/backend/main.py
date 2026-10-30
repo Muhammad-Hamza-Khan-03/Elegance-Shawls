@@ -10,8 +10,10 @@ from routes.ingestion_routes import router as ingestion_router
 from routes.event_routes import router as event_router
 from routes.job_routes import router as job_router
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
+from routes.admin_routes import accounts_router, audit_router, auth_router
 from observability.request_log import RequestLogMiddleware
 from observability.tracing import configure_exporters
+from security.admin_auth import legacy_key_enabled, legacy_key_expiry
 from security.rate_limit import RateLimitMiddleware
 from workers.queues import close_queue_pool, worker_is_alive
 
@@ -27,6 +29,8 @@ async def lifespan(app: FastAPI):
     if not postgres_configured():
         raise RuntimeError("DATABASE_URL is required: the catalogue runs on PostgreSQL")
     await connect_to_postgres()
+    if legacy_key_enabled():
+        print(f"WARNING: the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
     yield
     # Shutdown
     print("Shutting down...")
@@ -67,6 +71,9 @@ def create_app() -> FastAPI:
     app.include_router(llm_router)
     app.include_router(llm_admin_router)
     app.include_router(event_router)
+    app.include_router(auth_router)
+    app.include_router(accounts_router)
+    app.include_router(audit_router)
 
     # Health Check
     @app.get("/health/", tags=["Health"])

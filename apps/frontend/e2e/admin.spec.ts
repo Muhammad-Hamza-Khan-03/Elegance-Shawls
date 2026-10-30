@@ -5,7 +5,8 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
   await expect(page).toHaveURL(/\/admin\/login/);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
-  await page.getByLabel('Admin key').fill('test-admin-secret');
+  await page.getByLabel('Email').fill('owner@example.test');
+  await page.getByLabel('Password').fill('test-owner-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL(/\/admin\/dashboard$/);

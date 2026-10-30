@@ -10,8 +10,8 @@ def tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text())
 
 
-def test_the_repositories_package_has_the_three_modules():
-    assert {p.name for p in REPO_FILES} == {"__init__.py", "products.py", "staged.py", "jobs.py"}
+def test_the_repositories_package_has_the_expected_modules():
+    assert {p.name for p in REPO_FILES} == {"__init__.py", "products.py", "staged.py", "jobs.py", "admin.py"}
 
 
 def test_repositories_do_not_depend_on_mongo():

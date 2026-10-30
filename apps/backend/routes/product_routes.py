@@ -15,7 +15,7 @@ from schemas.product_schema import (
     ProductStatusUpdateSchema,
     VariantStockUpdateSchema,
 )
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import require_admin
 from utils.colour_vocabulary import normalize
 from utils.pagination import decode_cursor, encode_cursor
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/products", tags=["Products"])
 search_router = APIRouter(prefix="/v1/search", tags=["Search"])
 admin_router = APIRouter(
     prefix="/admin",
-    dependencies=[Depends(require_admin_api_key)],
+    dependencies=[Depends(require_admin)],
 )
 
 

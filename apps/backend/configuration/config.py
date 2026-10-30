@@ -8,7 +8,14 @@ class settings(BaseSettings):
     app_name: str = "Products API"
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
+    # Legacy shared key. Ignored unless ADMIN_LEGACY_KEY_EXPIRES_AT (ISO 8601 with offset, e.g.
+    # 2026-12-31T00:00:00+00:00) is a future instant; after it passes the key stops working with no redeploy.
     admin_api_key: str = ""
+    admin_legacy_key_expires_at: str = ""
+    # Individual admin accounts: server-side sessions and per-account login lockout.
+    admin_session_ttl_seconds: int = 8 * 3600
+    admin_login_max_failures: int = 5
+    admin_login_lockout_seconds: int = 15 * 60
     # Shared with the storefront server so server-rendered reads, which all come
     # from one address, are not limited as if they were a single client.
     internal_api_token: str = ""
