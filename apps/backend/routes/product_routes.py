@@ -20,6 +20,7 @@ from utils.pagination import decode_cursor, encode_cursor
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
+search_router = APIRouter(prefix="/v1/search", tags=["Search"])
 admin_router = APIRouter(
     prefix="/admin",
     dependencies=[Depends(require_admin_api_key)],
@@ -67,6 +68,15 @@ def _http(exc: Exception) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
+async def _public_list(request, background, limit, cursor, q, session):
+    q = (q or "").strip()[:100] or None
+    page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor), q=q)
+    # Best effort and after the response: an event failure never affects the catalogue.
+    background.add_task(log_listing, request, limit=limit, paged=bool(cursor),
+                        product_ids=[str(item.id) for item in page.items])
+    return _page(page)
+
+
 @router.get("/", response_model=ProductListResponse)
 async def get_products(
     request: Request,
@@ -75,11 +85,20 @@ async def get_products(
     cursor: str | None = None,
     session: AsyncSession = Depends(get_pg_session),
 ):
-    page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor))
-    # Best effort and after the response: an event failure never affects the catalogue.
-    background.add_task(log_listing, request, limit=limit, paged=bool(cursor),
-                        product_ids=[str(item.id) for item in page.items])
-    return _page(page)
+    return await _public_list(request, background, limit, cursor, None, session)
+
+
+@search_router.get("", response_model=ProductListResponse)
+async def search_products(
+    request: Request,
+    background: BackgroundTasks,
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = None,
+    q: str | None = None,
+    session: AsyncSession = Depends(get_pg_session),
+):
+    """Same live-published catalogue as GET /products/ plus `q`, under the M1 /v1/search contract path."""
+    return await _public_list(request, background, limit, cursor, q, session)
 
 
 @router.get("/slug/{slug}", response_model=ProductResponseSchema)

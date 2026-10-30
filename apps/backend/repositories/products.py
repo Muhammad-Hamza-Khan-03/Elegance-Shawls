@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import func, select, tuple_, update
+from sqlalchemy import and_, exists, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,11 +106,24 @@ async def get_public_product_by_slug(session: AsyncSession, slug: str) -> Produc
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def list_products(session: AsyncSession, *, public: bool, limit: int, after: Key | None = None) -> Page:
-    """Newest first with keyset pagination on (created_at, id); public means active products only."""
+def _term_match(term: str):
+    """One search term must appear (case-insensitive substring) in a product field or in one of its variants."""
+    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    fields = (Product.name, Product.slug, Product.material, Product.item_number, Product.main_description)
+    in_variant = exists().where(Variant.product_id == Product.id,
+                                or_(Variant.name.ilike(like, escape="\\"), Variant.color.ilike(like, escape="\\")))
+    return or_(*(f.ilike(like, escape="\\") for f in fields), in_variant)
+
+
+async def list_products(session: AsyncSession, *, public: bool, limit: int, after: Key | None = None,
+                        q: str | None = None) -> Page:
+    """Newest first with keyset pagination on (created_at, id); public means active products only.
+    `q` is whitespace-separated terms that must all match (shortcut: ILIKE scan, move to full-text/trigram with the M1 index)."""
     stmt = select(Product).order_by(Product.created_at.desc(), Product.id.desc()).limit(limit + 1)
     if public:
         stmt = stmt.where(Product.status == "active")
+    if q:
+        stmt = stmt.where(and_(*(_term_match(t) for t in q.split()[:8])))
     if after is not None:
         stmt = stmt.where(tuple_(Product.created_at, Product.id) < tuple_(*after))
     rows = list((await session.execute(stmt)).scalars())

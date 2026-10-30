@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from configuration.config import settings
 from database.pg import get_pg_session, make_engine
 from routes.ingestion_routes import router as ingestion_router
-from routes.product_routes import router as product_router
+from routes.product_routes import router as product_router, search_router
 
 ADMIN_KEY = "test-admin-key-that-is-long-enough"
 H = {"X-Admin-Key": ADMIN_KEY}
@@ -20,6 +20,7 @@ class ApiEnv:
         self.url = url
         app = FastAPI()
         app.include_router(product_router)
+        app.include_router(search_router)
         app.include_router(ingestion_router)
 
         async def session_per_request():
