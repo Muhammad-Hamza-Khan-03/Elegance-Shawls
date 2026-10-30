@@ -1,8 +1,8 @@
 """/v1/me/memory: a customer's own explicit memory (M4-S1). The customer is always the authenticated principal, never a path,
 query or body value. One transaction per request, committed here after the service returns; a refusal rolls everything back.
 
-Customer authentication does not exist yet (a later M4 slice wires it), so `memory_customer` refuses every request. Tests override
-it; nothing can reach customer memory in a deployed app until real authentication replaces it.
+`memory_customer` resolves the customer from a server-verified session (memory/principal.py). No customer authentication exists yet,
+so no verifier is installed and every request is 401 until one is. Tests override `memory_customer` or the verifier.
 """
 import uuid
 from datetime import datetime, timezone
@@ -12,15 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.pg import get_pg_session
 from memory import service
+from memory.principal import CustomerPrincipal, current_principal
 from memory.service import MemoryRejected
 from schemas.memory_schema import ConsentRequest, ConsentResponse, MemoryCreate, MemoryItemOut, MemoryList, MemoryUpdate
 
 router = APIRouter(prefix="/v1/me/memory", tags=["Memory"])
 
 
-async def memory_customer() -> uuid.UUID:
-    """shortcut: no customer authentication yet, so deny everything; replace with the real principal dependency when it exists."""
-    raise HTTPException(401, "Customer authentication is required", headers={"WWW-Authenticate": "Session"})
+async def memory_customer(principal: CustomerPrincipal = Depends(current_principal)) -> uuid.UUID:
+    return principal.customer_id
 
 
 def _now() -> datetime:

@@ -412,3 +412,32 @@ def test_migration_0011_is_reversible_and_refuses_to_drop_memory_silently(pg_url
     assert sql("select to_regclass('memory_items')") == [(None,)]
     command.upgrade(config, "head")
     sql("truncate customers cascade")
+
+
+# ---- M4-S2: real principal seam (no memory_customer override) --------------------------------------
+def test_session_principals_isolate_customers_end_to_end(env):
+    import hashlib
+
+    from memory.principal import SESSION_HEADER, CustomerPrincipal, get_session_verifier
+
+    ids = {t: env.sql("insert into customers (status) values ('registered') returning id")[0][0] for t in ("cs1.a", "cs1.b")}
+
+    class Store:
+        async def verify(self, token, now):
+            cid = ids.get(token)
+            return cid and CustomerPrincipal(cid, "s-" + token, hashlib.sha256(token.encode()).hexdigest(), now + timedelta(hours=1))
+
+    del env.app.dependency_overrides[memory_customer]
+    env.app.dependency_overrides[get_session_verifier] = lambda: Store()
+    a, b = {SESSION_HEADER: "cs1.a"}, {SESSION_HEADER: "cs1.b"}
+    assert env.client.put(f"{URL}/consent", json={"granted": True}, headers=a).status_code == 200
+    item = env.client.post(URL, json=body(), headers=a).json()
+    assert env.client.get(f"{URL}/{item['id']}", headers=a).status_code == 200
+    # b's own session can neither see nor change a's item, and a client-supplied customer id changes nothing
+    spoof = {**b, "X-Test-Customer": str(ids["cs1.a"]), "X-Customer-Id": str(ids["cs1.a"])}
+    assert env.client.get(f"{URL}/{item['id']}", headers=spoof).status_code == 403  # b has no consent
+    assert env.client.put(f"{URL}/consent", json={"granted": True}, headers=b).status_code == 200
+    assert env.client.get(f"{URL}/{item['id']}", headers=spoof).status_code == 404
+    assert env.client.delete(f"{URL}/{item['id']}", headers=spoof).status_code == 204  # idempotent, deletes nothing of a's
+    assert env.client.get(URL, headers={SESSION_HEADER: "cs1.unknown"}).status_code == 401
+    assert env.client.get(f"{URL}/{item['id']}", headers=a).status_code == 200
