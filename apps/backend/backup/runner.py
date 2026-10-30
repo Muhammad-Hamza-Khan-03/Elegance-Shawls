@@ -330,34 +330,72 @@ def drill_guard(target: PgConn, source: PgConn | None, confirm: str) -> None:
         raise BackupError("config", "drill target is the same PostgreSQL instance as the backup source; use a separate disposable instance")
 
 
-def restore_drill(store: ObjectStore, stem: str, passphrase: str, target: PgConn, confirm: str, evidence_dir: Path, *,
-                  source: PgConn | None = None, work_dir: str | None = None, env: Mapping[str, str] = os.environ) -> dict:
-    """Restores one backup into an empty disposable database and writes an evidence file. Never touches the source."""
-    drill_guard(target, source, confirm)
-    started = datetime.now(timezone.utc)
-    existing = psql(target, "select count(*) from pg_tables where schemaname not in ('pg_catalog', 'information_schema')", code="drill", env=env)
-    if existing != [["0"]]:
-        raise BackupError("drill", "drill target database is not empty; create a fresh restore_drill_* database")
-    with private_dir(work_dir) as tmp:
-        plain = tmp / "dump.pgdump"
-        manifest = verify_backup(store, stem, passphrase, conn=target, work_dir=work_dir, env=env, decrypted_to=plain)
-        run_tool("pg_restore", target, ["--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
-                                        f"--dbname={target.dbname}"], code="drill", env=env, stdin=plain)
-    counts = {name: int(n) for name, n in psql(target, COUNT_SQL, code="drill", env=env)}
-    snapshot = schema_snapshot(target, env)
-    missing = sorted(set(manifest["tables"]) - set(snapshot["tables"]))
-    problems = [f"missing tables: {', '.join(missing)}"] if missing else []
-    if snapshot["alembic_version"] != manifest["alembic_version"]:
-        problems.append(f"alembic_version {snapshot['alembic_version']!r} != recorded {manifest['alembic_version']!r}")
-    evidence = {"result": "failed" if problems else "passed", "problems": problems, "backup": stem,
-                "created_at": manifest["created_at"], "ciphertext_sha256": manifest["ciphertext_sha256"],
-                "mac_verified": True, "restored_database": target.dbname, "tables": counts,
-                "alembic_version": snapshot["alembic_version"], "started_at": started.isoformat(),
-                "finished_at": datetime.now(timezone.utc).isoformat()}
+def write_evidence(evidence_dir: Path, started: datetime, evidence: dict) -> Path:
     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = evidence_dir / f"drill-{started:%Y%m%dT%H%M%SZ}.json"
-    path.write_text(json.dumps(evidence, indent=2, sort_keys=True))
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # never world-readable, not even briefly
+    with os.fdopen(fd, "w") as out:
+        out.write(json.dumps(evidence, indent=2, sort_keys=True))
     path.chmod(0o600)
-    if problems:
-        raise BackupError("drill", f"restore drill failed (evidence: {path}): " + "; ".join(problems))
-    return {**evidence, "evidence_file": str(path)}
+    return path
+
+
+def restore_drill(store: ObjectStore, stem: str, passphrase: str, target: PgConn, confirm: str, evidence_dir: Path, *,
+                  source: PgConn | None = None, work_dir: str | None = None, env: Mapping[str, str] = os.environ) -> dict:
+    """Restores one backup into an empty disposable database and writes an evidence file. Never touches the source.
+
+    Every outcome writes evidence, including refused targets and integrity failures: a failed file names the `stage` that
+    stopped the drill and carries only redacted text. `result` is "passed" only when the whole drill finished;
+    `mac_verified` and `restore_completed` start false and flip only after that step really succeeded.
+    """
+    started = datetime.now(timezone.utc)
+    secrets = (passphrase, target.password, source.password if source else "")
+    ev = {"result": "failed", "stage": "guard", "problems": [], "backup": stem, "restored_database": target.dbname,
+          "mac_verified": False, "restore_completed": False, "started_at": started.isoformat()}
+
+    def finish(result: str) -> Path:
+        ev.update(result=result, finished_at=datetime.now(timezone.utc).isoformat())
+        return write_evidence(evidence_dir, started, ev)
+
+    def finish_failed() -> str:
+        try:
+            return f" (evidence: {finish('failed')})"
+        except OSError:
+            return " (evidence could not be written)"  # the drill failure matters more than an unwritable directory
+
+    try:
+        drill_guard(target, source, confirm)
+        ev["stage"] = "empty-check"
+        existing = psql(target, "select count(*) from pg_tables where schemaname not in ('pg_catalog', 'information_schema')", code="drill", env=env)
+        if existing != [["0"]]:
+            raise BackupError("drill", "drill target database is not empty; create a fresh restore_drill_* database")
+        with private_dir(work_dir) as tmp:
+            plain = tmp / "dump.pgdump"
+            ev["stage"] = "verify"
+            manifest = verify_backup(store, stem, passphrase, conn=target, work_dir=work_dir, env=env, decrypted_to=plain)
+            ev.update(mac_verified=True, created_at=manifest["created_at"], ciphertext_sha256=manifest["ciphertext_sha256"])
+            ev["stage"] = "restore"
+            run_tool("pg_restore", target, ["--exit-on-error", "--single-transaction", "--no-owner", "--no-acl",
+                                            f"--dbname={target.dbname}"], code="drill", env=env, stdin=plain, secrets=secrets)
+        ev.update(restore_completed=True, stage="post-restore-check")
+        ev["tables"] = {name: int(n) for name, n in psql(target, COUNT_SQL, code="drill", env=env)}
+        snapshot = schema_snapshot(target, env)
+        ev["alembic_version"] = snapshot["alembic_version"]
+        missing = sorted(set(manifest["tables"]) - set(snapshot["tables"]))
+        problems = [f"missing tables: {', '.join(missing)}"] if missing else []
+        if snapshot["alembic_version"] != manifest["alembic_version"]:
+            problems.append(f"alembic_version {snapshot['alembic_version']!r} != recorded {manifest['alembic_version']!r}")
+        if problems:
+            ev["problems"] = problems
+            raise BackupError("drill", "; ".join(problems))
+    except BackupError as exc:
+        message = redact(str(exc), secrets)
+        ev.update(failure_code=exc.code, error=message, problems=ev["problems"] or [message])
+        stage = ev["stage"]
+        raise BackupError(exc.code, f"restore drill failed at {stage}: {message}{finish_failed()}") from None
+    except Exception as exc:
+        ev.update(failure_code="unexpected", error=type(exc).__name__, problems=[type(exc).__name__])
+        finish_failed()
+        raise
+    path = finish("passed")
+    return {**ev, "evidence_file": str(path)}

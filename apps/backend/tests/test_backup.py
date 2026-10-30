@@ -421,7 +421,92 @@ def test_drill_fails_and_records_evidence_when_the_restore_is_incomplete(store, 
     assert err.value.code == "drill"
 
 
-# --- CLI ----------------------------------------------------------------------------------------------------------------
+def only_evidence(tmp_path):
+    files = list((tmp_path / "evidence").glob("drill-*.json"))
+    assert len(files) == 1
+    assert stat.S_IMODE(files[0].stat().st_mode) == 0o600
+    text = files[0].read_text()
+    assert DB_PASSWORD not in text and PASS not in text
+    return json.loads(text)
+
+
+def assert_failed_evidence(tmp_path, stage, *, mac=False, restored=False):
+    ev = only_evidence(tmp_path)
+    assert ev["result"] == "failed" and ev["stage"] == stage and ev["problems"] and ev["failure_code"]
+    assert ev["mac_verified"] is mac and ev["restore_completed"] is restored
+    return ev
+
+
+@pytest.mark.parametrize("url, confirm, source_url", [
+    (TARGET_URL, "wrong", SOURCE_URL),
+    (TARGET_URL.replace("restore_drill_a1", "elegance_shawls"), None, SOURCE_URL),
+    (TARGET_URL.replace("127.0.0.1", "db.example.com"), None, SOURCE_URL),
+    (TARGET_URL.replace(":5433", ":5432"), None, SOURCE_URL),
+])
+def test_drill_guard_refusals_write_failed_evidence(store, env, tmp_path, stem, url, confirm, source_url):
+    with pytest.raises(BackupError, match="evidence:"):
+        drill(store, env, tmp_path, stem, url, confirm, source_url)
+    assert_failed_evidence(tmp_path, "guard")
+
+
+def test_drill_non_empty_target_writes_failed_evidence(store, env, tmp_path, stem):
+    env["FAKE_EXISTING"] = "7"
+    with pytest.raises(BackupError, match="not empty"):
+        drill(store, env, tmp_path, stem)
+    assert_failed_evidence(tmp_path, "empty-check")
+
+
+def test_drill_pg_restore_failure_writes_redacted_failed_evidence(store, env, tmp_path, stem):
+    env["FAKE_FAIL"] = "pg_restore"
+    with pytest.raises(BackupError) as err:
+        drill(store, env, tmp_path, stem)
+    assert err.value.code == "verify" and DB_PASSWORD not in str(err.value)
+    # the first pg_restore call is --list inside verification, so the failure surfaces there, before any restore
+    ev = assert_failed_evidence(tmp_path, "verify")
+    assert "***" in ev["error"]
+
+
+def test_drill_restore_step_failure_never_claims_restore(store, env, tmp_path, stem, monkeypatch):
+    real = runner.run_tool
+
+    def failing(tool, conn, args, **kw):
+        if "--exit-on-error" in args:
+            raise BackupError("drill", f"pg_restore failed (exit 1): password={DB_PASSWORD}")
+        return real(tool, conn, args, **kw)
+
+    monkeypatch.setattr(runner, "run_tool", failing)
+    with pytest.raises(BackupError):
+        drill(store, env, tmp_path, stem)
+    ev = assert_failed_evidence(tmp_path, "restore", mac=True)
+    assert "tables" not in ev and "***" in ev["error"]
+
+
+@pytest.mark.parametrize("tamper", ["cipher", "manifest_field", "wrong_passphrase"])
+def test_drill_integrity_failure_writes_failed_evidence_before_any_restore(store, env, tmp_path, stem, tamper):
+    blob, manifest = (tmp_path / "store" / f"{stem}{ext}" for ext in (".pgdump.enc", ".manifest.json"))
+    if tamper == "cipher":
+        raw = bytearray(blob.read_bytes()); raw[200] ^= 1; blob.write_bytes(bytes(raw))
+    elif tamper == "manifest_field":
+        data = json.loads(manifest.read_text()); data["database"] = "other"; manifest.write_text(json.dumps(data))
+    target = PgConn.from_url(TARGET_URL, "RESTORE_DRILL_DATABASE_URL")
+    with pytest.raises(BackupError) as err:
+        runner.restore_drill(store, stem, PASS + ("x" if tamper == "wrong_passphrase" else ""), target, target.dbname,
+                             tmp_path / "evidence", source=PgConn.from_url(SOURCE_URL, "x"), work_dir=str(tmp_path), env=env)
+    assert err.value.code == "verify"
+    assert_failed_evidence(tmp_path, "verify")
+    assert "--exit-on-error" not in " ".join(sum((c["argv"] for c in calls(env)), []))
+
+
+@pytest.mark.parametrize("fake", [{"FAKE_TABLES": "alembic_version\nproducts"}, {"FAKE_ALEMBIC": "0007"}])
+def test_drill_post_restore_failure_records_restore_done_but_failed(store, env, tmp_path, stem, fake):
+    env.update(fake)
+    with pytest.raises(BackupError):
+        drill(store, env, tmp_path, stem)
+    ev = assert_failed_evidence(tmp_path, "post-restore-check", mac=True, restored=True)
+    assert ev["tables"]
+
+
+# --- CLI----------------------------------------------------------------------------------------------------------------
 
 @pytest.fixture
 def cli(env, tmp_path):
