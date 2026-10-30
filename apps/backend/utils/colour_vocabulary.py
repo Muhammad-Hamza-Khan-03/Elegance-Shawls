@@ -1,7 +1,7 @@
 """Controlled colour vocabulary. Bump VOCABULARY_VERSION on any change to CANONICAL or SYNONYMS."""
 from dataclasses import dataclass
 
-VOCABULARY_VERSION = 1
+VOCABULARY_VERSION = 2
 
 CANONICAL = ("beige", "black", "blue", "brown", "burgundy", "camel", "cream", "green", "grey",
              "ivory", "maroon", "multicolour", "navy", "orange", "pink", "purple", "red", "white", "yellow")
@@ -10,7 +10,7 @@ CANONICAL = ("beige", "black", "blue", "brown", "burgundy", "camel", "cream", "g
 SYNONYMS = {
     "gray": "grey", "charcoal": "grey", "multicolor": "multicolour", "multi": "multicolour",
     "multi-colour": "multicolour", "multi colour": "multicolour", "off white": "ivory", "off-white": "ivory",
-    "wine": "burgundy", "navy blue": "navy", "tan": "camel", "violet": "purple",
+    "wine": "burgundy", "navy blue": "navy", "tan": "camel", "violet": "purple", "chocolate": "brown", "coffee": "brown",
 }
 
 # Precedence, strongest first: an explicit variant colour always wins; the variant name is only

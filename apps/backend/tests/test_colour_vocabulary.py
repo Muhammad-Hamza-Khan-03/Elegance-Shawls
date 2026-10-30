@@ -4,8 +4,8 @@ from utils import colour_vocabulary as cv
 
 
 def test_version_is_pinned_so_vocabulary_changes_are_deliberate():
-    assert cv.VOCABULARY_VERSION == 1
-    assert len(cv.CANONICAL) == 19 and len(cv.SYNONYMS) == 12
+    assert cv.VOCABULARY_VERSION == 2
+    assert len(cv.CANONICAL) == 19 and len(cv.SYNONYMS) == 14
 
 
 def test_every_synonym_targets_an_approved_value_and_never_shadows_one():
@@ -14,7 +14,8 @@ def test_every_synonym_targets_an_approved_value_and_never_shadows_one():
 
 
 @pytest.mark.parametrize("raw,want", [("Gray", "grey"), ("  NAVY   Blue ", "navy"), ("Off-White", "ivory"),
-                                      ("multicolor", "multicolour"), ("Camel", "camel")])
+                                      ("multicolor", "multicolour"), ("Camel", "camel"),
+                                      ("Chocolate", "brown"), (" COFFEE ", "brown")])
 def test_normalizes_case_whitespace_and_synonyms(raw, want):
     assert cv.normalize(raw) == want
 
@@ -38,3 +39,9 @@ def test_provenance_precedence_colour_beats_name_and_unknown_colour_is_not_overr
     assert cv.resolve(None, "Camel") == cv.ResolvedColour("camel", "variant_name", cv.VOCABULARY_VERSION)
     assert cv.resolve("  ", "Camel").source == "variant_name"
     assert cv.resolve(None, "Winter Edition").canonical is None
+
+
+def test_chocolate_and_coffee_resolve_to_brown_with_provenance():
+    assert cv.resolve("Chocolate", "Red") == cv.ResolvedColour("brown", "variant_color", cv.VOCABULARY_VERSION)
+    assert cv.resolve(None, "Coffee") == cv.ResolvedColour("brown", "variant_name", cv.VOCABULARY_VERSION)
+    assert "chocolate" in cv.spellings("brown") and "coffee" in cv.spellings("brown")
