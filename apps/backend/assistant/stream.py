@@ -2,7 +2,7 @@
 
 Provider output is untrusted: every chunk is shape-checked, product cards come from the catalogue (never provider text) and
 every action proposal goes through the M3-S1 kernel; the decision (validated or rejected) is streamed next to the proposal.
-Nothing is executed: no cart, WhatsApp, order, payment, DB, network or model call happens here.
+Nothing is executed here (M3-S3 executes only via routes/action_routes.py after user confirmation): no cart, WhatsApp, order, payment, DB, network or model call happens here.
 Events: start, then text|product|proposal in provider order, then exactly one terminal done|error. `seq` counts from 0.
 (shortcut: fake provider, one-product in-memory catalogue and a per-stream ledger; swap each in its own reviewed change.)
 """
@@ -15,6 +15,7 @@ from actions import kernel as k
 PROTOCOL_VERSION = 1
 MAX_EVENTS = 40
 MAX_TEXT_CHARS = 4000
+EXECUTABLE = frozenset({"add_to_cart", "start_whatsapp_enquiry"})
 SERVER_PERMISSIONS = frozenset({"catalogue:read", "cart:propose", "enquiry:initiate"})  # never taken from the client
 
 DEMO_PRODUCT = "11111111-1111-4111-8111-111111111111"
@@ -109,8 +110,11 @@ async def stream_events(
                     proposal = k.ActionProposal(chunk.get("action_type"), chunk.get("idempotency_key"), chunk.get("params"), ctx)
                     decision = k.validate(proposal, catalogue, ledger)
                     # Only allowlisted names are echoed; everything else about a rejected proposal stays out of the stream.
-                    yield out("proposal", {"action_type": decision.action_type, "idempotency_key": decision.idempotency_key,
-                                           "session_id": session_id, "decision": decision.audit()})
+                    data = {"action_type": decision.action_type, "idempotency_key": decision.idempotency_key,
+                            "session_id": session_id, "decision": decision.audit()}
+                    if decision.outcome == "validated" and decision.action_type in EXECUTABLE:
+                        data["params"] = proposal.params  # kernel-checked; lets the UI ask the user to confirm. Executes nothing.
+                    yield out("proposal", data)
                 else:
                     terminal = ("error", {"code": "provider_malformed"})
                     break

@@ -1,6 +1,7 @@
 // M3-S2 client for POST /v1/assistant/stream (via the same-origin proxy). Server output is untrusted: frames, ordering and
-// every action proposal are re-checked here (mirroring the backend action kernel's allowlist), and nothing is ever executed.
+// every action proposal are re-checked here (mirroring the backend action kernel's allowlist), and nothing is executed here (M3-S3: only a user-confirmed call in assistant-actions.ts does that).
 export const ACTIONS = ['show_product', 'add_to_cart', 'start_whatsapp_enquiry'] as const;
+export const EXECUTABLE: readonly string[] = ['add_to_cart', 'start_whatsapp_enquiry'];
 export const REASONS = [
   'ok', 'invalid_proposal', 'missing_context', 'unknown_action', 'permission_denied', 'invalid_idempotency_key', 'invalid_params',
   'invalid_quantity', 'invalid_currency', 'idempotency_conflict', 'product_not_found', 'product_unavailable', 'stale_revision',
@@ -19,7 +20,7 @@ export type AssistantEvent =
   | { seq: number; type: 'start'; meta: Meta }
   | { seq: number; type: 'text'; delta: string }
   | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null } }
-  | { seq: number; type: 'proposal'; action_type: string; idempotency_key: string | null; decision: Decision }
+  | { seq: number; type: 'proposal'; action_type: string; idempotency_key: string | null; decision: Decision; params?: Record<string, unknown> }
   | { seq: number; type: 'done' }
   | { seq: number; type: 'error'; code: (typeof ERRORS)[number] };
 
@@ -70,7 +71,9 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
       const ok = dec.outcome === 'validated' && dec.reason === 'ok' && known && key !== null && dec.idempotency_key === key;
       const decision: Decision = ok ? { outcome: 'validated', reason: 'ok', replayed: dec.replayed === true }
         : { outcome: 'rejected', reason: dec.outcome === 'rejected' ? dec.reason : 'invalid_proposal', replayed: false };
-      return { seq, type, action_type: known ? (d.action_type as string) : 'unknown', idempotency_key: key, decision };
+      // M3-S3: params are kept only for a believed, executable proposal; they are shown for confirmation and re-checked by the server.
+      const params = ok && EXECUTABLE.includes(d.action_type as string) && rec(d.params) ? d.params : undefined;
+      return { seq, type, action_type: known ? (d.action_type as string) : 'unknown', idempotency_key: key, decision, ...(params && { params }) };
     }
     case 'done':
       return { seq, type };

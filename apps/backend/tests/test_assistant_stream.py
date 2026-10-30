@@ -216,3 +216,11 @@ def test_modules_import_nothing_that_can_reach_out_or_mutate():
     for mod in (s, r):
         roots = set(re.findall(r"^(?:from|import) ([\w]+)", open(mod.__file__).read(), re.M))
         assert roots - allowed - {"assistant"} == set(), (mod.__name__, roots)
+
+
+def test_only_validated_executable_proposals_carry_params_for_the_confirmation_step():
+    props = [e[2] for e in parse(client().post("/v1/assistant/stream", json=body()).text) if e[1] == "proposal"]
+    assert "params" not in props[0]  # show_product is not executable
+    assert props[1]["params"]["quantity"] == 1 and props[1]["params"]["expected_unit_price"] == 3500
+    stale = [e[2] for e in parse(client().post("/v1/assistant/stream", json=body(message="stale")).text) if e[1] == "proposal"]
+    assert "params" not in stale[1]  # rejected: nothing to confirm

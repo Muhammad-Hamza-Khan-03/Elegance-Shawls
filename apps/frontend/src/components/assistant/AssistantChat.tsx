@@ -1,6 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Link from 'next/link';
+import { useCart } from '@/components/cart/CartProvider';
+import { confirmAction, resolveLines } from '@/lib/assistant-actions';
+import { buildCartCheckoutUrl, createCartItem } from '@/lib/cart';
 import { initialState, reduce, streamAssistant, type AssistantEvent, type ChatState } from '@/lib/assistant-stream';
 
 const ERROR_TEXT: Record<string, string> = {
@@ -12,8 +16,66 @@ const ERROR_TEXT: Record<string, string> = {
 };
 const REJECTED_TEXT = 'This suggestion was not accepted, so nothing was done.';
 
-// Renders server output as plain text only (React escapes it); proposals are shown as information, never as actions.
+const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || '';
+type Proposal = Extract<AssistantEvent, { type: 'proposal' }>;
+type Result = { kind: 'done'; text: string; url?: string } | { kind: 'failed'; text: string } | null;
+const LABEL: Record<string, string> = { add_to_cart: 'Confirm: add to cart', start_whatsapp_enquiry: 'Confirm: start WhatsApp enquiry' };
+
+// The only thing in the chat that can act, and only when a person presses it. Each press re-checks on the server and again
+// against the current catalogue; the proposal's idempotency key makes a double press (or a retry after a lost reply) harmless.
+function ConfirmAction({ item, sessionId, summary }: { item: Proposal; sessionId: string; summary: string }) {
+  const { addItem } = useCart();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Result>(null);
+  const lock = useRef(false);
+  const params = item.params!;
+  const rows = (item.action_type === 'add_to_cart' ? [params] : (params.items as Record<string, unknown>[])) ?? [];
+
+  async function confirm() {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    let ok = false;
+    const fail = (text: string) => setResult({ kind: 'failed', text });
+    const out = await confirmAction({ session_id: sessionId, idempotency_key: item.idempotency_key!, action_type: item.action_type, params });
+    const lines = out.ok ? await resolveLines(out.items, rows.map((r) => Number(r.expected_unit_price))) : null;
+    if (!out.ok) fail(out.message);
+    else if (!lines) fail('This item changed, so nothing was done. Please ask again to get an up-to-date suggestion.');
+    else if (item.action_type === 'add_to_cart') {
+      lines.forEach((l) => addItem(l.product, l.variant, l.quantity));
+      ok = true;
+      setResult({ kind: 'done', text: 'Added to your cart.' });
+    } else {
+      let url: string | undefined;
+      try { url = buildCartCheckoutUrl(lines.map((l) => createCartItem(l.product, l.variant, l.quantity)!), WHATSAPP_NUMBER, { siteUrl: SITE_URL, reference: out.reference! }); } catch { /* not configured */ }
+      ok = true;
+      setResult({ kind: 'done', text: `Your enquiry reference is ${out.reference}.${url ? '' : ' WhatsApp is not set up here; please quote this reference when you contact us.'}`, url });
+    }
+    lock.current = ok; // stays locked after success; a failure can be retried with the same key
+    setBusy(false);
+  }
+
+  return (
+    <div data-testid="confirm-action" className="rounded border p-2 text-sm">
+      <p>{summary}</p>
+      {result?.kind !== 'done' && <button type="button" onClick={confirm} disabled={busy}>{busy ? 'Working…' : LABEL[item.action_type]}</button>}
+      {result?.kind === 'failed' && <p role="alert" data-testid="action-failed">{result.text}</p>}
+      {result?.kind === 'done' && <p role="status" data-testid="action-done">{result.text}</p>}
+      {result?.kind === 'done' && item.action_type === 'add_to_cart' && <Link href="/cart">View cart</Link>}
+      {result?.kind === 'done' && result.url && <a data-testid="whatsapp-handoff" href={result.url} target="_blank" rel="noopener noreferrer">Open WhatsApp to send your enquiry</a>}
+    </div>
+  );
+}
+
+// Renders server output as plain text only (React escapes it); a proposal only becomes a control through ConfirmAction.
 export function AssistantView({ state }: { state: ChatState }) {
+  const names = new Map(state.items.flatMap((i) => (i.type === 'product' ? [[i.product.product_id, i.product.name] as const] : [])));
+  const summarise = (p: Proposal) => {
+    const rows = p.action_type === 'add_to_cart' ? [p.params!] : ((p.params!.items as Record<string, unknown>[]) ?? []);
+    const what = rows.map((r) => `${names.get(String(r.product_id)) ?? 'item'} × ${String(r.quantity)} (${String(r.currency)} ${String(r.expected_unit_price)} each)`).join(', ');
+    return p.action_type === 'add_to_cart' ? `Add ${what} to your cart?` : `Start a WhatsApp enquiry for ${what}? Nothing is sent until you open WhatsApp and press send.`;
+  };
   return (
     <div aria-live="polite" className="space-y-2">
       {state.items.map((item: AssistantEvent) =>
@@ -24,9 +86,12 @@ export function AssistantView({ state }: { state: ChatState }) {
             {item.product.price !== null && <span> {item.product.currency} {item.product.price}</span>}
           </div>
         ) : item.type === 'proposal' ? (
-          <p key={item.seq} data-testid="proposal" data-outcome={item.decision.outcome} className="text-sm">
-            {item.decision.outcome === 'validated' ? 'Suggested (nothing has been done yet).' : REJECTED_TEXT}
-          </p>
+          <div key={item.seq}>
+            <p data-testid="proposal" data-outcome={item.decision.outcome} className="text-sm">
+              {item.decision.outcome === 'validated' ? 'Suggested (nothing has been done yet).' : REJECTED_TEXT}
+            </p>
+            {item.params && item.decision.outcome === 'validated' && state.meta && <ConfirmAction item={item} sessionId={state.meta.session_id} summary={summarise(item)} />}
+          </div>
         ) : null,
       )}
       {state.status === 'error' && <p role="alert">{ERROR_TEXT[state.error ?? ''] ?? 'Something went wrong. Please try again.'}</p>}

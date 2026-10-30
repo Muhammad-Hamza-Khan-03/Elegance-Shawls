@@ -89,3 +89,18 @@ async def get_by_reference(session: AsyncSession, reference: str) -> Enquiry | N
 
 async def list_enquiries(session: AsyncSession, limit: int) -> list[Enquiry]:
     return list((await session.execute(select(Enquiry).order_by(Enquiry.created_at.desc(), Enquiry.id.desc()).limit(limit))).scalars())
+
+
+async def catalogue_snapshot(session: AsyncSession, product_ids: list[uuid.UUID]) -> dict:
+    """Current state of the given products in the action kernel's shape (read-only; includes slug for the cart handoff)."""
+    rows = (await session.execute(
+        select(Product, Variant).join(Variant, Variant.product_id == Product.id, isouter=True).where(Product.id.in_(product_ids))
+    )).all()
+    out: dict = {}
+    for product, variant in rows:
+        entry = out.setdefault(str(product.id), {"id": str(product.id), "slug": product.slug, "status": product.status,
+                                                 "is_active": product.is_active, "revision": product.revision, "variants": []})
+        if variant is not None:
+            entry["variants"].append({"id": str(variant.id), "is_active": variant.is_active, "price": variant.price,
+                                      "currency": variant.currency, "stock": variant.stock})
+    return out

@@ -89,6 +89,17 @@ describe('start frame validation', () => {
   });
 });
 
+describe('proposal params for the confirmation step', () => {
+  const parse = (f: string) => parseFrame(f.slice(0, -2), META) as Extract<AssistantEvent, { type: 'proposal' }> | null;
+  const params = { product_id: P, quantity: 1 };
+  it('keeps params only for a validated executable proposal', () => {
+    expect(parse(proposal(3, { params }))!.params).toEqual(params);
+    expect(parse(proposal(3, { params }, { outcome: 'rejected', reason: 'stale_price' }))!.params).toBeUndefined();
+    expect(parse(proposal(3, { params, action_type: 'show_product' }))!.params).toBeUndefined();
+    expect(parse(proposal(3, { params: 'x' }))!.params).toBeUndefined();
+  });
+});
+
 describe('proposal validation', () => {
   const parse = (f: string) => parseFrame(f.slice(0, -2), META) as Extract<AssistantEvent, { type: 'proposal' }> | null;
   it('keeps a well-formed validated decision', () => {
