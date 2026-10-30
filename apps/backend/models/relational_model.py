@@ -12,6 +12,7 @@ from sqlalchemy import (
     ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, Identity, Index, Integer, MetaData, Numeric, Text,
     UniqueConstraint, func, text,
 )
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -485,3 +486,73 @@ class Enquiry(Base):
     currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     total: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = _created_at()
+
+
+class ProductEmbedding(Base):
+    """One vector per (product, provider, model, representation version). Fresh = content_hash equals the current
+    fingerprint of the product's public text; product_revision records the revision it was read at."""
+    __tablename__ = "product_embeddings"
+    __table_args__ = (
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
+        CheckConstraint("product_revision >= 1", name="revision_positive"),
+        CheckConstraint("dimensions >= 1 AND vector_dims(embedding) = dimensions", name="dimensions_match"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    product_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+# Explicit short name: the four-column unique constraint name would exceed PostgreSQL's 63 characters.
+Index("ix_product_embeddings_target", ProductEmbedding.product_id, ProductEmbedding.provider, ProductEmbedding.model,
+      ProductEmbedding.representation_version, unique=True)
+
+
+class EmbeddingJob(Base):
+    """Backfill work item, one reusable row per embedding target. Same lease/retry/cancel contract as ingestion_jobs."""
+    __tablename__ = "embedding_jobs"
+    __table_args__ = (
+        CheckConstraint(_in("status", JOB_STATUSES), name="status"),
+        CheckConstraint("attempts >= 0 AND max_attempts >= 1 AND attempts <= max_attempts", name="attempts_bounded"),
+        CheckConstraint(
+            "status <> 'running' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            name="lease_present_while_running",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+Index("ix_embedding_jobs_target", EmbeddingJob.product_id, EmbeddingJob.provider, EmbeddingJob.model,
+      EmbeddingJob.representation_version, unique=True)
+Index("ix_embedding_jobs_claimable", EmbeddingJob.available_at,
+      postgresql_where=text("status IN ('queued', 'retrying') AND NOT cancel_requested"))
+Index("ix_embedding_jobs_running_lease", EmbeddingJob.lease_expires_at, postgresql_where=text("status = 'running'"))

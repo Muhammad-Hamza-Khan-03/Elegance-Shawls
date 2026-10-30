@@ -7,7 +7,7 @@ from configuration.config import settings
 from database.pg import make_engine, postgres_configured
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from observability.tracing import configure_exporters
-from workers.jobs import purge_events_job, refresh_llm_models_job, sample_job
+from workers.jobs import embedding_backfill_job, purge_events_job, refresh_llm_models_job, sample_job
 from workers.queues import redis_settings
 
 logger = logging.getLogger("elegance.worker")
@@ -28,7 +28,7 @@ async def on_shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [sample_job, purge_events_job, refresh_llm_models_job]
+    functions = [sample_job, purge_events_job, refresh_llm_models_job, embedding_backfill_job]
     # Discovery is advisory and bounded; worker remains the only scheduler.
     cron_jobs = [cron(purge_events_job, hour=3, minute=17), cron(refresh_llm_models_job, hour=4, minute=17)]
     queue_name = settings.worker_queue

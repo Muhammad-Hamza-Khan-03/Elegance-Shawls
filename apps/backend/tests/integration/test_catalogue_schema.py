@@ -28,6 +28,7 @@ MIGRATION_STEPS = [
     ("0006", set()),
     ("0007", {"admin_accounts", "admin_sessions"}),
     ("0008", {"enquiries"}),
+    ("0009", {"product_embeddings", "embedding_jobs"}),
 ]
 
 
