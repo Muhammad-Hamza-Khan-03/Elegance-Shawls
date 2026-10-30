@@ -5,6 +5,9 @@ programme evaluates at most 4. This gate uses only the fictional corpus `evals/d
 (96 records, 64 queries). A pass here is evidence about retrieval on that corpus. It does **not** set `release_ready`
 in `run_evals.py` or any other release flag, and it is not a decision to enable embeddings in the product.
 
+> v2 note: a reviewed synonym-cohort revision exists as `embedding_synthetic_v2.jsonl` (reviewer Hamza, 2026-10-30; see
+> `embedding-synthetic-v2-review.md`). It is not yet model-evaluated and this template still refers to v1 below.
+
 ## Corpus provenance and review (fixed record; do not edit per candidate)
 
 | Field | Value |

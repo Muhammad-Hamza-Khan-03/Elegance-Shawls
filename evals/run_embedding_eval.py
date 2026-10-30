@@ -78,7 +78,9 @@ def check_fixture(rows, records, queries, thr) -> list[str]:
             errors.append(f"{name}: {got} != {want}")
     for cohort in fx["cohorts"]:
         n = sum(q["cohort"] == cohort for q in queries)
-        if n != fx["queries_per_cohort"]:
+        want = fx["queries_per_cohort"]
+        want = want.get(cohort) if isinstance(want, dict) else want  # v1: one scalar; v2: per-cohort mapping
+        if n != want:
             errors.append(f"cohort {cohort}: {n} queries")
     if sum(bool(q["constraints"]) for q in queries) < fx["min_hard_constraint_queries"]:
         errors.append("too few hard-constraint queries")
