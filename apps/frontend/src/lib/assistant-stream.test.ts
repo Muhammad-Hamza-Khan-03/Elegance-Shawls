@@ -4,6 +4,7 @@ import { initialState, parseFrame, reduce, readEvents, splitFrames, streamAssist
 const KEY = 'idem_0123456789abcdef';
 const P = '11111111-1111-4111-8111-111111111111';
 const META: Meta = { session_id: 'sess-1', idempotency_key: KEY, context: { page: 'home' } };
+const VOICE = { version: 1, input_hash: 'a'.repeat(64), source: 'eval:urdu-v1', outcome: 'accepted', confidence: 0.99, evaluation: 'urdu-v1', provider_policy: 'provider-neutral/offline-only' as const, audio_persisted: false as const };
 const fr = (seq: number, event: string, data: unknown) => `id: ${seq}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 const decision = (o: Record<string, unknown> = {}) => ({ outcome: 'validated', reason: 'ok', executed: false, replayed: false, idempotency_key: KEY, ...o });
 const proposal = (seq: number, o: Record<string, unknown> = {}, d: Record<string, unknown> = {}) =>
@@ -155,5 +156,22 @@ describe('cancel, disconnect and errors', () => {
     expect(f).toHaveBeenCalledTimes(1);
     expect(f.mock.calls[0][0]).toBe('/api/assistant/stream');
     expect(JSON.parse(f.mock.calls[0][1].body)).toEqual(req);
+  });
+});
+
+describe('voice provenance boundary', () => {
+  it('accepts structured provenance without raw audio or transcript fields', () => {
+    const parsed = parseFrame(fr(0, 'start', { protocol: 1, ...META, voice: VOICE }).slice(0, -2), META)!;
+    expect(parsed).toMatchObject({ type: 'start', meta: { voice: VOICE } });
+    expect(JSON.stringify(parsed)).not.toContain('audio_bytes');
+    expect(JSON.stringify(parsed)).not.toContain('brown shawl under 4000');
+  });
+  it.each([
+    { ...VOICE, audio_persisted: true },
+    { ...VOICE, input_hash: 'not-a-hash' },
+    { ...VOICE, provider_policy: 'live-provider' },
+    { ...VOICE, confidence: 2 },
+  ])('rejects unsafe or invalid voice metadata: %o', (voice) => {
+    expect(parseFrame(fr(0, 'start', { protocol: 1, ...META, voice }).slice(0, -2), META)).toBeNull();
   });
 });

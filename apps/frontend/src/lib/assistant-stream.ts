@@ -14,7 +14,11 @@ const SESSION = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const PROTOCOL_VERSION = 1;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-export type Meta = { session_id: string; idempotency_key: string; context: Record<string, string | number | boolean | null> };
+export type VoiceProvenance = {
+  version: number; input_hash: string; source: string; outcome: string; confidence: number;
+  evaluation: string | null; provider_policy: 'provider-neutral/offline-only'; audio_persisted: false;
+};
+export type Meta = { session_id: string; idempotency_key: string; context: Record<string, string | number | boolean | null>; voice?: VoiceProvenance };
 export type Decision = { outcome: 'validated' | 'rejected'; reason: (typeof REASONS)[number]; replayed: boolean };
 export type AssistantEvent =
   | { seq: number; type: 'start'; meta: Meta }
@@ -31,6 +35,10 @@ const oneOf = <T extends readonly string[]>(list: T, v: unknown): v is T[number]
 const validContext = (c: unknown): c is Meta['context'] =>
   rec(c) && Object.entries(c).length <= 10 && Object.entries(c).every(([k, v]) => k.length <= 40 &&
     (v === null || typeof v === 'boolean' || Number.isInteger(v) || (typeof v === 'string' && v.length <= 200)));
+
+const validVoice = (v: unknown): v is VoiceProvenance => rec(v) && v.version === 1 && typeof v.input_hash === 'string' && /^[a-f0-9]{64}$/.test(v.input_hash) &&
+  typeof v.source === 'string' && typeof v.outcome === 'string' && typeof v.confidence === 'number' && Number.isFinite(v.confidence) && v.confidence >= 0 && v.confidence <= 1 &&
+  (v.evaluation === null || typeof v.evaluation === 'string') && v.provider_policy === 'provider-neutral/offline-only' && v.audio_persisted === false;
 
 // Splits a growing buffer into complete `\n\n`-terminated frames; returns the unfinished remainder.
 export function splitFrames(buffer: string): { frames: string[]; rest: string } {
@@ -53,7 +61,8 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
       const { session_id, idempotency_key, context } = d;
       if (d.protocol !== PROTOCOL_VERSION || typeof session_id !== 'string' || !SESSION.test(session_id)) return null;
       if (typeof idempotency_key !== 'string' || !KEY.test(idempotency_key) || !validContext(context)) return null;
-      return { seq, type, meta: { session_id, idempotency_key, context: context as Meta['context'] } };
+      if (d.voice !== undefined && !validVoice(d.voice)) return null;
+      return { seq, type, meta: { session_id, idempotency_key, context: context as Meta['context'], ...(d.voice && { voice: d.voice }) } };
     }
     case 'text':
       return typeof d.delta === 'string' && d.delta ? { seq, type, delta: d.delta } : null;
