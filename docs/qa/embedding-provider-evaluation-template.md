@@ -29,6 +29,15 @@ Checked, each by script and by reading the file:
 No external human, native-speaker or domain-expert review has taken place. The Urdu and Roman Urdu text is formulaic
 (word lists, not fluent prose) and should get a native-speaker read before it is cited as evidence of Urdu quality.
 
+### Synonym-cohort diagnostic (offline, not a provider result)
+
+`python evals/run_synonym_error_analysis.py` is a string-matching diagnostic over the unchanged fixture: the 16 synonym
+queries replace canonical attributes with descriptive phrases, so lexical matching recognises none of them. It also
+applies `evals/synonym_aliases.yaml`, a one-directional, prototype/evaluation-only map (15 reviewed phrases, synonym
+cohort only, reviewed by the implementing engineer only). Its numbers are attribute coverage of query wording, **not**
+embedding quality; the alias map is not production vocabulary, and it changes no threshold, gold set or release flag.
+A provider still has to pass the semantic gates on its own merits.
+
 ## Candidate
 
 | Field | Value |

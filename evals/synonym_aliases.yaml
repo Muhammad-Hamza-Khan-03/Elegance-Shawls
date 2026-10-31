@@ -1,0 +1,24 @@
+# PROTOTYPE / EVALUATION-ONLY alias map for evals/run_synonym_error_analysis.py. Not production vocabulary:
+# nothing in apps/ reads it, and it must not be used to tune thresholds or edit gold sets.
+# Each alias is one-directional: the `phrase` found in a query text expands to the canonical `attr`=`value`.
+# The reverse (canonical term -> phrase) is deliberately never applied. `cohorts` limits where it may fire.
+# Reviewed by the implementing engineer (AI assistant) against the 16 synonym queries only; no external review.
+status: prototype_evaluation_only
+direction: phrase_to_canonical
+aliases:
+  - {phrase: flower pattern,           attr: motif,    value: floral,    cohorts: [synonym]}
+  - {phrase: goat-hair fabric,         attr: material, value: pashmina,  cohorts: [synonym]}
+  - {phrase: blanket-style cover,      attr: category, value: wrap,      cohorts: [synonym]}
+  - {phrase: fringe edges,             attr: motif,    value: tasselled, cohorts: [synonym]}
+  - {phrase: lustrous fabric,          attr: material, value: silk,      cohorts: [synonym]}
+  - {phrase: neck piece,               attr: category, value: scarf,     cohorts: [synonym]}
+  - {phrase: teardrop motif,           attr: motif,    value: paisley,   cohorts: [synonym]}
+  - {phrase: woollen fabric,           attr: material, value: wool,      cohorts: [synonym]}
+  - {phrase: square grid design,       attr: motif,    value: checked,   cohorts: [synonym]}
+  - {phrase: shoulder cover,           attr: category, value: shawl,     cohorts: [synonym]}
+  - {phrase: long neck drape,          attr: category, value: stole,     cohorts: [synonym]}
+  - {phrase: breathable light fabric,  attr: material, value: cotton,    cohorts: [synonym]}
+  - {phrase: lines running lengthwise, attr: motif,    value: striped,   cohorts: [synonym]}
+  - {phrase: angular shapes,           attr: motif,    value: geometric, cohorts: [synonym]}
+  # constraint alias: checked only for agreement with the query's existing in_stock constraint; it never narrows candidates.
+  - {phrase: ready to ship now,        attr: constraint, value: in_stock, cohorts: [synonym]}
