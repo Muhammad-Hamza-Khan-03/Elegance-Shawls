@@ -42,6 +42,14 @@ test('product selection creates a complete WhatsApp order', async ({ page }) => 
   for (const value of ['Classic Wool Shawl', 'Brown', 'Free Size', 'Quantity: 2', 'ES-001', 'PKR', 'classic-wool-shawl']) expect(message).toContain(value);
 });
 
+test('a product page backend outage shows a retryable error, not a 404', async ({ page }) => {
+  await page.goto('/product/unavailable-product');
+  await expect(page.getByRole('alert').filter({ has: page.getByRole('heading', { name: 'This product could not be loaded', exact: true }) })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
+  await page.goto('/product/no-such-product');
+  await expect(page.getByRole('heading', { name: 'This page could not be found.' })).toBeVisible();
+});
 test('navigation and customer information pages work', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Explore the collection' }).click();
