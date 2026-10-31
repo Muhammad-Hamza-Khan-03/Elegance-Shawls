@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -25,11 +27,13 @@ from security.admin_auth import legacy_key_enabled, legacy_key_expiry
 from security.rate_limit import RateLimitMiddleware
 from workers.queues import close_queue_pool, worker_is_alive
 
+logger = logging.getLogger("elegance.main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("Starting up...")
+    logger.info("Starting up...")
     configure_exporters()  # no-op unless OTEL_ENABLED and an OTLP endpoint are set
     # PostgreSQL holds the catalogue, staged products and ingestion jobs, so it is required: a missing
     # DATABASE_URL is a configuration error and stops startup. A configured but unreachable database
@@ -38,10 +42,10 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("DATABASE_URL is required: the catalogue runs on PostgreSQL")
     await connect_to_postgres()
     if legacy_key_enabled():
-        print(f"WARNING: the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
+        logger.warning(f"the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
     yield
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await close_queue_pool()
     await close_redis()
     await close_postgres()
