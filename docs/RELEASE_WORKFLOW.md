@@ -1,19 +1,68 @@
 # Staging-first release workflow
 
-Elegance Shawls uses one protected `main` branch and short-lived feature, fix, and documentation branches. GitHub Issues and pull requests are the system of record; every pull request runs CI before merge. Vercel Preview is used for branch review, and staging must be isolated from production.
+Elegance Shawls has exactly three permanent branches. Everything else is a short-lived branch that is deleted after it is integrated. GitHub Issues and pull requests are the system of record.
 
-## Release sequence
+```text
+feature/* fix/* ai/* docs/* refactor/* test/* infra/*
+        |  PR + CI
+        v
+staging-integration   development source of truth (shared, may hold several features)
+        |  PR + CI, a chosen release-candidate SHA
+        v
+staging               release-candidate source of truth (QA / UAT)
+        |  PR + QA evidence + explicit approval
+        v
+main                  production source of truth
+```
+
+| Branch | Role | Environment | Who/what may change it |
+|---|---|---|---|
+| `staging-integration` | Active development and integration | Vercel Preview / local | PRs from short-lived branches |
+| `staging` | Release candidates, QA, UAT | Isolated staging (not yet provisioned, see below) | PRs from `staging-integration` only |
+| `main` | Production | Production | PRs from `staging` only, with explicit approval (hotfixes excepted, see below) |
+
+`staging` was initialised at the production SHA (`283b27e`) so the first promotion is a reviewed diff. Nothing is promoted automatically.
+
+## Day-to-day development
 
 1. Open or update a GitHub Issue with acceptance criteria and rollback notes.
-2. Create a short-lived branch from the current `main` SHA.
-3. Open a pull request into `main`. CI must pass: frontend, backend, containers, and E2E.
-4. Deploy the exact branch SHA to Vercel Preview and the reusable isolated Render staging service, backed by the isolated Atlas staging database.
-5. Run independent QA against the staging tuple: exact frontend deployment/SHA, Render service/deployment/SHA, staging database, staging-only credentials, and approved CORS origin. Record pass/fail evidence; production data and credentials are never used.
-6. Squash merge only after review, CI, and QA gates pass.
-7. Wait for CI on the resulting `main` commit. The merge result—not the feature-branch SHA—is the production candidate.
-8. Explicitly deploy that exact `main` SHA to production. Record immutable Vercel and Render deployment IDs.
-9. Run production smoke tests (storefront, `/api/health`, backend `/health/` and `/ready/`, and relevant non-mutating routes). Stop and roll back if a check fails.
-10. Write a release record containing the issue/PR, resulting SHA, deployment IDs, timestamps, checks, and rollback decision.
+2. Fetch, then create a short-lived branch from the latest `origin/staging-integration` (never from `main`). Allowed prefixes: `feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`, `hotfix/` (hotfix branches start from `main`).
+3. Implement, run the relevant tests, commit (conventional commits), push.
+4. Open a PR targeting `staging-integration`. CI must pass. Squash merge (the only merge method the repo allows). The head branch is deleted on merge.
+
+## Promoting to staging
+
+1. Compare `staging-integration` with `staging` (`git log origin/staging..origin/staging-integration`) and choose the release candidate. It must be a green `staging-integration` SHA; unfinished features should be reverted or left out before choosing it.
+2. Open a PR from `staging-integration` (or a branch cut from the chosen SHA) into `staging`. Record the candidate SHA in the PR description.
+3. CI must pass: frontend, backend, backend-integration (includes migration validation and the upgrade-from-0009 test), containers, e2e, evals. Fixture-only AI evals are not release evidence; "not evaluated" blocks release.
+4. Deploy that exact SHA to isolated staging and run QA. Record pass/fail evidence against the SHA.
+5. Fixes found in staging are made on `staging-integration` first and re-promoted. They are not committed directly to `staging`.
+
+## Promoting to production
+
+1. Use only a `staging` SHA that has CI success and recorded QA evidence.
+2. Review migrations (`apps/backend/migrations`), write release notes and the rollback procedure.
+3. Get explicit approval. Open a PR from `staging` into `main` and squash merge after review.
+4. Wait for CI on the resulting `main` commit; that merge result is the production candidate.
+5. Explicitly deploy that exact `main` SHA. Record immutable Vercel and Render deployment IDs.
+6. Run production smoke tests (storefront, `/api/health`, backend `/health/` and `/ready/`, non-mutating routes). Stop and roll back if a check fails.
+7. Write a release record: issue/PR, resulting SHA, deployment IDs, timestamps, checks, rollback decision.
+
+After a squash merge into `main`, fast-forward is not possible; merge `main` back into `staging` and then `staging-integration` through PRs so the branches share ancestry again.
+
+## Production hotfixes
+
+1. Create `hotfix/<description>` from the latest `main`.
+2. Fix, test, and get explicit approval before merging to `main`; release through the normal explicit deploy.
+3. Propagate the fix: open PRs carrying the same fix into `staging-integration` and into `staging` (cherry-pick the hotfix commit; do not merge unrelated unfinished work into `staging`).
+
+## Retiring branches
+
+Delete a short-lived branch only when its commits are reachable from `staging-integration` (or its replacement is documented), it has no open PR, no active worktree and no deployment reference. Use non-forced deletes. Never delete `main`, `staging` or `staging-integration`; never delete tags. Audit periodically with `git branch -r --merged origin/staging-integration`.
+
+## CI triggers
+
+`.github/workflows/ci.yml` runs on every pull request (any base) and on pushes to `main`, `staging` and `staging-integration`. Required status checks are configured in GitHub branch protection; they must match job names that actually run on that branch.
 
 ## Hosting controls and boundaries
 
