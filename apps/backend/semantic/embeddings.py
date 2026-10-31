@@ -1,15 +1,15 @@
 """Embedding provider boundary: allowlist, fail-closed config, vector validation, test-only fake provider.
 
-Nothing here performs network I/O. Real providers are added by extending ALLOWED_MODELS in a later,
-reviewed change; until then the only allowlisted entry is the fake and it needs an explicit test opt-in.
+Nothing here performs network I/O. Real providers are added by extending ALLOWED_MODELS in a reviewed change;
+the fake needs an explicit test opt-in.
 """
 import hashlib
 import math
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-# (provider, model) -> dimensions. No production model is selected in this slice.
-ALLOWED_MODELS: dict[tuple[str, str], int] = {("fake", "fake-hash-v1"): 64}
+# (provider, model) -> dimensions. local_e5 is the evaluated choice (semantic/local_e5.py); the fake is test-only.
+ALLOWED_MODELS: dict[tuple[str, str], int] = {("fake", "fake-hash-v1"): 64, ("local_e5", "intfloat/multilingual-e5-base"): 768}
 TEST_ONLY_PROVIDERS = frozenset({"fake"})
 
 

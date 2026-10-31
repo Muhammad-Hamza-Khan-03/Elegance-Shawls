@@ -24,6 +24,8 @@ class settings(BaseSettings):
 
     # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
     assistant_catalogue: bool = False
+    # Let the LLM gateway (LLM_CHAIN_DEFAULT) write the assistant's wording. It never picks products, prices or actions.
+    assistant_llm: bool = False
 
     # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
     # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.

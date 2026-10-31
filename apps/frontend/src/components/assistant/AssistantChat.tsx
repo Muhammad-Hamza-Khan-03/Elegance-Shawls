@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/components/cart/CartProvider';
 import { confirmAction, resolveLines } from '@/lib/assistant-actions';
@@ -99,6 +99,10 @@ export function AssistantView({ state }: { state: ChatState }) {
   );
 }
 
+type Recognizer = { lang: string; interimResults: boolean; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void; stop: () => void };
+const speechApi = (): (new () => Recognizer) | undefined =>
+  typeof window === 'undefined' ? undefined : (window as unknown as Record<string, new () => Recognizer>).SpeechRecognition || (window as unknown as Record<string, new () => Recognizer>).webkitSpeechRecognition;
+
 const newId = (prefix: string) => `${prefix}${crypto.randomUUID().replace(/-/g, '')}`;
 
 export function AssistantChat({ context = {} }: { context?: Record<string, string> }) {
@@ -107,6 +111,21 @@ export function AssistantChat({ context = {} }: { context?: Record<string, strin
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const session = useRef(newId('sess_'));
+  const viaVoice = useRef(false);
+  const [listening, setListening] = useState(false);
+  const Speech = useSyncExternalStore(() => () => {}, speechApi, () => undefined); // undefined on the server, so hydration matches
+
+  // The transcript only fills the box: the customer reads it, can fix it, and presses Send. Typing clears the voice flag.
+  function listen() {
+    if (!Speech || listening) return;
+    const recognizer = new Speech();
+    recognizer.lang = 'en-PK';
+    recognizer.interimResults = false;
+    recognizer.onresult = (e) => { viaVoice.current = true; setMessage(e.results[0][0].transcript.slice(0, 500)); };
+    recognizer.onend = recognizer.onerror = () => setListening(false);
+    setListening(true);
+    recognizer.start();
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -116,7 +135,7 @@ export function AssistantChat({ context = {} }: { context?: Record<string, strin
     setBusy(true);
     let current = initialState();
     setState(current);
-    const req = { session_id: session.current, idempotency_key: newId('idem_'), context, message: message.trim() };
+    const req = { session_id: session.current, idempotency_key: newId('idem_'), context: viaVoice.current ? { ...context, input: 'voice' } : context, message: message.trim() };
     for await (const event of streamAssistant(req, controller.signal)) {
       current = reduce(current, event);
       setState(current);
@@ -127,8 +146,10 @@ export function AssistantChat({ context = {} }: { context?: Record<string, strin
 
   return (
     <form onSubmit={send} className="space-y-3">
-      <input value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500} aria-label="Message" className="w-full rounded border p-2" />
+      <input value={message} onChange={(e) => { viaVoice.current = false; setMessage(e.target.value); }} maxLength={500} aria-label="Message" className="w-full rounded border p-2" />
       <button type="submit" disabled={busy}>Send</button>
+      {Speech && <button type="button" onClick={listen} disabled={listening || busy} aria-label="Speak your request">{listening ? 'Listening…' : 'Speak'}</button>}
+      {Speech && <p className="text-xs text-muted-foreground">Speaking uses your browser&apos;s speech service. You can always type instead.</p>}
       <button type="button" onClick={() => abort.current?.abort()}>Stop</button>
       <AssistantView state={state} />
     </form>

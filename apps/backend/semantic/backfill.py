@@ -27,7 +27,7 @@ async def _process(sessions, provider, target, worker_id, job_id, product_id, no
             represented = represent(product)
             fingerprint = represented["fingerprint"]
             if stored != fingerprint:
-                vector = validate_vector(await asyncio.to_thread(provider.embed, represented["text"]),
+                vector = validate_vector(await asyncio.to_thread(getattr(provider, "embed_passage", provider.embed), represented["text"]),
                                          provider.config.dimensions)
         async with sessions() as s, s.begin():
             return await repo.finish_job(s, job_id, worker_id, target, product_id, revision=revision,

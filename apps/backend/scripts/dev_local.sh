@@ -19,6 +19,17 @@ alembic upgrade head
 python scripts/admin_accounts.py bootstrap-owner --email "$ADMIN_EMAIL"
 python scripts/seed_local.py
 
+# Semantic search (multilingual-e5-base, local CPU) when the model is present: fetch once with `python scripts/fetch_e5_model.py`
+# after `pip install -r requirements-local-e5.txt`. Without it the shop still works with keyword search.
+E5_DIR="${SEMANTIC_E5_MODEL_PATH:-$HOME/.cache/elegance/multilingual-e5-base}"
+if [ -f "$E5_DIR/model.safetensors" ] && python -c "import sentence_transformers" 2>/dev/null; then
+  export SEMANTIC_EMBEDDING_PROVIDER=local_e5 SEMANTIC_EMBEDDING_MODEL=intfloat/multilingual-e5-base SEMANTIC_EMBEDDING_DIMENSIONS=768 \
+         SEMANTIC_E5_MODEL_PATH="$E5_DIR" HF_HUB_OFFLINE=1
+  python scripts/embedding_backfill.py
+else
+  echo "semantic search off (no E5 model); keyword search only"
+fi
+
 uvicorn main:app --port 8000 &
 API=$!
 trap 'kill $API 2>/dev/null' EXIT

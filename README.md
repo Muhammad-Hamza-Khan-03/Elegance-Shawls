@@ -259,6 +259,13 @@ ADMIN_ACCOUNT_PASSWORD='choose-a-long-passphrase' bash scripts/dev_local.sh
 
 Starts a pgvector Postgres container (data kept in a docker volume), runs migrations, creates the owner account (`owner@elegance.local`), seeds a synthetic 36-product catalogue (`scripts/seed_local.py`, development only), then runs the API on :8000 and the storefront with the assistant enabled (`NEXT_PUBLIC_ASSISTANT_ENABLED=1`).
 
+### Semantic search, assistant wording, voice and customer sign-in (all optional)
+
+- **Semantic search.** `pip install -r requirements-local-e5.txt` (CPU torch first, see the file), `python scripts/fetch_e5_model.py`, then `dev_local.sh` embeds the catalogue and `/v1/search` and the assistant rank with `intfloat/multilingual-e5-base` (keyword search stays the fallback). Choice and eval numbers: `docs/qa/local-e5-evaluation-manifest.md` on branch `ai/local-e5-v2-evidence` (recall@10 0.954; Roman Urdu 0.892, the weakest).
+- **LLM wording.** `ASSISTANT_LLM=true` plus `LLM_CHAIN_DEFAULT` (for example `groq/...`, `gemini/...`, `ollama/qwen2.5`) and that provider's key. The model only writes the reply text; products, prices and cart suggestions still come from the database and the action kernel. Any failure falls back to fixed sentences. Free-tier providers may train on prompts, so use a no-training provider for real customers.
+- **Voice.** The Speak button uses the browser's speech recognition (Chrome sends audio to its speech service) and only fills the message box. Spoken queries pass the voice bridge: uncertain or negated speech asks the customer to repeat. Urdu-script speech is not parsed yet, so use English or Roman Urdu wording.
+- **Customer sign-in and memory.** Create a Google OAuth web client, set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and the five `CUSTOMER_AUTH_*` values in `apps/backend/.env.example`; `/account` then offers sign-in and leads to `/memory`.
+
 ## Local AI platform services (optional)
 
 PostgreSQL 17 + pgvector, Redis and the arq worker run from `compose.ai.yaml` for local development only (internal network, no published ports; the production stack is `compose.yaml`).

@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.pg import get_pg_session
 from events.recorder import log_listing
 from repositories import Conflict, InvalidDraft, NotFound
+from repositories.hybrid import hybrid_search
+from semantic.local_e5 import get_embedder
 from repositories import products as repo
 from repositories.products import ProductInput, VariantFilter, VariantInput
 from schemas.product_schema import (
@@ -113,6 +115,14 @@ async def search_products(
         raise HTTPException(status_code=422, detail="min_price exceeds max_price")
     variant = VariantFilter(canonical, min_price, max_price, in_stock)
     has_filter = canonical or min_price is not None or max_price is not None or in_stock
+    embedder, text = get_embedder(), (q or "").strip()[:100]
+    if embedder is not None and text:  # semantic ranking only when configured; same filters, same response shape
+        try:
+            page = await hybrid_search(session, q=text, limit=limit, cursor=cursor, variant=variant if has_filter else None, embedder=embedder)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+        background.add_task(log_listing, request, limit=limit, paged=bool(cursor), product_ids=[str(item.id) for item in page.items])
+        return {"items": page.items, "next_cursor": page.next_cursor}
     return await _public_list(request, background, limit, cursor, q, session, variant if has_filter else None)
 
 

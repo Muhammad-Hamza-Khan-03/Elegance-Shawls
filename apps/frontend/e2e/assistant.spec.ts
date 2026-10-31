@@ -30,7 +30,7 @@ async function ask(page: Page) {
 // Nothing the assistant proposes may become a control; only the chat's own Send/Stop buttons exist.
 async function expectNoActionControls(page: Page) {
   const form = page.locator('form');
-  await expect(form.getByRole('button')).toHaveText(['Send', 'Stop']);
+  await expect(form.getByRole('button').filter({ hasNotText: /Speak|Listening/ })).toHaveText(['Send', 'Stop']);
   await expect(form.getByRole('link')).toHaveCount(0);
 }
 
@@ -99,4 +99,27 @@ test('a non-stream or failing response shows the unavailable message', async ({ 
   await ask(page);
   await expect(alert(page)).toHaveText('The assistant is unavailable right now.');
   await expectNoActionControls(page);
+});
+
+test('speech only fills the box; the request is marked voice until the customer types', async ({ page }) => {
+  await page.addInitScript(() => {
+    class Fake {
+      lang = ''; interimResults = false; onresult: ((e: unknown) => void) | null = null; onend: (() => void) | null = null; onerror: (() => void) | null = null;
+      start() { setTimeout(() => { this.onresult?.({ results: [[{ transcript: 'red shawl under 2000' }]] }); this.onend?.(); }); }
+      stop() {}
+    }
+    for (const name of ['SpeechRecognition', 'webkitSpeechRecognition']) Object.defineProperty(window, name, { value: Fake, configurable: true });
+  });
+  const requests = (await stubStream(page, (r) => start(r) + frame(1, 'done', { events: 1 }))) as { context: Record<string, string>; message: string }[];
+  await page.goto('/e2e-assistant');
+  await page.getByRole('button', { name: 'Speak your request' }).click();
+  await expect(page.getByLabel('Message')).toHaveValue('red shawl under 2000');
+  expect(requests).toHaveLength(0);                       // nothing is sent until the customer presses Send
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0].context.input).toBe('voice');
+  await page.getByLabel('Message').fill('red shawl under 3000');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].context.input).toBeUndefined();
 });

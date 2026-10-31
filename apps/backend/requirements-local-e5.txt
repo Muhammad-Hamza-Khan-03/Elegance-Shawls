@@ -1,0 +1,4 @@
+# Optional semantic search (semantic/local_e5.py). Not in requirements.txt: torch is large and production does not need it unless enabled.
+# CPU-only torch first:  pip install torch --index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+sentence-transformers==5.7.0

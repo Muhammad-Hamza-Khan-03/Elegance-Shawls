@@ -37,7 +37,7 @@ async def stream(body: StreamRequest, request: Request, provider=Depends(get_pro
     if session is None:
         chunks, catalogue = provider(body.message, body.idempotency_key), demo_catalogue()
     else:  # search before streaming so no DB session is held open while the client reads
-        chunks, catalogue = await ground(session, body.message, body.idempotency_key)
+        chunks, catalogue = await ground(session, body.message, body.idempotency_key, voice=body.context.get("input") == "voice")
     events: AsyncIterator[str] = stream_events(
         chunks, session_id=body.session_id, context=body.context,
         idempotency_key=body.idempotency_key, catalogue=catalogue, is_disconnected=request.is_disconnected)
