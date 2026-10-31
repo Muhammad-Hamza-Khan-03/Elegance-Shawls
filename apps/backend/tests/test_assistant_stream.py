@@ -72,7 +72,7 @@ def test_http_stream_framing_order_and_metadata():
 def test_product_comes_from_catalogue_and_proposals_are_kernel_validated():
     ev = parse(client().post("/v1/assistant/stream", json=body()).text)
     product = next(e[2] for e in ev if e[1] == "product")
-    assert product == {"product_id": s.DEMO_PRODUCT, "name": "Pashmina Shawl", "revision": 7, "price": 3500, "currency": "PKR"}
+    assert product == {"product_id": s.DEMO_PRODUCT, "name": "Pashmina Shawl", "revision": 7, "price": 3500, "currency": "PKR", "in_stock": True}
     props = [e[2] for e in ev if e[1] == "proposal"]
     assert [p["decision"]["outcome"] for p in props] == ["validated", "validated"]
     assert all(p["decision"]["executed"] is False for p in props)

@@ -38,7 +38,7 @@ function ProductCard({ product, proposal, sessionId }: { product: ProductEvent; 
   const done = result?.kind === 'done';
   return (
     <li className="flex gap-3 rounded-xl border border-[#e5d4bf] bg-white p-3" data-testid="assistant-product-card">
-      {product.image ? <Image src={product.image} alt={product.name} width={64} height={80} className="h-20 w-16 shrink-0 rounded-lg object-cover" unoptimized /> : null}
+      {product.image ? <Image src={product.image} alt="" width={64} height={80} className="h-20 w-16 shrink-0 rounded-lg object-cover" unoptimized /> : null}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-[#2f241f]" dir="auto" data-testid="product">{product.name}</p>
         <p className="text-xs text-[#6f5a4c]">{detail || ' '}</p>
@@ -60,7 +60,7 @@ function ProductCard({ product, proposal, sessionId }: { product: ProductEvent; 
               </>
             ) : proposal ? (
               <button type="button" disabled={busy} onClick={() => setConfirming(true)} className={`inline-flex items-center gap-1 ${PRIMARY}`}><Plus className="size-3" aria-hidden /> {busy ? 'Adding…' : 'Add to cart'}</button>
-            ) : <span className="text-xs text-[#6f5a4c]">Not available to add right now</span>}
+            ) : <span className="text-xs text-[#6f5a4c]">{product.in_stock === false ? 'Sold out' : 'Not available to add right now'}</span>}
           </div>
         )}
         {result?.kind === 'failed' ? <p role="alert" data-testid="action-failed" className="mt-2 text-xs text-red-900">{result.text}</p> : null}
@@ -149,7 +149,6 @@ export function AssistantTurn({ state, onRetry }: { state: ChatState; onRetry?: 
           {believed(p) && state.meta ? <ConfirmBlock item={p} sessionId={state.meta.session_id} summary={summarise(p)} /> : null}
         </div>
       ))}
-      {proposals.filter((p) => !standalone.includes(p)).map((p) => <span key={p.seq} data-testid="proposal" data-outcome={p.decision.outcome} className="sr-only">Suggested (nothing has been done yet).</span>)}
       {suggestions.map((s) => <RememberCard key={s.seq} item={s} />)}
       {state.status === 'error' ? (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="assistant-error">
@@ -168,7 +167,7 @@ const newId = (prefix: string) => `${prefix}${crypto.randomUUID().replace(/-/g, 
 
 type Turn = { id: string; user: string; state: ChatState };
 
-export default function AssistantPanel({ onClose }: { onClose: () => void }) {
+export default function AssistantPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -180,7 +179,7 @@ export default function AssistantPanel({ onClose }: { onClose: () => void }) {
   const endRef = useRef<HTMLDivElement>(null);
   const Speech = useSyncExternalStore(() => () => {}, speechApi, () => undefined); // undefined on the server, so hydration matches
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }); }, [turns]);
 
   async function send(raw: string) {
@@ -193,7 +192,10 @@ export default function AssistantPanel({ onClose }: { onClose: () => void }) {
     let current = initialState();
     setTurns((all) => [...all, { id, user: text, state: current }]);
     setInput('');
-    const context: Record<string, string> = viaVoice.current ? { input: 'voice' } : {};
+    // The last few things the customer asked, so a follow-up like "under 3000" keeps the colour and product from before. The server
+    // re-parses this text itself; nothing here is trusted as state.
+    const context: Record<string, string> = Object.fromEntries(turns.slice(-3).map((t, i) => [`prev_${i + 1}`, t.user.slice(0, 200)]));
+    if (viaVoice.current) context.input = 'voice';
     const req = { session_id: session.current, idempotency_key: newId('idem_'), context, message: text };
     viaVoice.current = false;
     for await (const event of streamAssistant(req, controller.signal)) {
@@ -227,6 +229,7 @@ export default function AssistantPanel({ onClose }: { onClose: () => void }) {
     <section
       role="dialog"
       aria-label="Elegance Shawls shopping assistant"
+      hidden={!open}
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#fbf7f2] text-[#2f241f] motion-safe:animate-in motion-safe:fade-in sm:inset-auto sm:bottom-24 sm:end-5 sm:h-[640px] sm:max-h-[calc(100vh-7rem)] sm:w-[400px] sm:rounded-2xl sm:border sm:border-[#e5d4bf] sm:shadow-2xl"
     >

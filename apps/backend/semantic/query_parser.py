@@ -18,7 +18,7 @@ from decimal import Decimal
 from repositories.products import VariantFilter
 from utils.colour_vocabulary import CANONICAL, SYNONYMS, VOCABULARY_VERSION
 
-PARSER_VERSION = 6
+PARSER_VERSION = 7
 MAX_QUERY_CHARS = 200
 MAX_TERMS = 8  # same bound hybrid_search applies; more would be silently dropped there
 MAX_PRICE = 2_147_483_647  # variants.price is a 32-bit integer (whole PKR)
@@ -56,7 +56,7 @@ ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": 
 FILLER = set("or a an the in of for some something any and with me show everything all i want need looking find please "
              "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں "
              "mujhe chahiye chahiyen chahiya dikhao dikhaiye dikhayen dikha ek koi aur liye show مجھے ایک چاہیے چاہئے "
-             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch like love prefer adore really pasand favourite favorite پسند".split())
+             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch like love prefer adore really pasand favourite favorite پسند what about how do does you have has got can could would there is are it them those these that this ones also only just more other another else instead".split())
 # Words that tell us the customer is shopping even when no colour/price is named (used to trust semantic neighbours).
 SHOPPING_WORDS = (set(CANONICAL) | set(SYNONYMS) | set(LOCAL_COLOURS) | set(ALIASES.values()) | set(ALIASES) |
                   {"shawl", "shawls", "stole", "stoles", "scarf", "scarves", "wrap", "dupatta", "garam", "sardi", "sardiyon", "halka", "garmi",

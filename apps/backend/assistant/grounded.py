@@ -13,7 +13,7 @@ from typing import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from actions import kernel as k
-from assistant import personal
+from assistant import conversation, personal
 from configuration.config import settings
 from database.pg import get_pg_session
 from fastapi import HTTPException, Request
@@ -25,6 +25,7 @@ from repositories.hybrid import hybrid_search
 from semantic.local_e5 import distance_cutoff, get_embedder
 from semantic.representation import _SCRUB
 from semantic.query_parser import handoff, parse_query
+from utils.colour_vocabulary import normalize
 from voice.bridge import bridge_voice_transcript
 
 MAX_CARDS = 3
@@ -42,6 +43,16 @@ SYSTEM_PROMPT = (
 
 def _key(base: str, n: int) -> str:
     return "idem_" + hashlib.sha256(f"{base}:{n}".encode()).hexdigest()[:24]
+
+
+def _live(v: dict) -> bool:
+    return v["is_active"] is True and (v["stock"] or 0) > 0 and v["price"] is not None
+
+
+def _matches(v: dict, intent) -> bool:
+    """A variant that satisfies what was asked (colour, budget) on its own: the card must show THIS one, not another colour of the product."""
+    return (_live(v) and (intent.colour is None or normalize(v.get("color") or "") == normalize(intent.colour))
+            and (intent.min_price is None or v["price"] >= intent.min_price) and (intent.max_price is None or v["price"] <= intent.max_price))
 
 
 def _buyable(product: dict) -> dict | None:
@@ -99,9 +110,16 @@ async def _with_offer(chunks: AsyncIterator[dict], offer: list[dict]) -> AsyncIt
         yield {"type": "memory_suggestion", **item}
 
 
-async def _no_match(message: str) -> AsyncIterator[dict]:
+def _kept_note(kept: list[str]) -> dict | None:
+    return {"type": "text", "delta": f"Keeping what you asked before ({', '.join(kept)}). "} if kept else None   # never silent
+
+
+async def _no_match(message: str, applied: str = "none", terms: str = "", kept: list[str] | None = None) -> AsyncIterator[dict]:
+    if note := _kept_note(kept or []):
+        yield note
     fallback = "I could not find a match right now. Try a different colour or budget, or browse the full collection."
-    facts = ("No product in the catalogue matched this request. About the shop: it sells shawls, stoles and scarves "
+    facts = (f"No product in the catalogue matched this request. Filters in force: {applied}. Looking for, in English: {terms or 'not specified'}. "
+             "About the shop: it sells shawls, stoles and scarves "
              "(wool, silk and cotton blends); customers order on WhatsApp; delivery and return details are not available to you.")
     yield {"type": "text", "delta": (await _wording(message, facts, fallback))[0]}
 
@@ -132,13 +150,19 @@ def _applied(intent) -> str:
 
 
 async def _cards(message: str, products: list[dict], idempotency_key: str, applied: str = "none", terms: str = "",
-                 memory: tuple[list[str], bool] = ([], False)) -> AsyncIterator[dict]:
+                 memory: tuple[list[str], bool] = ([], False), kept: list[str] | None = None,
+                 close: list[str] | None = None) -> AsyncIterator[dict]:
     """memory = (labels of saved preferences applied, whether a cleared no-training chain may see them)."""
     lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
                       else f"- {p['name']} ({p.get('category', 'item')}): out of stock" for p in products)
     facts = (f"Filters the customer asked for (every product below already satisfies them): {applied}.\n"
              f"What the customer is looking for, in English: {terms or 'not specified'}.\nMatching products:\n{lines}")
     used, share = memory
+    if note := _kept_note(kept or []):
+        yield note
+    if close:   # honest framing: none of the cards is the type that was asked for
+        yield {"type": "text", "delta": f"I have no exact {' / '.join(close)} for that, so these are the closest alternatives. "}
+        facts += f"\nNone of these products is a {' / '.join(close)}; they are the closest alternatives and must be described as such."
     if used:
         yield {"type": "text", "delta": f"Using your saved preference ({', '.join(used)}). "}   # always shown: no silent personalisation
         if share:
@@ -156,7 +180,7 @@ async def _cards(message: str, products: list[dict], idempotency_key: str, appli
 
 
 async def ground(session: AsyncSession, message: str, idempotency_key: str, *, voice: bool = False,
-                 principal: CustomerPrincipal | None = None) -> tuple[AsyncIterator[dict], k.InMemoryCatalogue]:
+                 principal: CustomerPrincipal | None = None, history: tuple[str, ...] = ()) -> tuple[AsyncIterator[dict], k.InMemoryCatalogue]:
     """voice=True: the text came from speech recognition, so it passes the voice bridge first (uncertain or negated = ask again)."""
     prefs = await personal.load(session, principal)
     if not voice and (asked := personal.remember_request(message)) is not None:   # saving is typed, explicit and confirmed in the UI
@@ -171,25 +195,28 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
             return _say("I was not sure I heard that correctly. Could you say it again, or type it instead? "), k.InMemoryCatalogue({})
     else:
         intent = parse_query(message)
-        plan = handoff(intent)
+    intent, kept = conversation.with_history(history, message, intent)     # follow-ups keep what was already asked
+    plan = handoff(intent)
     if plan is None:
         asks = tuple(f"{q} " for q in intent.clarifications) or ("Could you tell me a little more about what you are looking for?",)
         return _say(*asks), k.InMemoryCatalogue({})
     page = await hybrid_search(session, q=plan.q, limit=MAX_CARDS * 3 if prefs.values else MAX_CARDS, variant=plan.variant, embedder=get_embedder(),
-                               max_distance=distance_cutoff(message))
+                               max_distance=distance_cutoff(" ".join([*intent.terms, intent.colour or ""]) or message))
     snapshot = await catalogue_snapshot(session, [p.id for p in page.items])
     products = [snapshot[str(p.id)] for p in page.items if str(p.id) in snapshot]
-    for product in products:  # the in-stock variant first: the card price, the wording and the cart suggestion then all agree
-        buyable = _buyable(product)
-        product["variants"].sort(key=lambda v: v is not buyable)
+    for product in products:  # the variant that matches the request first, then any in-stock one: card, wording and cart suggestion agree
+        product["variants"].sort(key=lambda v: (not _matches(v, intent), not _live(v)))
+    wanted = {personal.CATEGORIES[t] for t in intent.terms if t in personal.CATEGORIES}          # "stoles" -> {"stoles"}
+    products.sort(key=lambda p: (bool(wanted) and p.get("category") not in wanted, not any(_live(v) for v in p["variants"])))   # exact type, then in stock
+    close = sorted(wanted) if wanted and products and not any(p.get("category") in wanted for p in products[:MAX_CARDS]) else []
     used: list[str] = []
     if prefs.values:
         products, used = personal.rank(products, prefs, colour_in_query=bool(intent.colour))
     products = products[:MAX_CARDS]
     if not products:
-        none = _no_match(message)
+        none = _no_match(message, _applied(intent), " ".join(intent.terms), kept)
         return (_with_offer(none, offer) if offer else none), k.InMemoryCatalogue({})
-    chunks = _cards(message, products, idempotency_key, _applied(intent), " ".join(intent.terms), (used, bool(used) and _may_share()))
+    chunks = _cards(message, products, idempotency_key, _applied(intent), " ".join(intent.terms), (used, bool(used) and _may_share()), kept, close)
     return (_with_offer(chunks, offer) if offer else chunks), k.InMemoryCatalogue(snapshot)
 
 

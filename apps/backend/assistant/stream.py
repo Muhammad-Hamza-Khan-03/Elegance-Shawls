@@ -111,6 +111,8 @@ async def stream_events(
                     for field, value in (("slug", p.get("slug")), ("image", v.get("image_url")), ("color", v.get("color"))):
                         if isinstance(value, str) and value:   # catalogue data for the card (link, picture, colour); absent for the demo catalogue
                             card[field] = value[:500]
+                    if isinstance(v.get("stock"), int):
+                        card["in_stock"] = v["stock"] > 0
                     yield out("product", card)
                 elif kind == "memory_suggestion":
                     key, value = chunk.get("key"), chunk.get("value")

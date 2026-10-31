@@ -18,7 +18,7 @@ async function ask(page: Page, text = 'Show me a shawl') {
   await page.getByRole('button', { name: 'Open shopping assistant' }).click();
   await page.getByLabel('Message the shopping assistant').fill(text);
   await page.getByLabel('Message the shopping assistant').press('Enter');
-  await expect(page.getByTestId('proposal')).toHaveCount(2);
+  await expect(page.getByTestId('proposal')).toHaveCount(1);   // the enquiry; the add-to-cart suggestion lives on the product card
 }
 
 test('a proposal does nothing until the user confirms, then adds to the cart exactly once', async ({ page }) => {

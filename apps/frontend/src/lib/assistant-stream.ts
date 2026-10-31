@@ -26,7 +26,7 @@ export type Decision = { outcome: 'validated' | 'rejected'; reason: (typeof REAS
 export type AssistantEvent =
   | { seq: number; type: 'start'; meta: Meta }
   | { seq: number; type: 'text'; delta: string }
-  | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null; slug?: string; image?: string; color?: string } }
+  | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null; slug?: string; image?: string; color?: string; in_stock?: boolean } }
   | { seq: number; type: 'proposal'; action_type: string; idempotency_key: string | null; decision: Decision; params?: Record<string, unknown> }
   | { seq: number; type: 'memory_suggestion'; key: (typeof MEMORY_KEYS)[number]; value: string }
   | { seq: number; type: 'done' }
@@ -78,6 +78,7 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
             ...(typeof d.slug === 'string' && SLUG.test(d.slug) && { slug: d.slug }),
             ...(typeof d.image === 'string' && IMAGE.test(d.image) && { image: d.image }),
             ...(typeof d.color === 'string' && d.color.length > 0 && d.color.length <= 40 && { color: d.color }),
+            ...(typeof d.in_stock === 'boolean' && { in_stock: d.in_stock }),
           } }
         : null;
     case 'proposal': {

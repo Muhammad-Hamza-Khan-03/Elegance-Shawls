@@ -67,7 +67,7 @@ test('keyboard: focus lands in the box, Enter sends, an error can be retried, Ne
   await panel.getByRole('button', { name: 'New chat' }).click();
   await expect(panel.getByTestId('assistant-welcome')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(panel).toHaveCount(0);
+  await expect(panel).toBeHidden();
   await expect(page.getByRole('button', { name: 'Open shopping assistant' })).toBeFocused();
 });
 
@@ -80,4 +80,62 @@ test('Stop ends a response without adding anything', async ({ page }) => {
   await panel.getByRole('button', { name: 'Stop response' }).click();
   await expect(panel.getByRole('button', { name: 'Send message' })).toBeVisible();
   await expect(panel.getByTestId('assistant-product-card')).toHaveCount(0);
+});
+
+
+test('closing and reopening keeps the conversation; New chat clears it', async ({ page }) => {
+  const panel = await open(page);
+  await panel.getByRole('button', { name: 'Show me shawls' }).click();
+  await expect(panel.getByTestId('assistant-product-card').first()).toBeVisible();
+  await panel.getByRole('button', { name: 'Close assistant' }).click();
+  await expect(panel).toBeHidden();
+  await page.getByRole('button', { name: 'Open shopping assistant' }).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId('assistant-user-message')).toHaveText('Show me shawls');
+  await expect(panel.getByTestId('assistant-product-card').first()).toBeVisible();
+  await expect(panel.getByLabel('Message the shopping assistant')).toBeFocused();
+  await panel.getByRole('button', { name: 'New chat' }).click();
+  await expect(panel.getByTestId('assistant-user-message')).toHaveCount(0);
+});
+
+test('each message carries the last few questions so a follow-up keeps its colour and budget (sent as plain text for the server to re-read)', async ({ page }) => {
+  const sent: { message: string; context: Record<string, string> }[] = [];
+  await page.route('**/api/assistant/stream', async (route) => {
+    const req = route.request().postDataJSON();
+    sent.push(req);
+    const body = `id: 0\nevent: start\ndata: ${JSON.stringify({ protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context })}\n\n`
+      + 'id: 1\nevent: text\ndata: {"delta":"ok"}\n\nid: 2\nevent: done\ndata: {"events":2}\n\n';
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
+  });
+  const panel = await open(page);
+  const input = panel.getByLabel('Message the shopping assistant');
+  for (const text of ['shawls of grey under 2000', 'under 3000', 'grey color', 'in stock']) {
+    await input.fill(text);
+    await input.press('Enter');
+    await expect.poll(() => sent.length).toBe(['shawls of grey under 2000', 'under 3000', 'grey color', 'in stock'].indexOf(text) + 1);
+    await expect(panel.getByRole('button', { name: 'Send message' })).toBeVisible();   // the answer finished
+  }
+  expect(sent[0].context).toEqual({});
+  expect(sent[1].context).toEqual({ prev_1: 'shawls of grey under 2000' });
+  expect(sent[3].context).toEqual({ prev_1: 'shawls of grey under 2000', prev_2: 'under 3000', prev_3: 'grey color' });
+  await panel.getByRole('button', { name: 'New chat' }).click();
+  await input.fill('stoles');
+  await input.press('Enter');
+  await expect.poll(() => sent.length).toBe(5);
+  expect(sent[4].context).toEqual({});                                                  // a new chat forgets
+});
+
+test('a sold-out match says so and offers no Add to cart', async ({ page }) => {
+  await page.route('**/api/assistant/stream', async (route) => {
+    const req = route.request().postDataJSON();
+    const frame = (n: number, e: string, d: unknown) => `id: ${n}\nevent: ${e}\ndata: ${JSON.stringify(d)}\n\n`;
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: frame(0, 'start', { protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context })
+      + frame(1, 'product', { product_id: '0b8f2a54-3c1d-4e6a-9f10-2a7d5c8e1b34', name: 'Fringed Beige Shawl', price: 2400, currency: 'PKR', in_stock: false })
+      + frame(2, 'done', { events: 2 }) });
+  });
+  const panel = await open(page);
+  await panel.getByRole('button', { name: 'Show me shawls' }).click();
+  const card = panel.getByTestId('assistant-product-card');
+  await expect(card).toContainText('Sold out');
+  await expect(card.getByRole('button', { name: 'Add to cart' })).toHaveCount(0);
 });

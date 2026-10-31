@@ -133,7 +133,7 @@
     },
     "0.24": {
       "recall": 0.936,
-      "false_positive": 0.65
+      "false_positive": 0.7
     },
     "1.0": {
       "recall": 0.936,

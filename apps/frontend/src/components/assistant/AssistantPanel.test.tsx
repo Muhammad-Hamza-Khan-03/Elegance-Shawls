@@ -64,4 +64,14 @@ describe('AssistantTurn', () => {
     expect(html).toContain('>Save<');
     expect(html).toContain('No thanks');
   });
+
+  it('labels a sold-out card, announces the product name once (decorative picture) and never repeats the suggestion marker', () => {
+    const soldOut = render(run([start, { seq: 1, type: 'product', product: { ...(card as Extract<AssistantEvent, { type: 'product' }>).product, in_stock: false } }]));
+    expect(soldOut).toContain('Sold out');
+    expect(soldOut).not.toContain('Add to cart');
+    const html = render(run([start, card, validated(2, 'add_to_cart'), { ...card, seq: 3 } as AssistantEvent, validated(4, 'add_to_cart')]));
+    expect(html).toContain('alt=""');
+    expect(html).not.toContain('alt="Wool Shawl"');
+    expect(html).not.toContain('Suggested (nothing has been done yet)');
+  });
 });
