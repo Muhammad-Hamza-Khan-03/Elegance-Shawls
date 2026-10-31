@@ -3,8 +3,10 @@ from ..provider import EmbeddingLimits, EmbeddingProvider, UnsupportedProviderEr
 from .gemini import GeminiEmbeddingProvider
 from .groq import GroqEmbeddingProvider
 from .local_e5 import LocalE5EmbeddingProvider
+from .openai import OpenAIEmbeddingProvider
 
-_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider, "local_e5": LocalE5EmbeddingProvider}
+_ADAPTERS = {"gemini": GeminiEmbeddingProvider, "groq": GroqEmbeddingProvider, "local_e5": LocalE5EmbeddingProvider,
+             "openai": OpenAIEmbeddingProvider}
 
 
 def build_provider(config: EvalConfig, dimension: int, limits: EmbeddingLimits | None = None,

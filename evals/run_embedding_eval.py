@@ -34,6 +34,7 @@ FAKE_DIM = 32
 COHORTS = ("en", "ur", "roman_ur", "synonym")
 # App/database settings: live mode refuses to run next to them rather than risk touching real data.
 APP_ENV = ("DATABASE_URL", "REDIS_URL", "ADMIN_API_KEY", "INTERNAL_API_TOKEN", "SESSION_SIGNING_KEY")
+OPENAI_MAX_COST_USD = 0.25  # bounded last-resort comparison
 LEAK = re.compile(r"https?://|www\.|@|\.(com|pk|org|net)\b|\d{9,}", re.I)
 
 
@@ -246,14 +247,14 @@ def embed_all(embed: Callable, segments: list[tuple[list[str], dict]], batch: in
         meter.chars += sum(map(len, chunk))
         meter.retries += max(0, int((res.request or {}).get("attempts", 1)) - 1)
         meter.count_ok &= len(res.vectors) == len(chunk)
-        if est_cost(meter.chars, caps["usd_per_million_tokens"]) > caps["max_cost_usd"]:
+        if est_cost(meter.chars, caps["usd_per_million_tokens"], caps.get("chars_per_token", 4)) > caps["max_cost_usd"]:
             raise Stop("failed_budget_or_timeout", "cost_cap")
         out.extend(res.vectors)
     return out
 
 
-def est_cost(chars: int, price_per_million: float) -> float:
-    return math.ceil(chars / 4) * price_per_million / 1e6  # shortcut: chars/4 token estimate, not billed usage
+def est_cost(chars: int, price_per_million: float, chars_per_token: int = 4) -> float:
+    return math.ceil(chars / chars_per_token) * price_per_million / 1e6  # shortcut: char-based token estimate, not billed usage
 
 
 def run(records, queries, embed, thr, *, repeats, batch, dim, caps, include_stale, semantic, split_kinds=False) -> dict:
@@ -264,7 +265,7 @@ def run(records, queries, embed, thr, *, repeats, batch, dim, caps, include_stal
     segments = ([([r["text"] for r in embedded], {"kind": "passage"}), ([q["text"] for q in queries], {"kind": "query"})]
                 if split_kinds else [(texts, {})])
     per_repeat = sum(-(-len(t) // batch) for t, _ in segments)
-    if per_repeat * repeats > caps["max_requests"] or est_cost(sum(map(len, texts)) * repeats, caps["usd_per_million_tokens"]) > caps["max_cost_usd"]:
+    if per_repeat * repeats > caps["max_requests"] or est_cost(sum(map(len, texts)) * repeats, caps["usd_per_million_tokens"], caps.get("chars_per_token", 4)) > caps["max_cost_usd"]:
         raise Stop("failed_budget_or_timeout", "preflight_cap")
     meter, rv_all, qv_all, vec_rates = Meter(), [], [], []
     for _ in range(repeats):
@@ -283,7 +284,8 @@ def run(records, queries, embed, thr, *, repeats, batch, dim, caps, include_stal
                   "reproducibility": {"repeats": repeats, "top10_jaccard": None}})
     lat = meter.latency
     m["usage"] = {"requests": meter.requests, "transport_retries": meter.retries, "texts_per_repeat": len(texts),
-                  "estimated_tokens": math.ceil(meter.chars / 4), "estimated_cost_usd": round(est_cost(meter.chars, caps["usd_per_million_tokens"]), 6),
+                  "estimated_tokens": math.ceil(meter.chars / caps.get("chars_per_token", 4)),
+                  "estimated_cost_usd": round(est_cost(meter.chars, caps["usd_per_million_tokens"], caps.get("chars_per_token", 4)), 6),
                   "latency_ms": {"total": round(sum(lat) * 1000, 3), "mean_per_request": round(sum(lat) / len(lat) * 1000, 3) if lat else 0,
                                  "max": round(max(lat) * 1000, 3) if lat else 0}}
     m["gates"] = check_gates(m, thr, semantic)
@@ -367,8 +369,13 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None, tr
                                   ("dimension", a.dimension, 1 << 16, 1), ("usd-per-million-tokens", a.usd_per_million_tokens, 1e6, 0)):
             if not lo <= val <= hi:
                 return refuse(f"--{name} must be within {lo}..{hi}")
+        if a.provider == "openai" and not 0 < a.max_cost_usd <= OPENAI_MAX_COST_USD:
+            return refuse(f"openai comparison needs --max-cost-usd within 0..{OPENAI_MAX_COST_USD}")
+        if a.provider == "openai" and a.usd_per_million_tokens <= 0:
+            return refuse("openai comparison needs an explicit positive --usd-per-million-tokens")
         repeats, batch, dim, include_stale = a.repeats, a.batch_size, a.dimension, False
-        caps = {"max_requests": a.max_requests, "max_cost_usd": a.max_cost_usd, "usd_per_million_tokens": a.usd_per_million_tokens}
+        caps = {"max_requests": a.max_requests, "max_cost_usd": a.max_cost_usd, "usd_per_million_tokens": a.usd_per_million_tokens,
+                "chars_per_token": 1 if a.provider == "openai" else 4}  # openai: worst case one token per char (Urdu)
 
     try:
         records, queries, digest, errors = load_fixture(a.root, thr)

@@ -52,7 +52,7 @@ A provider still has to pass the semantic gates on its own merits.
 ## Preconditions (all must be true before a live run)
 
 - [ ] Recorded run exits 3 with `semantic_metrics=NOT_EVALUATED` and no failed gates
-- [ ] Provider and model approved by the owner and listed in `EMBEDDING_EVAL_ALLOWED_MODELS`; credential is `EMBEDDING_EVAL_<PROVIDER>_API_KEY` only
+- [ ] Provider and model approved by the owner and listed in `EMBEDDING_EVAL_ALLOWED_MODELS`; credential is the provider's own explicit eval variable only: `EMBEDDING_EVAL_GEMINI_API_KEY` for gemini, `EMBEDDING_EVAL_GROQ_API_KEY` for groq, `OPENAI_API_KEY` for openai (never a chat/LLM or app setting)
 - [ ] Clean shell: no `DATABASE_URL`, `REDIS_URL`, `ADMIN_API_KEY`, `INTERNAL_API_TOKEN` or `SESSION_SIGNING_KEY` set
 - [ ] Price per million tokens taken from the provider's current price page: ______ (source and date: ______)
 - [ ] Cost ceiling (≤ $2), request cap (≤ 32), batch (≤ 16), input (≤ 256 chars), timeout (≤ 20 s), repeats (2–3) chosen
@@ -100,3 +100,14 @@ Outcome: ______  Exit code: ______  Error codes: ______
 - [ ] Reviewer / decision / date: ______
 
 A `passed` outcome is one input to a later, separate decision. Record that decision elsewhere.
+
+## OpenAI comparison (last resort, bounded)
+
+Run only because the local free multilingual candidates (E5, paraphrase-multilingual-mpnet) failed the thresholds above, and the user approved `OPENAI_API_KEY` for this comparison alone. It is not production approval.
+
+- Allowlist `EMBEDDING_EVAL_ALLOWED_MODELS=openai/text-embedding-3-small` (the only accepted OpenAI entry); `--provider openai --model text-embedding-3-small --dimension 768`.
+- Key: `OPENAI_API_KEY` only, sent in the `Authorization` header and never logged. No other config supplies it.
+- The response must name the requested model and tag each item `object: "embedding"` with an exact integer `index`; anything else fails as a malformed response.
+- Endpoint `POST https://api.openai.com/v1/embeddings` with `dimensions=768`; no discovery, no fallback, one retry on 429/5xx/transport errors only.
+- `--max-cost-usd` must be ≤ 0.25 and `--usd-per-million-tokens` explicit and positive (take the current price from OpenAI's pricing page). The estimate assumes one token per character, so it over-estimates; the run refuses before any call if the cap would be exceeded.
+- Compare against the same thresholds as any candidate; put billed usage from the OpenAI dashboard in the Review checklist.

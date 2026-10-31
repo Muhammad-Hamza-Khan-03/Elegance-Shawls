@@ -99,7 +99,7 @@ def test_groq_fails_closed_without_any_request():
 
 def test_unknown_provider_has_no_fallback():
     with pytest.raises(UnsupportedProviderError):
-        build_provider(EvalConfig("openai", "m", KEY), 3)
+        build_provider(EvalConfig("cohere", "m", KEY), 3)
 
 
 # --- gemini request / response mapping --------------------------------------------------------------------------
