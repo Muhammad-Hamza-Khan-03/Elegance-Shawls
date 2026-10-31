@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps/backend"))
 sys.path.insert(0, str(ROOT / "apps/backend/scripts"))
 
-from semantic.local_e5 import get_embedder  # noqa: E402
+from embeddings.config import EvalConfig  # noqa: E402
+from embeddings.providers.local_e5 import DIMENSION, MODEL, LocalE5EmbeddingProvider, model_tree_digest  # noqa: E402
 from semantic.query_parser import ALIASES, FILLER, LOCAL_COLOURS, has_shopping_signal, normalize_query, parse_query  # noqa: E402
 from semantic.representation import represent  # noqa: E402
 import seed_local  # noqa: E402
@@ -78,6 +79,27 @@ def metrics(ranked, rel):
     return recall, rr
 
 
+class _Embedder:
+    """Sync query/passage view of the canonical offline E5 provider (the same one that writes product_embeddings)."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def embed(self, text):
+        return self._inner.embed([text], kind="query").vectors[0]
+
+    def embed_passage(self, text):
+        return self._inner.embed([text], kind="passage").vectors[0]
+
+
+def get_embedder():
+    path = os.environ.get("LOCAL_E5_MODEL_PATH", "")
+    if not path or not os.path.isdir(path):
+        return None
+    revision = os.environ.get("LOCAL_E5_MODEL_REVISION") or model_tree_digest(path)
+    return _Embedder(LocalE5EmbeddingProvider(EvalConfig("local_e5", MODEL, ""), DIMENSION, None, {"model_path": path, "revision": revision}))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalogue", type=int, default=120)
@@ -85,7 +107,7 @@ def main():
     args = ap.parse_args()
     embedder = get_embedder()
     if embedder is None:
-        raise SystemExit("E5 is not configured (SEMANTIC_* env, see semantic/local_e5.py)")
+        raise SystemExit("E5 is not configured (set LOCAL_E5_MODEL_PATH; see embeddings/providers/local_e5.py)")
     products = catalogue(args.catalogue)
     docs = [represent(p)["text"] for p in products]
     vecs = [embedder.embed_passage(p["text"] if False else d) for p, d in zip(products, docs)]

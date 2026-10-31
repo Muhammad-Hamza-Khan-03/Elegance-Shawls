@@ -50,17 +50,3 @@ async def refresh_llm_models_job(ctx: dict, provider: str | None = None) -> dict
     """Bounded/idempotent scheduled advisory refresh; failures never affect the worker."""
     from llm.model_discovery import refresh_models
     return await refresh_models(provider)
-
-
-@traced
-async def embedding_backfill_job(ctx: dict, limit: int = 50, after: str | None = None) -> dict:
-    """Bounded embedding backfill. Inert unless a provider is injected into ctx (none is wired in production)."""
-    import uuid
-
-    from semantic.backfill import run_backfill
-
-    provider, sessions = ctx.get("embedding_provider"), ctx.get("pg_sessions")
-    if provider is None or sessions is None:
-        return {"skipped": "embeddings are not configured"}
-    return await run_backfill(sessions, provider, worker_id=f"arq-{ctx.get('job_id', 'job')}", limit=limit,
-                              after=uuid.UUID(after) if after else None)

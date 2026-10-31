@@ -30,17 +30,29 @@ docker inspect elegance-local-db >/dev/null 2>&1 || docker run -d --name eleganc
 docker start elegance-local-db >/dev/null
 until docker exec elegance-local-db pg_isready -U elegance -d elegance_shawls >/dev/null 2>&1; do sleep 1; done
 
+python scripts/check_migration_stamp.py || exit 1   # read-only: refuses a database stamped under the pre-consolidation numbering
 alembic upgrade head
 python scripts/admin_accounts.py bootstrap-owner --email "$ADMIN_EMAIL"
 python scripts/seed_local.py
 
 # Semantic search (multilingual-e5-base, local CPU) when the model is present: fetch once with `python scripts/fetch_e5_model.py`
 # after `pip install -r requirements-local-e5.txt`. Without it the shop still works with keyword search.
-E5_DIR="${SEMANTIC_E5_MODEL_PATH:-$HOME/.cache/elegance/multilingual-e5-base}"
+E5_DIR="${LOCAL_E5_MODEL_PATH:-$HOME/.cache/elegance/multilingual-e5-base}"
 if [ -f "$E5_DIR/model.safetensors" ] && python -c "import sentence_transformers" 2>/dev/null; then
-  export SEMANTIC_EMBEDDING_PROVIDER=local_e5 SEMANTIC_EMBEDDING_MODEL=intfloat/multilingual-e5-base SEMANTIC_EMBEDDING_DIMENSIONS=768 \
-         SEMANTIC_E5_MODEL_PATH="$E5_DIR" HF_HUB_OFFLINE=1
-  python scripts/embedding_backfill.py
+  # One embedding pipeline: search/embedding_service writes product_embeddings + variant_embeddings, search and the assistant read them.
+  export ENVIRONMENT=development EMBEDDING_ENABLED=true EMBEDDING_PROVIDER=local_e5 EMBEDDING_DIMENSIONS=768 \
+         LOCAL_SEMANTIC_SEARCH_ENABLED=true LOCAL_E5_MODEL_PATH="$E5_DIR" HF_HUB_OFFLINE=1
+  export LOCAL_E5_MODEL_REVISION="${LOCAL_E5_MODEL_REVISION:-$(python -c "from embeddings.providers.local_e5 import model_tree_digest as d; print(d('$E5_DIR'))")}"
+  for kind in product variant; do
+    after=""
+    while :; do   # resumable: each run embeds one bounded page, last_id is the next --after
+      out=$(python scripts/embedding_backfill.py --kind "$kind" --limit 100 ${after:+--after "$after"})
+      echo "$out"
+      after=$(python -c "import json,sys; print(json.loads(sys.argv[1]).get('last_id') or '')" "$out")
+      [ -n "$after" ] || break
+      [ "$(python -c "import json,sys; print(json.loads(sys.argv[1])['examined'])" "$out")" -ge 100 ] || break
+    done
+  done
 else
   echo "semantic search off (no E5 model); keyword search only"
 fi
