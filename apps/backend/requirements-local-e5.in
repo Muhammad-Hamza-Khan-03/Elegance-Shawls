@@ -1,0 +1,6 @@
+# Input for requirements-local-e5.lock.txt (the only file the E5 image installs). Base requirements.txt is compiled in
+# alongside it (see the lock header), so it is not included here. CPU-only torch: the pytorch CPU index serves the
+# "+cpu" wheels, which carry no CUDA/NVIDIA dependencies.
+--extra-index-url https://download.pytorch.org/whl/cpu
+sentence-transformers==5.7.0
+torch

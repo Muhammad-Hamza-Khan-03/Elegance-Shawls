@@ -15,8 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY requirements-local-e5.txt requirements.txt ./
-RUN pip install --no-cache-dir --requirement requirements-local-e5.txt
+COPY requirements-local-e5.lock.txt ./
+RUN pip install --no-cache-dir --require-hashes --requirement requirements-local-e5.lock.txt
 
 # Public, immutable Hugging Face source revision. Only runtime files are retained;
 # no model cache or credentials are copied into the image.
