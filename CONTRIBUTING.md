@@ -18,7 +18,7 @@ Please treat contributions as production changes, not casual demo edits.
 
 ## Before you start
 
-1. Sync with the latest `main`
+1. Sync with the latest `staging-integration` (branch from it, not from `main`; `hotfix/*` branches are the only exception)
 2. Read `README.md`
 3. Read `DEPLOYMENT.md` and `OPERATIONS.md` if your change affects runtime behavior
 4. Read `LAUNCH_RUNBOOK.md` if your change affects production launch or admin flows
@@ -67,12 +67,12 @@ python -m compileall -q .
 
 ## Contribution workflow
 
-1. Create a focused branch
+1. Create a focused branch from `staging-integration` (`feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`)
 2. Keep changes small and reviewable
 3. Update documentation when behavior changes
 4. Run relevant validation locally
 5. Write clear commit messages
-6. Open a PR with a concise summary and test notes
+6. Open a PR targeting `staging-integration` with a concise summary and test notes. Releases move `staging-integration` -> `staging` -> `main` by PR only; see `docs/RELEASE_WORKFLOW.md`
 
 ## Commit style
 

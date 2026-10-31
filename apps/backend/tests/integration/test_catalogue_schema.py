@@ -26,6 +26,12 @@ MIGRATION_STEPS = [
     ("0004", {"ingestion_jobs", "staged_products", "staged_product_audit"}),
     ("0005", set()),
     ("0006", set()),
+    ("0007", {"catalog_attributes"}),                                   # main's chain: 0007-0009
+    ("0008", {"enrichment_suggestions"}),
+    ("0009", {"product_embeddings", "variant_embeddings"}),
+    ("0010", {"admin_accounts", "admin_sessions"}),                     # ours, renumbered after main's: 0010-0015
+    ("0011", {"enquiries"}),
+    ("0012", {"semantic_embeddings", "semantic_embedding_jobs"}),
 ]
 
 
@@ -98,7 +104,7 @@ def column_type(url, table, column):
 
 
 # ---- migrations ------------------------------------------------------------------------------
-def test_each_migration_applies_and_reverses_one_step_at_a_time(pg_url, migrated_url):
+def test_each_migration_applies_and_reverses_one_step_at_a_time(pg_url, migrated_url, pg_engine_factory):   # fixture empties the 0007 tables
     config = alembic_config(pg_url)
     try:
         command.downgrade(config, "base")

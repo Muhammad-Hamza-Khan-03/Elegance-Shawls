@@ -6,11 +6,11 @@ The repository-controlled storefront and API are launch-complete only after the 
 
 ## 1. Infrastructure
 
-- Set final HTTPS `SITE_URL` and `API_URL`, the international-digit `WHATSAPP_NUMBER`, a randomly generated `ADMIN_API_KEY`, and the production PostgreSQL passwords (`POSTGRES_*`).
+- Set final HTTPS `SITE_URL` and `API_URL`, the international-digit `WHATSAPP_NUMBER`, the production PostgreSQL passwords (`POSTGRES_*`) and, only while integrations still need it, a randomly generated legacy `ADMIN_API_KEY` with a near `ADMIN_LEGACY_KEY_EXPIRES_AT`. After the schema (including migration 0007) is applied, create the first owner: `python scripts/admin_accounts.py bootstrap-owner --email <owner>` from `apps/backend` (password via `ADMIN_ACCOUNT_PASSWORD` or prompt), then sign in at `/admin/login` and create `editor`/`viewer` accounts for other people.
 - Keep PostgreSQL on the internal network (no published port) with the least-privilege application role, and apply the schema with the approved `migrate` step before the first start.
 - Build immutable frontend/backend images from a commit with green CI.
 - Configure DNS, TLS, reverse proxy request limits and the four documented health/readiness probes.
-- Complete an encrypted backup and an isolated restore drill (blocked: PostgreSQL backup tooling is issue #105 and is not built).
+- Complete an encrypted backup to an owner-approved off-server S3-compatible destination and an isolated restore drill, and record the drill evidence file (`OPERATIONS.md`). **Open:** the tooling is built, but the destination, its free-tier/cost approval, credentials, scheduling and production activation are owner actions that have not happened.
 
 ## 2. Quill compatibility — blocking
 
@@ -19,21 +19,21 @@ The currently accessible `Muhammad-Hamza-Khan-03/quill-panel` is not compatible 
 - It currently calls old `/admin/products` routes; this API exposes `/products/admin/*`.
 - It submits multipart `product_data`; this API accepts the documented JSON product schema.
 - It calls `/admin/verify-key`, which this API does not expose.
-- It reads the secret from `NEXT_PUBLIC_ADMIN_KEY`, which places the administrative credential in browser-delivered code.
+- It reads the secret from `NEXT_PUBLIC_ADMIN_KEY`, which places the administrative credential in browser-delivered code. (The Elegance admin UI itself no longer uses a shared key: it signs in individual accounts.)
 - Its category, scraper and media routes are not part of the Elegance API.
 
-Use a server-side Quill proxy/session so the browser never receives `ADMIN_API_KEY`. The trusted server must attach `X-Admin-Key` to the Elegance admin API. Map Quill product fields to the OpenAPI schema and explicitly support create, update, status changes, stock changes and archive.
+Use a server-side Quill proxy/session so the browser never receives a backend credential. Quill has no individual account integration yet, so until it does the trusted server may attach the legacy `X-Admin-Key` (`ADMIN_API_KEY`), which works only until `ADMIN_LEGACY_KEY_EXPIRES_AT` and is audited as `legacy-shared-key`; plan Quill's move to an individual account (`X-Admin-Session` from `/v1/admin/auth/login`) before that date. Map Quill product fields to the OpenAPI schema and explicitly support create, update, status changes, stock changes and archive.
 
 ## 3. Staging acceptance
 
-1. Confirm unauthenticated and incorrect-key admin requests return 401, and an unconfigured admin API returns 503.
+1. Confirm unauthenticated, expired-session and incorrect-credential admin requests return 401 (and are recorded in `audit_log` as denied), a `viewer` write returns 403, and an expired or unset `ADMIN_LEGACY_KEY_EXPIRES_AT` rejects `X-Admin-Key`.
 2. From the updated Quill deployment, create a uniquely named draft product with two variants.
 3. Verify the draft is visible in the admin feed and absent from public endpoints.
 4. Publish it and confirm it appears on the storefront with the correct slug, images, price, SKU, options and stock.
 5. Change one variant to zero stock and verify the storefront disables it.
 6. Unpublish the product and confirm public slug/list endpoints no longer expose it.
 7. Publish again, then archive it and confirm it remains absent publicly.
-8. Verify no admin key appears in browser source, network responses, analytics or logs.
+8. Verify no session token, password or legacy admin key appears in browser source, network responses, analytics or logs, and that the staging mutations above appear in `audit_log` attributed to the signing-in account.
 
 ## 4. Customer acceptance
 
@@ -47,7 +47,7 @@ Use a server-side Quill proxy/session so the browser never receives `ADMIN_API_K
 
 1. Record the deployed commit and immutable image digests.
 2. Confirm CI, health, readiness, logs and alerts are green.
-3. Take a pre-launch database backup (blocked on #105).
+3. Take a pre-launch database backup with `scripts/pg_backup.py backup` and run `verify` on it (blocked until the off-server destination and credentials above exist; do not skip).
 4. Run one final Quill publish-to-storefront smoke test and remove the test product.
 5. Enable public traffic and watch errors, latency, resources and readiness continuously during the launch window.
 

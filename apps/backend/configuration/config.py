@@ -9,12 +9,40 @@ class settings(BaseSettings):
     app_name: str = "Products API"
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
+    # Legacy shared key. Ignored unless ADMIN_LEGACY_KEY_EXPIRES_AT (ISO 8601 with offset, e.g.
+    # 2026-12-31T00:00:00+00:00) is a future instant; after it passes the key stops working with no redeploy.
     admin_api_key: str = ""
+    admin_legacy_key_expires_at: str = ""
+    # Individual admin accounts: server-side sessions and per-account login lockout.
+    admin_session_ttl_seconds: int = 8 * 3600
+    admin_login_max_failures: int = 5
+    admin_login_lockout_seconds: int = 15 * 60
     # Shared with the storefront server so server-rendered reads, which all come
     # from one address, are not limited as if they were a single client.
     internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
+
+    # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
+    assistant_catalogue: bool = False
+    # Let the LLM gateway (LLM_CHAIN_DEFAULT) write the assistant's wording. It never picks products, prices or actions.
+    assistant_llm: bool = False
+    # Semantic neighbours of a query with no shopping word (shawl/colour/season...) are dropped beyond this cosine distance.
+    # 0.18 from evals/roman_urdu_retrieval_eval.py: 0% off-topic false positives at <=0.20, 15% at 0.22.
+    semantic_max_distance: float = 0.18
+
+    # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
+    # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.
+    customer_auth_enabled: bool = False
+    customer_auth_provider: str = ""
+    customer_auth_issuer: str = ""
+    customer_auth_audience: str = ""
+    customer_auth_jwks_url: str = ""
+    customer_auth_jwks_ttl_seconds: int = 3600
+    customer_auth_jwks_min_refresh_seconds: int = 60
+    customer_session_ttl_seconds: int = 7 * 86400
+    customer_session_max_active: int = 5
+    customer_auth_rate_limit_per_minute: int = 10
 
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.
@@ -69,6 +97,9 @@ class settings(BaseSettings):
     llm_chain_default: str = ""
     llm_production_chain: str = ""
     llm_free_tier_providers: str = "groq,gemini,openrouter"
+    # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
+    # Empty = every provider unknown = no model may touch customer memory.
+    llm_provider_training_policies: str = ""
     llm_daily_budget_usd: float = 1.0
     llm_environment_budget_usd: float = 10.0
     llm_budget_warn_ratio: float = 0.8

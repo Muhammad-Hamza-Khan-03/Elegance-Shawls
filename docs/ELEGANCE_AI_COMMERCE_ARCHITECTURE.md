@@ -6,19 +6,19 @@ Deployment identifiers and release SHAs belong in release records, not here. Sta
 
 ## 1. Current state
 
-Phase 0.5 (one-source ingestion) implementation is present in the repository; its independent staging QA status is tracked separately. The Phase 0 foundation (local PostgreSQL + pgvector, Alembic schema, Redis/arq worker, LLM gateway with fake provider, events endpoint, tracing, evaluation runner) is implemented (S1–S4 of the PostgreSQL consolidation passed independent QA; S4, the MongoDB removal and PostgreSQL-only operational cleanup, is closed; S5 final verification is pending), no agent, search, memory or voice feature exists yet, and PostgreSQL is the sole database: MongoDB has been removed from the code, dependencies, compose and CI (S4).
+Phase 0.5 (one-source ingestion) implementation is present in the repository; its independent staging QA status is tracked separately. The Phase 0 foundation (local PostgreSQL + pgvector, Alembic schema, Redis/arq worker, LLM gateway with fake provider, events endpoint, tracing, evaluation runner) is implemented (S1–S4 of the PostgreSQL consolidation passed independent QA; S4, the MongoDB removal and PostgreSQL-only operational cleanup, is closed; S5 implementation evidence exists: the PostgreSQL backup/restore tooling and disposable restore-drill foundation are built, but nothing is activated and final independent S5 verification is pending), no agent, search, memory or voice feature exists yet, and PostgreSQL is the sole database: MongoDB has been removed from the code, dependencies, compose and CI (S4).
 
 | Component | Responsibility |
 |---|---|
-| `apps/frontend` | Next.js 16 storefront and admin UI. Cart lives in `localStorage`; the cart builds a WhatsApp message and the order happens off-platform. Admin browser calls go through Next route handlers (`proxyAdminRequest`) that verify the signed session cookie, enforce same-origin on writes and attach the server-only `X-Admin-Key`. |
-| `apps/backend` | FastAPI API (Python 3.11, SQLAlchemy/asyncpg over PostgreSQL via `repositories/`). Public routes under `/products/...`, admin routes under `/products/admin/...`, ingestion routes under `/products/admin/ingestion/...`. Rate limiting, request logging, `/health/` (liveness, dependency-free) and `/ready/` (PostgreSQL ping; 503 when it is down). |
+| `apps/frontend` | Next.js 16 storefront and admin UI. Cart lives in `localStorage`; the cart builds a WhatsApp message and the order happens off-platform. Admins sign in with individual accounts; the opaque server-side session token lives in an HttpOnly cookie. Admin browser calls go only to Next route handlers (`proxyAdminRequest`), which enforce same-origin on writes and forward the token to the backend as `X-Admin-Session`; the browser never calls backend admin routes. |
+| `apps/backend` | FastAPI API (Python 3.11, SQLAlchemy/asyncpg over PostgreSQL via `repositories/`). Public routes under `/products/...`, admin routes under `/products/admin/...`, ingestion routes under `/products/admin/ingestion/...`. Admin identity (3.9): individual accounts, roles and a durable audit log. Rate limiting, request logging, `/health/` (liveness, dependency-free) and `/ready/` (PostgreSQL ping; 503 when it is down). |
 | Ingestion worker | Separate process (`python -m ingestion.worker`, or `--once` for the bounded monthly refresh) consuming PostgreSQL-backed `ingestion_jobs` (`FOR UPDATE SKIP LOCKED` claims, leases, heartbeats, bounded retries). |
 | PostgreSQL + pgvector | The sole database and a hard dependency: catalogue, staged products, ingestion jobs, audit trail, plus the platform tables (customers, identities, conversations, messages, tool calls, events, audit log, outbox contract) in `models/relational_model.py`, Alembic in `migrations/`. In `compose.yaml` (internal network, no published port, least-privilege app and backup roles) and, for local work, `compose.ai.yaml`. |
 | Redis + arq worker (local) | New AI workloads only (`workers/`), plus shared rate limits with in-process fallback. Separate from the ingestion worker. |
 | `llm/`, `evals/`, `observability/tracing.py` | LiteLLM gateway wrapper (fake provider; real providers need `requirements-llm.txt`), recorded-response eval runner, and PII-scrubbed tracing with exporters off by default. |
 | `compose.yaml`, `compose.local.yaml` | postgres, backend, frontend, Caddy proxy, and a `migrate` one-shot job (profile `tools`, operator-run). Only the proxy publishes ports. |
 | `compose.ai.yaml` | Local-only PostgreSQL, Redis, migration job and worker on an internal network; not a production file. |
-| `deploy/` | Caddyfile, PostgreSQL role bootstrap (`deploy/postgres/init-roles.sh`), rollback and watchdog scripts. No backup tooling yet (issue #105). |
+| `deploy/` | Caddyfile, PostgreSQL role bootstrap (`deploy/postgres/init-roles.sh`), rollback and watchdog scripts. PostgreSQL backup/restore tooling lives in `apps/backend/backup/` and `scripts/pg_backup.py`, with `deploy/postgres/container-pg.sh` (issue #105, M1-S5; not activated, see `OPERATIONS.md`). |
 | `quill-store` (reference repo) | Source of the scraper helpers ported into `apps/backend/ingestion/`. Not deployed, never a second product store. |
 
 The API is authoritative for publication state. Neither the crawler, a browser, the AI layer nor any external tool may make a product public.
@@ -49,7 +49,7 @@ flowchart TB
         AD[Admin UI + staging review]
     end
     subgraph NextServer[Next.js server]
-        PX[Admin proxy route handlers<br/>session cookie + same-origin + X-Admin-Key]
+        PX[Admin proxy route handlers<br/>session cookie + same-origin + X-Admin-Session]
     end
     subgraph API[FastAPI modular monolith]
         PUB[Existing /products routes]
@@ -106,7 +106,7 @@ Target: PostgreSQL 17 with pgvector holds products, variants, staged products, i
 3. public IDs become UUIDs and the API keeps the `_id` JSON field for compatibility, **subject to a read-only check that the Quill integration persists no Elegance product IDs** (if it does, a compatibility mapping is added instead of changing IDs blindly);
 4. tests: the default suite stays container-free (`pytest -q`); real-PostgreSQL tests run under `pytest -q -m integration`;
 5. the work is a separate scoped issue and sequence, delivered in reviewable slices; it does not deploy anything and does not change staging or production;
-6. backup and restore for PostgreSQL stay in the approval-gated operations workstream (#105); the Mongo backup tooling has been removed (S4) and nothing replaces it until #105, which is a launch prerequisite.
+6. backup and restore for PostgreSQL stay in the approval-gated operations workstream (#105); the Mongo backup tooling was removed (S4) and replaced by the M1-S5 PostgreSQL foundation: encrypted backup, verify, freshness check, retention and a restore drill into a disposable database, with implementation evidence from disposable containers only. It is **not activated**: no real off-server destination (only a local directory for tests and drills), no credentials or secrets provisioned, no scheduling, no alerting, no hosted or production restore, and no owner approval. #105 activation remains a launch prerequisite, and until it is done and a drill on a real off-server copy has passed, no document may claim an activated off-server or production backup service, or usable off-server backups, exists.
 
 **Status.** The runtime cutover (S3) passed independent QA: routes, ingestion pipeline, worker and refresh run on PostgreSQL, and `/ready/` is gated by it. Removal (S4) deleted `database/db.py`, `utils/bson.py`, the Mongo product builder, the legacy Mongo import script, Motor/PyMongo/mongomock, the Mongo compose service, init script, backup scripts and CI variables; `compose.yaml` now provides PostgreSQL. Nothing has been deployed.
 
@@ -173,7 +173,60 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 | Enrichment | Produces suggestions into the existing review flow | 3.4 |
 | LLM gateway and privacy | LiteLLM, privacy gate before memory | 3.6 |
 | Evals | "Not evaluated" blocks release | 3.7 |
-| Admin identity | Shared key today. Individual accounts with audit before AI-assisted approvals; Keycloak optional and undecided | Open (section 6) |
+| Admin identity | Individual backend accounts (roles, scrypt hashes, opaque server-side sessions, audit log); see 3.9. The shared `ADMIN_API_KEY` survives only as an expiring legacy fallback. Keycloak remains optional and undecided | Implemented (M1-S3); Keycloak open (section 6) |
+
+### 3.9 Admin identity: individual accounts (accepted, implemented in M1-S3)
+
+- **Accounts and roles:** `admin_accounts` rows with a role of `viewer` (read), `editor` (read and write the catalogue) or `owner` (also `accounts:manage`, `audit:read`, `platform:operate`). Passwords are stored as scrypt hashes; login locks an account after repeated failures. The last active owner cannot be demoted or disabled.
+- **Sessions:** login issues an opaque token (`es1.` prefix); only its SHA-256 is stored in `admin_sessions`. The backend checks expiry, revocation and account status on every request, and revokes sessions on logout, password change, role change and disablement.
+- **Trust boundary:** the browser holds the token only in the HttpOnly `es_admin_session` cookie and never calls backend admin routes. Next route handlers (`/api/admin/...`) sign in, enforce same-origin on writes and forward the token as `X-Admin-Session`. The backend authorizes default-deny by method and permission (`security/admin_auth.require_permission`).
+- **Audit:** every authorised mutation is written to the append-only `audit_log` before the handler runs and finalised to success or failure; a failed audit write refuses the mutation (503). Denied and unauthenticated attempts are recorded. Rows attribute the actor by account UUID.
+- **Bootstrap:** no default credential. After `alembic upgrade head`, an operator runs `python scripts/admin_accounts.py bootstrap-owner --email <addr>` (idempotent; `reset-password` for recovery). Owners create further accounts.
+- **Legacy fallback:** `X-Admin-Key` with `ADMIN_API_KEY` is accepted only while `ADMIN_LEGACY_KEY_EXPIRES_AT` (ISO 8601 with offset) is in the future. It acts as `editor` plus `platform:operate`, cannot manage accounts or read audit, and is audited as `legacy-shared-key`. Retirement: empty both variables or let the instant pass; no code change or redeploy of code is needed.
+
+### 3.10 Customer principal/session for memory routes (M4-S2: seam only)
+
+- **What exists (verified in the repository):** only the admin identity of 3.9 (`admin_accounts`, `admin_sessions`, `X-Admin-Session`, `X-Admin-Key`). It authenticates staff for `/products/admin`, ingestion and `/v1/admin/*`; its trust boundary is the Next admin proxy plus server-side session rows, and it carries no customer identity, so it is **not** usable by `/v1/me/memory` (accepting it would let staff act as a customer). The `customers` and `customer_identities` tables exist (migration 0001) but nothing issues or verifies a customer credential. The public assistant and action routes take a client-chosen `session_id` that is only a conversation/idempotency label, never an identity.
+- **Decision:** customer memory routes depend on `memory.principal.current_principal`. A `CustomerSessionVerifier` must confirm a server-held live session for the opaque `X-Customer-Session` token and return a `CustomerPrincipal` (customer id, session id, SHA-256 of the presented token, timezone-aware expiry). The seam re-checks the binding (hash of the presented token), expiry and types, and answers an identical 401 for absent, invalid, expired, mismatched, oversized or erroring verification. No verifier is installed, so production stays 401. Client-supplied ids, headers, query, cookie or body fields are never an identity.
+- **Left for the authentication slice:** issuing and storing customer sessions (hash-only, as in 3.9), login (Google or phone OTP per the plan, needs separate approval), and installing the verifier in `get_session_verifier`. Consent, the provider gate, ownership isolation, audit and retention (M4-S1) are unchanged.
+
+### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
+
+The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+
+**Model and configuration.** `intfloat/multilingual-e5-base`, 768 dimensions, CPU, offline, loaded from a pinned local snapshot (`embeddings/providers/local_e5.py`; the staging image bakes it in). Settings: `EMBEDDING_ENABLED`, `EMBEDDING_PROVIDER` (`local_e5`; `fake` for tests), `EMBEDDING_DIMENSIONS=768`, `EMBEDDING_INDEX_VERSION`, `LOCAL_SEMANTIC_SEARCH_ENABLED`, `LOCAL_E5_MODEL_PATH`, `LOCAL_E5_MODEL_REVISION` (tree digest). Unset or wrong means disabled; nothing blocks start-up or catalogue browsing.
+
+**Representations.** `search/representations.py` (`catalog-text-v1`): a *product* text (name, category, material, description, approved attributes) and a *variant* text (product name, variant name, colour, category, material, approved attributes). Private, price, stock, URL and staged fields are excluded by construction. Over-long text fails loudly instead of being truncated. Queries use the E5 `query:` prefix, documents the `passage:` prefix.
+
+**Storage.** `product_embeddings` and `variant_embeddings` (migration 0009): vector(768) with HNSW cosine indexes. A row is identified by owner + representation version + provider + model + model revision + index version, so a different model, revision or index version is a different row and vectors from different spaces are never compared. The row is also the job (`queued, running, succeeded, failed, stale`) with a lease, attempt counter, bounded retries and backoff.
+
+**Lifecycle.** `embedding_service.ensure_pending` creates the row idempotently (unique identity key, `ON CONFLICT DO NOTHING`), `process` claims it under a lease, re-reads the live source, embeds through `embed_checked` (validated input, bounded time, validated finite vector of the right width), and completes under a row lock; a source that changed meanwhile ends `stale`. Run it via `scripts/embedding_backfill.py --kind product|variant --limit N [--after UUID]` (bounded, resumable, idempotent: finished rows are skipped) or the `embeddings` arq queue (`workers.settings.EmbeddingWorkerSettings`, deterministic job id per row so duplicate enqueues are no-ops).
+
+**Freshness.** Searchable means: succeeded, source revision equals the product's current revision, product active (variant active), identity matches the active provider/model/revision/index, and the stored representation hash still equals the hash of the live content. A catalogue edit therefore removes the old vector at once and a re-embed makes the new one searchable.
+
+**Retrieval.** Three public contracts, all reading the same vectors:
+
+| Endpoint | Strategy | Fusion |
+|---|---|---|
+| `GET /v1/search` and the assistant | SQL-filtered lexical pool + nearest vectors (`repositories/hybrid.py`) | weighted RRF (`semantic/ranking.py`, K=60, default 1:1), keyset cursor bound to query, filters, weights and embedding space; off-topic queries without a shopping word keep only neighbours within `SEMANTIC_MAX_DISTANCE` |
+| `POST /v1/search/hybrid` | exact parser filters first, then lexical top-K + vector top-K of the eligible products (`search/hybrid.py`) | fixed RRF (K=60), cursor bound to the search/index version |
+| `POST /v1/search` | deterministic constraints only, no model | none |
+
+The two RRF implementations are intentionally different strategies (weighted over a SQL pool, versus fixed over an eligible set) and are kept; the third, unused one (`semantic/fusion.py`) was removed. All three apply hard filters first: inactive products and unavailable variants never appear, colour/price/stock are satisfied by the same variant, results are de-duplicated per page and ordered deterministically. Without a query vector (disabled, blank, provider failure, wrong width) they return lexical results; a stale or zero vector is dropped, never guessed.
+
+**Retired.** `semantic/{local_e5,backfill,fusion}.py`, `repositories/semantic_embeddings.py`, `scripts/semantic_backfill.py`, the `embedding_backfill_job` arq job and the `SEMANTIC_*` embedding settings are gone. `semantic/embeddings.py` and `semantic/representation.py` remain only as the offline evaluation contract (`evals/semantic_eval.py`, enrichment).
+
+**Legacy tables.** `semantic_embeddings` and `semantic_embedding_jobs` (migration 0012) are no longer read or written by any code and are empty on every database created from this chain. They are kept deliberately: dropping persisted tables needs a separately approved migration (a future `0016`).
+
+**PostgreSQL schema and migrations.** One linear chain, single head `0015`: 0001 relational foundation, 0002 outbox, 0003 catalogue, 0004 ingestion, 0005 outbox uuid, 0006 job retryability, 0007 catalogue attributes, 0008 enrichment suggestions, 0009 embeddings + search (main's chain ends here), 0010 admin accounts (also adds `audit_log.outcome/detail` and the append-only guard), 0011 enquiries, 0012 semantic embeddings (legacy, see above), 0013 action executions, 0014 customer memory, 0015 customer sessions. 0010-0015 only add tables, apart from the two nullable/defaulted `audit_log` columns and the guard trigger of 0010.
+
+**Safe upgrade of an existing database** (never against production or a shared database without the approval in section 5):
+1. Take a verified backup (`pg_dump -Fc`) and restore it into a scratch database first.
+2. `python scripts/check_migration_stamp.py` (read-only). Exit 3 means the database carries the pre-consolidation numbering: do not stamp, do not upgrade; recreate a disposable database, or restore into a new one.
+3. `alembic current` must print `0009` (or later). `alembic upgrade head` applies 0010-0015 in one pass; each step has a downgrade, but `0010` drops `audit_log.outcome/detail` data and every downgrade drops customer-owned tables, so rollback means restoring the backup, not downgrading.
+4. Run `python scripts/embedding_backfill.py --kind product --limit N` (and `variant`) until `last_id` is empty; search stays lexical until vectors exist.
+
+**Known limitations.** Freshness is verified per candidate (about two reads per vector candidate; fine at the current catalogue size). `POST /v1/search/hybrid` has no relevance gate, so an off-topic query still returns the nearest products (the GET path gates them). Only one model and one index version are searchable at a time; switching means a new index version plus a backfill.
 
 ## 4. Phased roadmap and acceptance gates
 
@@ -203,7 +256,7 @@ Without explicit written approval for the specific action, none of the following
 - sending real WhatsApp messages;
 - deploying the PostgreSQL stack, running migrations against a shared environment, or decommissioning any hosted MongoDB/Atlas (3.1; the code removal itself is done), migrating ingestion to arq (3.3), enabling customer memory (3.6), enabling k3s, publishing GHCR images.
 
-Operations workstreams #103 (CI images and security scans), #104 (environments), #105 (Postgres backups to R2), #106 (VPS) and #112 (k3s/GitOps) are separate approval-gated tasks, prepared as plans and local validation only until approved.
+Operations workstreams #103 (CI images and security scans), #104 (environments), #105 (Postgres backups to R2; the code foundation exists, activation is still gated), #106 (VPS) and #112 (k3s/GitOps) are separate approval-gated tasks, prepared as plans and local validation only until approved.
 
 ## 6. Postponed and open
 
@@ -211,7 +264,7 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 
 **Open decisions:**
 
-1. Admin identity: individual accounts with roles and audit (lighter) versus Keycloak. Needed before AI-assisted approvals.
+1. Admin identity: the lighter option (individual accounts with roles and audit) is implemented; whether Keycloak replaces it later is open. Retiring the legacy shared key is an operator step (empty `ADMIN_API_KEY` and `ADMIN_LEGACY_KEY_EXPIRES_AT`).
 2. Whether the existing `/products/...` routes are ever versioned under `/v1`.
 3. ~~When `staged_products` and `ingestion_jobs` move from Mongo~~ Resolved: with the catalogue (3.1).
 4. Embedding model (shared multimodal versus separate), decided by retrieval evals including Urdu and Roman Urdu.
@@ -226,3 +279,100 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 | `plans/ai-platform-alignment-review.md` | Point-in-time comparison of the plan with the repo, with the decisions that section 3 now encodes. |
 | `docs/phase-1-one-source-ingestion.md` | Ingestion states, rules and security model. |
 | `README.md`, `DEPLOYMENT.md`, `OPERATIONS.md`, `LAUNCH_RUNBOOK.md`, `CLAUDE.md` | Setup, deploy and operations. Updated only when their commands, variables or procedures actually change. |
+
+## Appendix A. Product quality control pipeline and MCP connector (carried over)
+
+> Carried over unchanged from branch `docs/staging-first-release-workflow` during the staging-integration consolidation. It was written against an older numbering of this document (it was section 9.1 there); the content is current, only its heading numbers are not.
+
+### 9.1 Product quality control pipeline
+
+Product quality control is part of the ingestion foundation, not a later cosmetic AI feature. Every staged item should receive deterministic validation before it can be approved.
+
+The first quality checks must use normal application code because it is cheaper, faster, predictable, and straightforward to test:
+
+- Missing title, description, category, or required variant fields.
+- Missing or invalid image URLs.
+- Invalid price, currency, stock, or availability values.
+- Broken product URLs or disallowed source domains.
+- Duplicate source identity or likely duplicate content.
+- Unsupported material, origin, or other ungrounded fallback values.
+- Invalid variant combinations and malformed payloads.
+
+Suggested quality states:
+
+```text
+CHECK_PENDING
+  -> READY_FOR_REVIEW
+  -> REVIEW_REQUIRED
+  -> BLOCKED
+  -> APPROVED
+```
+
+The admin review surface should show the failed rule, severity, source value, normalized value, and recommended next action. A corrected item must be revalidated before approval.
+
+AI may assist only where it adds value:
+
+- Suggest a missing description.
+- Flag a possible category mismatch.
+- Explain a possible duplicate.
+- Propose translation or standardized copy.
+
+AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
+
+### Controlled MCP business connector — future Phase 5/6
+
+An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
+
+```text
+Admin AI
+   -> MCP server
+   -> authenticated FastAPI business tool
+   -> authorization and validation
+   -> MongoDB/provider action
+   -> audit event
+```
+
+Start with read-only tools:
+
+```text
+list_failed_imports()
+find_missing_images()
+find_duplicate_candidates()
+get_import_job_summary()
+```
+
+Only later add approval-required proposal/mutation tools:
+
+```text
+propose_product_correction()
+propose_description_update()
+approve_staged_product()
+retry_failed_job()
+```
+
+Every mutation must follow:
+
+```text
+AI suggestion
+    -> human review
+    -> explicit approval
+    -> backend validation
+    -> state change
+    -> audit log
+```
+
+MCP requirements:
+
+- No direct database credentials or unrestricted queries.
+- Server-side authentication and per-tool authorization.
+- Read-only default and least-privilege scopes.
+- Idempotency for retryable actions.
+- Clear confirmation for every mutation.
+- Provider and database errors returned safely.
+- Full actor, tool, target, before/after, and timestamp audit data.
+- Separate admin/demo MCP credentials and environments.
+
+- Deterministic product quality checks.
+- Quality status, rule failures, and revalidation path.
+- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
+- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.

@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { AdminLoginForm } from '@/components/admin/AdminLoginForm';
-import { verifyAdminSession } from '@/lib/admin-session';
+import { fetchAdminIdentity } from '@/lib/admin-backend';
+import { ADMIN_SESSION_COOKIE } from '@/lib/admin-session';
 import { cookies } from 'next/headers';
 
 export const metadata: Metadata = {
@@ -10,9 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminLoginPage() {
-  const session = (await cookies()).get('es_admin_session')?.value;
-
-  if (verifyAdminSession(session)) {
+  if (await fetchAdminIdentity((await cookies()).get(ADMIN_SESSION_COOKIE)?.value)) {
     redirect('/admin/dashboard');
   }
 
@@ -23,7 +22,7 @@ export default async function AdminLoginPage() {
           <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#9a6b3f]">Quill Panel</p>
           <h1 className="font-heading mt-4 text-5xl font-semibold tracking-tight sm:text-6xl">Authenticated admin access</h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[#6f625a]">
-            Sign in with the shared admin key to reach the dashboard shell and navigate to product and order management.
+            Sign in with your individual admin account to reach the dashboard shell and navigate to product and order management.
           </p>
           <ul className="mt-8 space-y-3 text-sm leading-6 text-[#5f4f44]">
             <li>• Unauthorized visitors are redirected before they can view admin screens.</li>
@@ -35,7 +34,7 @@ export default async function AdminLoginPage() {
         <section className="rounded-[2rem] border border-[#e7dac8] bg-white p-8 shadow-sm sm:p-10">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#9a6b3f]">Sign in</p>
           <h2 className="font-heading mt-3 text-3xl font-semibold">Welcome back</h2>
-          <p className="mt-3 text-sm leading-6 text-[#6f625a]">Use the admin key configured on the server.</p>
+          <p className="mt-3 text-sm leading-6 text-[#6f625a]">Use the email and password of your admin account. Ask an owner if you need one.</p>
           <div className="mt-8">
             <AdminLoginForm />
           </div>

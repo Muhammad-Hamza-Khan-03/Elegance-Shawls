@@ -5,15 +5,23 @@ from contextlib import asynccontextmanager
 from configuration.config import settings
 from database.pg import close_postgres, connect_to_postgres, database_is_ready, postgres_configured
 from database.redis_client import close_redis, redis_configured, redis_is_ready
-from routes.product_routes import router as product_router
+from routes.product_routes import router as product_router, search_router as catalogue_search_router   # GET /v1/search (keyword + semantic ranking)
 from routes.ingestion_routes import router as ingestion_router
 from routes.enrichment_routes import router as enrichment_router
 from routes.event_routes import router as event_router
+from routes.enquiry_routes import admin_router as enquiry_admin_router, router as enquiry_router
+from routes.action_routes import router as action_router
+from routes.assistant_routes import router as assistant_router
+from routes.customer_auth_routes import router as customer_auth_router
+from routes.memory_routes import router as memory_router
+from routes.suggestion_routes import router as suggestion_router
 from routes.job_routes import router as job_router
-from routes.search_routes import router as search_router
+from routes.search_routes import router as search_router   # POST /v1/search and /v1/search/hybrid
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
+from routes.admin_routes import accounts_router, audit_router, auth_router
 from observability.request_log import RequestLogMiddleware
 from observability.tracing import configure_exporters
+from security.admin_auth import legacy_key_enabled, legacy_key_expiry
 from security.rate_limit import RateLimitMiddleware
 from workers.queues import close_queue_pool, worker_is_alive
 
@@ -29,6 +37,8 @@ async def lifespan(app: FastAPI):
     if not postgres_configured():
         raise RuntimeError("DATABASE_URL is required: the catalogue runs on PostgreSQL")
     await connect_to_postgres()
+    if legacy_key_enabled():
+        print(f"WARNING: the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
     yield
     # Shutdown
     print("Shutting down...")
@@ -63,13 +73,24 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(product_router)
+    app.include_router(catalogue_search_router)
+    app.include_router(search_router)
     app.include_router(ingestion_router)
     app.include_router(enrichment_router)
     app.include_router(job_router)
     app.include_router(llm_router)
     app.include_router(llm_admin_router)
     app.include_router(event_router)
-    app.include_router(search_router)
+    app.include_router(assistant_router)
+    app.include_router(action_router)
+    app.include_router(customer_auth_router)
+    app.include_router(memory_router)
+    app.include_router(suggestion_router)
+    app.include_router(enquiry_router)
+    app.include_router(enquiry_admin_router)
+    app.include_router(auth_router)
+    app.include_router(accounts_router)
+    app.include_router(audit_router)
 
     # Health Check
     @app.get("/health/", tags=["Health"])

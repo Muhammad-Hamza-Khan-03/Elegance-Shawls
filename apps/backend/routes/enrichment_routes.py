@@ -15,13 +15,13 @@ from observability.tracing import current_ids
 from repositories import enrichment as repo
 from repositories import staged as staged_repo
 from schemas.enrichment_schema import EnrichmentResponse
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import require_admin
 from workers.queues import QueueUnavailable, enqueue
 
 router = APIRouter(
     prefix="/products/admin/ingestion/staged/{staged_id}/enrichment",
     tags=["Enrichment"],
-    dependencies=[Depends(require_admin_api_key)],
+    dependencies=[Depends(require_admin)],
 )
 
 

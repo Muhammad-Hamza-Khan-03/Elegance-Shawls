@@ -1,6 +1,6 @@
 'use client';
 
-import { MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/cart/CartProvider';
 import { api } from '@/lib/api';
 import { CART_VERIFICATION_TTL_MS, CartIssue, CartItem, buildCartCheckoutUrl, getCartSummary, reconcileCartItems } from '@/lib/cart';
+import { StaleCartError, createEnquiry } from '@/lib/enquiry';
 import { formatCurrency } from '@/lib/whatsapp';
 
 const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
@@ -64,10 +65,27 @@ export const CartPage = () => {
   const { items, hydrated, incrementItem, decrementItem, removeItem, clearCart, setItemQuantity, replaceItems } = useCart();
   const summary = getCartSummary(items);
   const { verification, issues, verify, acknowledge } = useCartVerification(items, hydrated, replaceItems);
-  const onCheckoutClick = (event: MouseEvent<HTMLAnchorElement>) => {
+  const [handoff, setHandoff] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  // The server validates the cart and issues the enquiry reference before the human wa.me handoff opens.
+  const onCheckoutClick = async () => {
     if (Date.now() - verification.at > CART_VERIFICATION_TTL_MS) {
-      event.preventDefault();
       void verify();
+      return;
+    }
+    const tab = window.open('', '_blank'); // opened inside the click so popup blockers allow it
+    if (tab) tab.opener = null;
+    setHandoff({ busy: true, error: null });
+    try {
+      const reference = await createEnquiry(items);
+      const url = buildCartCheckoutUrl(items, whatsappNumber, { siteUrl, reference });
+      if (tab) tab.location.href = url;
+      else window.location.assign(url);
+      setHandoff({ busy: false, error: null });
+    } catch (error) {
+      tab?.close();
+      const stale = error instanceof StaleCartError;
+      if (stale) void verify();
+      setHandoff({ busy: false, error: stale ? 'Prices or availability changed while you were checking out. Please review your cart and try again.' : error instanceof Error ? error.message : 'Something went wrong. Please try again.' });
     }
   };
   const checkoutUrl = hydrated && items.length > 0 ? (() => {
@@ -184,6 +202,7 @@ export const CartPage = () => {
                   <Button type="button" variant="outline" className="w-full rounded-full bg-white" onClick={() => void verify()}>Check again</Button>
                 </div>
               )}
+              {handoff.error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{handoff.error}</p>}
               {!checkoutUrl ? (
                 <Button disabled className="w-full rounded-full bg-[#8b817c] px-6 py-3 font-semibold text-white">WhatsApp unavailable</Button>
               ) : verification.status !== 'verified' || issues.length > 0 ? (
@@ -191,8 +210,8 @@ export const CartPage = () => {
                   {verification.status === 'checking' ? 'Checking availability…' : issues.length > 0 ? 'Review cart changes' : 'Availability not confirmed'}
                 </Button>
               ) : (
-                <Button asChild className="w-full rounded-full bg-[#2f241f] px-6 py-3 font-semibold text-white hover:bg-[#4a382f]">
-                  <a href={checkoutUrl} target="_blank" rel="noreferrer" onClick={onCheckoutClick}>Send cart on WhatsApp</a>
+                <Button type="button" disabled={handoff.busy} onClick={() => void onCheckoutClick()} className="w-full rounded-full bg-[#2f241f] px-6 py-3 font-semibold text-white hover:bg-[#4a382f]">
+                  {handoff.busy ? 'Creating your enquiry reference…' : 'Send cart on WhatsApp'}
                 </Button>
               )}
               <Button variant="outline" className="w-full rounded-full border-[#d8c8b4] bg-transparent px-6 py-3 font-semibold" onClick={clearCart}>

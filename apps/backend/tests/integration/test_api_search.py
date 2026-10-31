@@ -65,7 +65,7 @@ def test_paging_and_malformed_input(env):
     assert post(q="x" * 201).status_code == 422 and post(unknown=1).status_code == 422
     assert env.client.post("/v1/search", content=b"{").status_code == 422
     assert post().status_code == 200 and post(q="  ").status_code == 200
-    assert env.client.get("/v1/search").status_code == 405         # POST is the contract
+    assert env.client.get("/v1/search").status_code == 200         # GET is the catalogue keyword/semantic search (test_api_catalogue_search.py); this POST is the constraint-parsing search
 
 
 def test_search_never_writes(env):

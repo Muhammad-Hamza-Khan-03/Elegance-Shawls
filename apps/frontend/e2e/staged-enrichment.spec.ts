@@ -61,7 +61,8 @@ const mockBackend = async (page: Page) => {
 // Same login flow as admin.spec.ts: the real session cookie, no bypass.
 const signIn = async (page: Page) => {
   await page.goto('/admin/login');
-  await page.getByLabel('Admin key').fill('test-admin-secret');
+  await page.getByLabel('Email').fill('owner@example.test');
+  await page.getByLabel('Password').fill('test-owner-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/admin\/dashboard$/);
   await page.goto('/admin/staging');

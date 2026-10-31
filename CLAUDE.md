@@ -8,7 +8,7 @@ Two independent apps with no shared tooling at the root. Run commands from insid
 
 - `apps/frontend`: Next.js 16 (App Router, React 19, React Compiler, Tailwind 4) storefront plus the admin UI
 - `apps/backend`: FastAPI + SQLAlchemy/asyncpg (PostgreSQL) product API, Python 3.11 (CI uses 3.12)
-- `compose.yaml`: postgres + backend + frontend + Caddy proxy for production-style runs (`docker compose up -d`; needs `SITE_URL`, `API_URL`, `WHATSAPP_NUMBER`, `ADMIN_API_KEY`, `POSTGRES_*` passwords; schema via the operator-run `migrate` profile)
+- `compose.yaml`: postgres + backend + frontend + Caddy proxy for production-style runs (`docker compose up -d`; needs `SITE_URL`, `API_URL`, `WHATSAPP_NUMBER`, `ADMIN_API_KEY` (legacy, see Admin auth), `POSTGRES_*` passwords; schema via the operator-run `migrate` profile)
 
 ## Commands
 
@@ -25,7 +25,7 @@ npm run build
 npx playwright install chromium && npm run test:e2e
 npx playwright test e2e/cart.spec.ts --project=chromium   # single e2e spec
 ```
-Playwright starts its own servers: `e2e/mock-api.mjs` (fake backend on :4100) and `next dev` on :3100 with `ADMIN_API_KEY=test-admin-secret`. E2E tests never hit a real backend or database.
+Playwright starts its own servers: `e2e/mock-api.mjs` (fake backend on :4100) and `next dev` on :3100 (`ADMIN_API_KEY=test-admin-secret` is set for the harness only; sign-in is faked by the mock API). E2E tests never hit a real backend or database.
 
 ### Backend (`apps/backend`)
 ```bash
@@ -55,26 +55,65 @@ CI (`.github/workflows/ci.yml`) also runs `npm audit --audit-level=high` and `pi
 ## Architecture
 
 ### Request flow
-Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `products` / `variants` tables (via `repositories/`). Customers have no checkout: the cart (localStorage, `src/lib/cart.ts`) builds a WhatsApp message/URL (`src/lib/whatsapp.ts`) and the order happens off-platform.
+Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `products` / `variants` tables (via `repositories/`). Customers have no checkout: the cart (localStorage, `src/lib/cart.ts`) asks `POST /v1/enquiries` (via the `/api/enquiries` proxy; server re-validates price, stock and availability, stores a non-sensitive snapshot, migration 0008) for a reference, puts it in the WhatsApp message/URL and the order happens off-platform. Staff look references up at `/admin/enquiries`.
 
 ### Backend
 - `main.py` `create_app()` wires CORS (`ALLOWED_ORIGINS`, comma-separated), `RateLimitMiddleware` (separate public, admin and events limits; Redis-shared when `REDIS_URL` is set, otherwise in-process per instance), the product router, `/health/` (liveness, dependency-free) and `/ready/` (PostgreSQL ping, 503 when down).
 - PostgreSQL is required (`DATABASE_URL`; startup fails without it, `/ready/` is 503 when it is down). Schema is Alembic (`migrations/`). SQL lives in `repositories/{products,staged,jobs}.py`, which take an `AsyncSession` and never commit; routes and the worker own transactions.
 - Optional services never gate startup: `database/redis_client.py`, `llm/` (gateway) and `workers/` (arq) degrade to disabled when unconfigured or unreachable (PostgreSQL, by contrast, is required). New endpoints live under `/v1` (events, admin jobs). Flat package layout is intentional (architecture doc 3.2).
-- `routes/product_routes.py` has a public router plus a nested `admin_router` (`/products/admin/...`) guarded by `security/admin_auth.require_admin_api_key`, which does a constant-time `X-Admin-Key` comparison and returns 503 if `ADMIN_API_KEY` is unset.
+- Admin routes (`/products/admin/...`, ingestion, `/v1/admin/jobs`, `/v1/admin/llm/models`, `/v1/admin/{auth,accounts,audit}`) are guarded by `security/admin_auth.require_permission` (`require_admin` derives read/write from the HTTP method). Credentials: `X-Admin-Session` (opaque server-side session of an individual account) or, only inside its expiry window, the legacy `X-Admin-Key`. Roles `viewer` (read), `editor` (+write), `owner` (+`accounts:manage`, `audit:read`, `platform:operate`). Every authorised mutation is written to `audit_log` *before* the handler runs (audit failure => 503, no mutation) and finalised to success/failure; denials are audited too. Accounts live in `admin_accounts` (scrypt password hashes, `security/passwords.py`) and `admin_sessions` (only the SHA-256 of the token is stored); migration 0007.
 - Public visibility means `is_active=True` **and** `status=="active"`. Admin "delete" is a soft delete (archive).
 - `POST /v1/search` `{q, limit<=50, cursor}` is read-only catalogue search (public rate limit, exempted from the non-GET admin bucket in `security/rate_limit.py`). `catalog/vocab.yaml` is the reviewed English/Urdu/Roman Urdu vocabulary; `catalog/query.py` parses it deterministically (no LLM) into hard constraints; `catalog/search.py` matches them exactly on one active variant (never relaxed; unknown colour/material never matches). Results are newest first with the house `(created_at, id)` keyset cursor. PostgreSQL narrows candidates (`repositories.products.search_batch`, a conservative superset) and the matcher verifies at most 2000 rows per request, so a page can be short while `next_cursor` is set: keep paging until it is null. Unrecognised words must appear as whole words in the product text; there is no relevance ranking yet.
 - IDs are UUIDs, exposed as opaque strings under the unchanged `_id` key. Pagination is keyset on `(created_at, id)` descending with opaque, checksummed cursors (`utils/pagination.py`; malformed or tampered cursors are a 400). List responses are `{items, next_cursor}`.
 
 ### Frontend
 - `src/lib/api.ts` is the only public-API client. `mapBackendProduct` defensively normalizes several backend/legacy ("Quill") shapes (`variants`/`variations`, numeric vs `{amount, currency}` price, and so on) into the storefront `Product` type in `src/types/types.ts`. Shape changes on the backend usually need a matching change here.
-- **Admin auth (security-sensitive):** `ADMIN_API_KEY` is a server-only env var and must never be `NEXT_PUBLIC_`.
-  - `POST /api/admin/session` checks the submitted key and sets an HMAC-signed `es_admin_session` cookie (`src/lib/admin-session.ts`, 8h TTL, signed with `ADMIN_API_KEY`).
-  - `app/admin/(shell)/layout.tsx` redirects to `/admin/login` without a valid session.
-  - Browser admin calls go to Next route handlers under `src/app/api/admin/products/...`, which call `proxyAdminRequest` (`src/lib/admin-backend.ts`). It verifies the session cookie, enforces a same-origin check for non-GET methods, then forwards to the backend with the `X-Admin-Key` header.
-  - New admin endpoints should follow this proxy pattern. Never call the backend admin routes from client code.
+- **Admin auth (security-sensitive):** individual accounts, not a shared key. The browser never calls backend admin routes and never holds a backend credential other than the opaque session token in an HttpOnly cookie.
+  - `POST /api/admin/session` takes `{email, password}`, same-origin and JSON only, with a per-process login throttle (`admin-login-throttle.ts`); it forwards to the backend `POST /v1/admin/auth/login` and stores the returned opaque token (`es1.` prefix, 8h default TTL, `ADMIN_SESSION_TTL_SECONDS`) in the `es_admin_session` cookie (`src/lib/admin-session.ts`). The cookie is not signed or verifiable by the frontend; the backend checks expiry, revocation and account status on every call. `DELETE` revokes the session server-side.
+  - `app/admin/(shell)/layout.tsx` redirects to `/admin/login` unless the backend (`/v1/admin/auth/me`) accepts the session.
+  - Browser admin calls go to Next route handlers under `src/app/api/admin/{products,ingestion}/...`, which call `proxyAdminRequest` (`src/lib/admin-backend.ts`). It reads the cookie, enforces a same-origin check for non-GET methods, then forwards to the backend with `X-Admin-Session`. A backend 401 clears the cookie. The proxy never sends `X-Admin-Key`.
+  - New admin endpoints should follow this proxy pattern and depend on `require_permission(...)` so they are role-checked and audited. Never call the backend admin routes from client code.
+  - First admin: after `alembic upgrade head`, run `python scripts/admin_accounts.py bootstrap-owner --email you@example.com` from `apps/backend` (password from `ADMIN_ACCOUNT_PASSWORD` or a prompt; idempotent; no default credential). `reset-password` is the recovery path. Further accounts are created by an owner through `/v1/admin/accounts`.
+  - **Legacy fallback:** `ADMIN_API_KEY` (server-only, never `NEXT_PUBLIC_`) via `X-Admin-Key` is honoured only while `ADMIN_LEGACY_KEY_EXPIRES_AT` (ISO 8601 with a UTC offset) is a future instant; empty, naive or past means rejected, with no redeploy needed to close it. It acts as `editor` plus `platform:operate`, cannot manage accounts or read the audit log, and is audited as actor `legacy-shared-key`. The backend prints a startup warning while it is open. Plan to retire it: leave both variables empty once accounts exist.
 - Next config sets `output: "standalone"`, strict security headers, and a CSP in `next.config.ts`. New external origins (scripts, connect targets) must be allowed there.
 - Frontend probes: `/api/health`, `/api/ready`.
+
+## Git Branching, Integration and Release Policy
+
+Mandatory for every session. Full detail: `docs/RELEASE_WORKFLOW.md`.
+
+```text
+feature/* fix/* ai/* docs/* refactor/* test/* infra/*
+        -> staging-integration  (development source of truth)
+        -> staging              (release-candidate source of truth)
+        -> main                 (production source of truth)
+```
+
+**Never assume `main` is the base for new feature development.** Exactly three permanent branches exist: `staging-integration`, `staging`, `main`. Never delete them, never force-push them, never reset or recreate `staging-integration` from `main`.
+
+### When asked to implement a feature or fix
+1. `git fetch --prune`; identify the current branch and worktree (use a worktree if the main checkout has uncommitted work; never bare `git stash`).
+2. Base on the latest `origin/staging-integration` and create a short-lived, meaningfully named branch (`feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`).
+3. Implement, run the relevant tests (frontend lint/typecheck/test, backend `pytest`, `-m integration` when the DB layer or migrations change).
+4. Commit with conventional prefixes (no Co-Authored-By or attribution trailers), push the branch.
+5. Open a PR targeting `staging-integration`; squash merge is the only merge method the repo allows. Never target `main` unless the user explicitly requests a production promotion.
+6. Do not bypass staging for normal releases. Do not deploy to production, modify production databases, or run migrations against shared environments without explicit approval.
+7. Do not force-push shared branches. Do not delete active development branches or unique unfinished work; delete completed branches only after their commits are reachable from `staging-integration` and nothing depends on them.
+8. Keep documentation in sync with architectural changes.
+
+### When asked to promote to staging
+Compare `staging-integration` with `staging` (`git log origin/staging..origin/staging-integration`), pick a green release-candidate SHA, check CI, open a PR targeting `staging`, and record the candidate SHA in the PR. Do not involve `main`. Fixes found in staging are made on `staging-integration` first.
+
+### When asked to promote to production
+Use only a verified `staging` SHA. Verify CI and QA evidence, review migrations and the rollback procedure, ask for explicit production approval, then promote through a PR to `main`. Never deploy silently.
+
+### Hotfixes
+`hotfix/<name>` from the latest `main`; explicit approval before merging; then carry the same fix into `staging-integration` and `staging` (cherry-pick; do not promote unrelated unfinished work).
+
+### Branch cleanup
+Audit merged branches periodically (`git branch -r --merged origin/staging-integration`). Delete obsolete temporary branches non-forcibly when they have no unique commits, open PRs, worktrees or deployment references. Preserve unmerged unique work. Never rewrite history. Never delete tags.
+
+`staging-integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
 
 ## Conventions
 

@@ -13,7 +13,9 @@ from embeddings.provider import EmbeddingEvalError
 from embeddings.providers.local_e5 import DIMENSION, MODEL, LocalE5EmbeddingProvider
 from search.providers import EmbeddingLimits, EmbeddingProvider, NonRetryableEmbeddingError
 
-LOCAL_ENVIRONMENTS = frozenset({"development", "dev", "local", "test"})
+# Staging is explicitly opt-in for the isolated E5 rehearsal. Production and unknown
+# environments remain refused; the staging image carries the pinned model offline.
+LOCAL_ENVIRONMENTS = frozenset({"development", "dev", "local", "test", "staging"})
 _loaded: dict[tuple[str, str], LocalE5EmbeddingProvider] = {}   # one model load per process; failures are not cached
 
 

@@ -86,7 +86,7 @@ FastAPI Product API (apps/backend)
    v
 PostgreSQL
 
-Admin write operations are authenticated with X-Admin-Key.
+Admin operations are authenticated per individual account: the Next.js server signs the admin in and forwards an opaque `X-Admin-Session` token; the browser never calls the backend admin routes. Mutations are role-checked and audited.
 Customer order completion happens through WhatsApp handoff from the storefront.
 ```
 
@@ -189,9 +189,12 @@ Backend environment variables:
 |---|---|---|
 | `DATABASE_URL` | **Required.** PostgreSQL connection string (run `alembic upgrade head` first) | `postgresql+asyncpg://elegance_app:...@localhost:5432/elegance_shawls` |
 | `ALLOWED_ORIGINS` | Comma-separated allowed storefront origins | `http://localhost:3000` |
-| `ADMIN_API_KEY` | Secret required for authenticated admin writes | `replace-with-a-long-random-secret` |
+| `ADMIN_API_KEY` | **Legacy** shared key (`X-Admin-Key`); ignored unless `ADMIN_LEGACY_KEY_EXPIRES_AT` is a future instant. Leave empty once admin accounts exist | empty |
+| `ADMIN_LEGACY_KEY_EXPIRES_AT` | ISO 8601 instant with offset after which the legacy key stops working (no redeploy needed) | `2026-12-31T00:00:00+00:00` |
+| `ADMIN_SESSION_TTL_SECONDS`, `ADMIN_LOGIN_MAX_FAILURES`, `ADMIN_LOGIN_LOCKOUT_SECONDS` | Admin session lifetime (8h), failed sign-ins before lockout (5) and lockout length (15 min) | `28800`, `5`, `900` |
 | `ENVIRONMENT` | Runtime environment label | `development` |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE` | Public route request limit | `120` |
+| `ASSISTANT_CATALOGUE` | `true` makes `/v1/assistant/stream` answer from the live catalogue (parser + search); default is the scripted demo | `false` |
 | `ADMIN_RATE_LIMIT_PER_MINUTE` | Admin route request limit | `60` |
 
 ### 3) Start the backend
@@ -246,6 +249,27 @@ pytest -q
 python -m compileall -q .
 ```
 
+## One-command local store
+
+From `apps/backend` with the venv active and `npm ci` done in `apps/frontend`:
+
+```bash
+ADMIN_ACCOUNT_PASSWORD='choose-a-long-passphrase' bash scripts/dev_local.sh
+```
+
+Set `LOCAL_ENV_FILE=/path/to/apps/backend/.env` to also load provider keys, `LLM_CHAIN_DEFAULT` (turns on LLM wording) and the `CUSTOMER_AUTH_*` Google values (the frontend client id is taken from `CUSTOMER_AUTH_AUDIENCE`).
+
+Starts a pgvector Postgres container (data kept in a docker volume), runs migrations, creates the owner account (`owner@elegance.local`), seeds a synthetic 36-product catalogue (`scripts/seed_local.py`, development only), then runs the API on :8000 (CORS allows `localhost`/`127.0.0.1` on :3000 and :3001, because Next moves to 3001 when 3000 is busy) and the storefront with the assistant enabled (`NEXT_PUBLIC_ASSISTANT_ENABLED=1`).
+
+### Semantic search, assistant wording, voice and customer sign-in (all optional)
+
+- **Semantic search.** `pip install -r requirements-local-e5.txt` (CPU torch first, see the file), `python scripts/fetch_e5_model.py`, then `dev_local.sh` embeds the catalogue and `/v1/search` and the assistant rank with `intfloat/multilingual-e5-base` (keyword search stays the fallback). Choice and eval numbers: `docs/qa/local-e5-evaluation-manifest.md` on branch `ai/local-e5-v2-evidence` (recall@10 0.954; Roman Urdu 0.892 on that small, easy set). A larger set (`evals/roman_urdu_retrieval_eval.py`, 362 labelled English / Roman Urdu / Urdu queries, synthetic and unreviewed) puts raw E5 at 0.57 recall@10 on Roman Urdu, keyword search at 0.78, and the real pipeline (query parser, then colour filter, then E5) at 0.94. Sets written after tuning started score 0.94 and 0.89; the first time the weak cases (no product word, misspellings) were scored on queries not yet seen, the pipeline got 0.70, so expect 0.7-0.9 on real traffic, not 0.94. Off-topic queries (no shopping word) keep semantic neighbours only within `SEMANTIC_MAX_DISTANCE` (default 0.18); 0% of the off-topic probes returned products. Misspelt product, fabric and season words are corrected as search terms only; a misspelt colour is never turned into a filter.
+- **LLM wording.** `ASSISTANT_LLM=true` plus `LLM_CHAIN_DEFAULT` (for example `groq/...`, `gemini/...`, `ollama/qwen2.5`) and that provider's key. The model only writes the reply text; products, prices and cart suggestions still come from the database and the action kernel. Any failure falls back to fixed sentences. Outside `ENVIRONMENT=development` the assistant sends customer text only to `LLM_PRODUCTION_CHAIN` (no-training providers; free tiers such as Groq/Gemini free are refused), after scrubbing emails, URLs and long numbers; with no such chain it silently uses the fixed sentences. In development the free `LLM_CHAIN_DEFAULT` is allowed so you can try real models.
+- **Voice.** The Speak button uses the browser's speech recognition (Chrome sends audio to its speech service) and only fills the message box. Spoken queries pass the voice bridge: uncertain or negated speech asks the customer to repeat. Urdu-script speech is not parsed yet, so use English or Roman Urdu wording.
+- **Assistant UI.** The storefront shows a "Shopping concierge" panel (launcher at the bottom right, full-screen on mobile; `NEXT_PUBLIC_ASSISTANT_ENABLED=1`; hidden on `/admin` and `/cart`). Answers come from the real backend stream; each product card shows its picture, colour and price, links to the product, and has an "Add to cart" that asks first ("Yes, add") and is checked on the server again before the cart changes. The design comes from the `feat/elegance-assistant-ui-ai-sdk-clean` preview, rebuilt on this project's validated stream (no AI SDK dependency).
+- **Memory in the assistant.** For a signed-in customer who opted in, saved `favourite_colour` and `budget_max_pkr` only re-order results the assistant already found (never filter), and it says so ("Using your saved preference ..."). A colour named in the query wins. The assistant saves nothing itself: only an explicit "remember ..." / "yaad rakho ..." produces a Save card, and the memory API still applies consent, validation and audit. Saved values enter an LLM prompt only if every model in the personal chain is declared `no_training` or `self_hosted` in `LLM_PROVIDER_TRAINING_POLICIES` (and then via `LLM_PRODUCTION_CHAIN`); otherwise they stay out.
+- **Customer sign-in and memory.** Create a Google OAuth web client, set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and the five `CUSTOMER_AUTH_*` values in `apps/backend/.env.example`; `/account` then offers sign-in and leads to `/memory`.
+
 ## Local AI platform services (optional)
 
 PostgreSQL 17 + pgvector, Redis and the arq worker run from `compose.ai.yaml` for local development only (internal network, no published ports; the production stack is `compose.yaml`).
@@ -294,7 +318,7 @@ The compose stack expects these values:
 - `SITE_URL`
 - `API_URL`
 - `WHATSAPP_NUMBER`
-- `ADMIN_API_KEY`
+- `ADMIN_API_KEY` (still required by `compose.yaml`; it is only the legacy fallback)
 - `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD`, `POSTGRES_BACKUP_PASSWORD` (see `.env.example`; the backend gets `DATABASE_URL` from them)
 
 ### Typical flow
@@ -327,7 +351,8 @@ CI definition:
 ## Security notes
 
 - Never commit `.env` files or real credentials
-- Treat `ADMIN_API_KEY` as a production secret and rotate it if exposed
+- Admins sign in with individual accounts (scrypt password hashes, opaque server-side sessions, roles `viewer`/`editor`/`owner`, durable audit log). Create the first owner with `python scripts/admin_accounts.py bootstrap-owner --email you@example.com` from `apps/backend` after `alembic upgrade head` (see `DEPLOYMENT.md`)
+- `ADMIN_API_KEY` is a legacy, expiring fallback: treat it as a production secret, rotate it if exposed, and retire it by leaving it and `ADMIN_LEGACY_KEY_EXPIRES_AT` empty once accounts exist
 - Keep PostgreSQL private (internal network, no published port) and use the least-privilege application role
 - Restrict `ALLOWED_ORIGINS` to exact HTTPS origins
 - Do not place credentials in screenshots, logs, tickets, or browser-delivered code

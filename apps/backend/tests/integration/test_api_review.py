@@ -64,9 +64,12 @@ def test_every_ingestion_route_requires_admin_auth(env):
         assert getattr(env.client, method)(url, headers={"X-Admin-Key": "wrong"}, **kw).status_code == 401, url
 
 
-def test_admin_api_unconfigured_returns_503(env, monkeypatch):
+def test_shared_key_is_refused_when_unset_or_its_window_is_closed(env, monkeypatch):
     monkeypatch.setattr(settings, "admin_api_key", "")
-    assert env.client.get("/products/admin/ingestion/staged", headers=H).status_code == 503
+    assert env.client.get("/products/admin/ingestion/staged", headers=H).status_code == 401
+    monkeypatch.setattr(settings, "admin_api_key", H["X-Admin-Key"])
+    monkeypatch.setattr(settings, "admin_legacy_key_expires_at", "")
+    assert env.client.get("/products/admin/ingestion/staged", headers=H).status_code == 401
 
 
 def test_staged_product_is_listed_but_never_public(env):

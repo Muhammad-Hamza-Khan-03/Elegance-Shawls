@@ -30,7 +30,7 @@ async def on_shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [sample_job, purge_events_job, refresh_llm_models_job, run_enrichment_job]
+    functions = [sample_job, purge_events_job, refresh_llm_models_job, run_enrichment_job]   # run_embedding_job is registered below (its own queue)
     # Discovery is advisory and bounded; worker remains the only scheduler.
     cron_jobs = [cron(purge_events_job, hour=3, minute=17), cron(refresh_llm_models_job, hour=4, minute=17)]
     queue_name = settings.worker_queue

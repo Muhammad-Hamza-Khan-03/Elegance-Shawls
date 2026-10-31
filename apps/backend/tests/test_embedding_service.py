@@ -48,7 +48,7 @@ def test_migration_and_model_agree_on_width_and_there_is_one_head():
     assert module.DIMENSIONS == EMBEDDING_DIMENSIONS and module.down_revision == "0008"
     config = Config(str(BACKEND / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND / "migrations"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["0009"]
+    assert len(ScriptDirectory.from_config(config).get_heads()) == 1   # one linear chain; 0009 is no longer the head (our 0010-0015 follow it)
 
 
 def test_the_embedding_worker_has_its_own_bounded_queue_and_no_startup_or_cron_work():

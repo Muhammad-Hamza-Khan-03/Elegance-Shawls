@@ -1,4 +1,4 @@
-"""Explicit eval allowlist and credentials. Reads only EMBEDDING_EVAL_* variables, never the chat/LLM settings."""
+"""Explicit eval allowlist and credentials. Reads only EMBEDDING_EVAL_* variables (plus OPENAI_API_KEY for openai), never the chat/LLM settings."""
 import os
 import re
 from dataclasses import dataclass, field
@@ -7,11 +7,14 @@ from typing import Mapping
 from .provider import ConfigError
 
 ALLOWLIST_VAR = "EMBEDDING_EVAL_ALLOWED_MODELS"
-PROVIDERS = ("gemini", "groq")
+PROVIDERS = ("gemini", "groq", "openai")
+OPENAI_ALLOWED = "text-embedding-3-small"  # the only OpenAI entry the allowlist accepts
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def _key_var(provider: str) -> str:
+    if provider == "openai":
+        return "OPENAI_API_KEY"  # the one eval credential read outside EMBEDDING_EVAL_*
     return f"EMBEDDING_EVAL_{provider.upper()}_API_KEY"
 
 
@@ -30,7 +33,9 @@ def parse_allowlist(raw: str | None) -> frozenset[tuple[str, str]]:
     for item in raw.split(","):
         provider, sep, model = item.strip().partition("/")
         if not sep or provider not in PROVIDERS or not _MODEL.fullmatch(model):
-            raise ConfigError(f"{ALLOWLIST_VAR} entries must be gemini/<model> or groq/<model>")
+            raise ConfigError(f"{ALLOWLIST_VAR} entries must be gemini/<model>, groq/<model> or openai/{OPENAI_ALLOWED}")
+        if provider == "openai" and model != OPENAI_ALLOWED:
+            raise ConfigError(f"only openai/{OPENAI_ALLOWED} may be allowlisted")
         entries.append((provider, model))
     if len(set(entries)) != len(entries):
         raise ConfigError(f"{ALLOWLIST_VAR} holds duplicate entries")
