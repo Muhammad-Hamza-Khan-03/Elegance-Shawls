@@ -20,6 +20,14 @@ const clearCookie = (response: NextResponse) => {
 
 const errorResponse = (detail: string, status: number) => NextResponse.json({ detail }, { status });
 
+export async function GET(request: Request) {
+  const target = backend('/v1/customer/auth/me');
+  const token = readCustomerSession(request);
+  if (!target || !looksLikeCustomerSessionToken(token)) return NextResponse.json({ authenticated: false }, { headers: { 'cache-control': 'no-store' } });
+  const upstream = await fetch(target, { headers: { 'X-Customer-Session': token }, cache: 'no-store' }).catch(() => null);
+  return NextResponse.json({ authenticated: upstream?.ok === true }, { headers: { 'cache-control': 'no-store' } });
+}
+
 export async function POST(request: Request) {
   const target = backend('/v1/customer/auth/exchange');
   if (!target) return errorResponse('Customer sign-in is not configured.', 503);

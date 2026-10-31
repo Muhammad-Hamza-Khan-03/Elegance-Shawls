@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DELETE, POST } from './route';
+import { DELETE, GET, POST } from './route';
 import { CUSTOMER_SESSION_COOKIE } from '@/lib/customer-session';
 
 const ORIGIN = 'https://store.example.invalid';
@@ -180,5 +180,26 @@ describe('customer session route', () => {
     const crossOrigin = await DELETE(signOutRequest(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`, 'https://evil.example.invalid'));
     expect(crossOrigin.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('GET (is this browser signed in?)', () => {
+    const me = (cookie?: string) => new Request(`${ORIGIN}/api/customer/session`, { headers: cookie ? { cookie } : {} });
+
+    it('asks the backend with the session header and reports only a boolean', async () => {
+      fetchMock.mockResolvedValue(json({ authenticated: true, expires_at: expiresAt }));
+      const res = await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`));
+      expect(await res.json()).toEqual({ authenticated: true });
+      expect(fetchMock.mock.calls[0][0]).toBe(`${BACKEND}/v1/customer/auth/me`);
+      expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'X-Customer-Session': SESSION_TOKEN });
+    });
+
+    it('is false without a cookie (no upstream call), for a rejected session, and when the backend is down', async () => {
+      expect(await (await GET(me())).json()).toEqual({ authenticated: false });
+      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockResolvedValueOnce(json({ detail: 'x' }, 401));
+      expect(await (await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`))).json()).toEqual({ authenticated: false });
+      fetchMock.mockRejectedValueOnce(new Error('down'));
+      expect(await (await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`))).json()).toEqual({ authenticated: false });
+    });
   });
 });

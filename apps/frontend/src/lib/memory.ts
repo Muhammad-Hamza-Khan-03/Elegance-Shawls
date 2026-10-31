@@ -16,10 +16,10 @@ export type MemoryItem = {
 };
 
 export type Consent = { granted: boolean; policy_version: string; changed_at: string | null };
-export type MemoryApiError = Error & { status?: number };
+export type MemoryApiError = Error & { status?: number; reason?: string };
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`/v1/me/memory${path}`, {
+  const response = await fetch(`/api/customer/memory${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     cache: 'no-store',
@@ -27,6 +27,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   if (!response.ok) {
     const error = new Error(response.status === 401 ? 'Sign in is required to manage memory.' : 'Memory request failed.') as MemoryApiError;
     error.status = response.status;
+    error.reason = (await response.json().catch(() => null))?.reason;
     throw error;
   }
   return response.status === 204 ? (undefined as T) : response.json();
@@ -36,6 +37,10 @@ export const memoryApi = {
   getConsent: () => request<Consent>('/consent'),
   setConsent: (granted: boolean) => request<Consent>('/consent', { method: 'PUT', body: JSON.stringify({ granted }) }),
   list: () => request<{ items: MemoryItem[] }>(''),
+  create: (item: { category: MemoryItem['category']; key: string; value: string; reason?: string }) => request<MemoryItem>('', {
+    method: 'POST',
+    body: JSON.stringify({ ...item, source: 'memory_page', idempotency_key: `idem_${crypto.randomUUID().replace(/-/g, '')}` }),
+  }),
   get: (id: string) => request<MemoryItem>(`/${encodeURIComponent(id)}`),
   update: (id: string, value?: string, reason?: string) => request<MemoryItem>(`/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify({ ...(value !== undefined ? { value } : {}), ...(reason !== undefined ? { reason } : {}) }),

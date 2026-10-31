@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from configuration.config import settings
@@ -61,6 +62,12 @@ async def _revoke(session: AsyncSession, work):
     except BaseException:
         await session.rollback()
         raise
+
+
+@router.get("/me")
+async def me(principal: CustomerPrincipal = Depends(current_principal)):
+    """Is this session live? Answers only yes (with its expiry); 401 otherwise. No identity or profile data is returned."""
+    return JSONResponse({"authenticated": True, "expires_at": principal.expires_at.isoformat()}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/logout", status_code=204)

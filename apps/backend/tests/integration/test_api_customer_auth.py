@@ -204,3 +204,19 @@ def test_admin_credentials_do_not_authenticate_customers(env):
     assert env.client.get(MEMORY, headers={"X-Admin-Key": "test-admin-key-that-is-long-enough", "X-Admin-Session": "es1.x"}).status_code == 401
     t = login(env)
     assert env.client.get("/v1/admin/accounts", headers=bearer(t)).status_code == 401
+
+
+# ---- me ("is this session live?") -------------------------------------------------------------------
+def test_me_reports_a_live_session_without_any_identity_data_and_dies_with_logout(env):
+    t = login(env)
+    r = env.client.get(f"{URL}/me", headers=bearer(t))
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    assert set(r.json()) == {"authenticated", "expires_at"} and r.json()["authenticated"] is True
+    assert "subject-123" not in r.text
+    assert env.client.post(f"{URL}/logout", headers=bearer(t)).status_code == 204
+    assert env.client.get(f"{URL}/me", headers=bearer(t)).status_code == 401
+
+
+def test_me_refuses_missing_and_unknown_sessions_alike(env):
+    assert env.client.get(f"{URL}/me").status_code == 401
+    assert env.client.get(f"{URL}/me", headers=bearer("cs1." + "x" * 43)).status_code == 401
