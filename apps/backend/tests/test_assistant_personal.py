@@ -1,6 +1,6 @@
 import pytest
 
-from assistant.personal import Preferences, rank, remember_request
+from assistant.personal import Preferences, is_recall, rank, recall_text, remember_request, taste_offer
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -17,6 +17,39 @@ def test_explicit_remember_requests_are_parsed_deterministically(text, expected)
 @pytest.mark.parametrize("text", ["I like brown", "brown shawl under 4000", "mujhe kala pasand hai", "do not forget", "show me a shawl"])
 def test_taste_or_search_without_an_explicit_remember_is_not_a_memory_request(text):
     assert remember_request(text) is None
+
+
+ON = Preferences("on", {})
+
+
+@pytest.mark.parametrize("text,keys", [("I like pink", {"favourite_colour"}), ("I like shawls", {"preferred_category"}), ("mujhe kala pasand hai", {"favourite_colour"}),
+                                        ("i love green stoles", {"favourite_colour", "preferred_category"}), ("I prefer scarves under 3000", {"preferred_category", "budget_max_pkr"})])
+def test_a_stated_taste_yields_offers_only_when_opted_in(text, keys):
+    assert {o["key"] for o in taste_offer(text, ON)} == keys
+    assert taste_offer(text, Preferences("off", {})) == [] and taste_offer(text, Preferences("anonymous", {})) == []
+
+
+@pytest.mark.parametrize("text", ["pink shawl dikhao", "show me green stoles", "what do I like", "hello"])
+def test_searches_and_questions_are_not_offered(text):
+    assert taste_offer(text, ON) == []
+
+
+@pytest.mark.parametrize("text", ["what do I like?", "which items are my fav?", "what have you saved", "mujhe kya pasand hai", "mere pasand kya hai", "what do you remember about me"])
+def test_recall_questions_are_recognised(text):
+    assert is_recall(text)
+
+
+@pytest.mark.parametrize("text", ["I like pink", "show me shawls", "remember I like brown"])
+def test_other_messages_are_not_recall(text):
+    assert not is_recall(text)
+
+
+def test_recall_text_covers_every_state():
+    assert "sign in" in recall_text(Preferences("anonymous", {}))
+    assert "off" in recall_text(Preferences("off", {}))
+    assert "not saved anything" in recall_text(ON)
+    both = recall_text(Preferences("on", {}, (("cloth", "pashmina"), ("favourite_colour", "pink"))))
+    assert "cloth: pashmina" in both and "favourite colour: pink" in both
 
 
 def product(name, *variants):

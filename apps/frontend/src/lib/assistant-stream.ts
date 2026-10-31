@@ -8,7 +8,7 @@ export const REASONS = [
   'variant_not_found', 'variant_unavailable', 'currency_mismatch', 'stale_price', 'out_of_stock', 'insufficient_stock', 'invalid_state',
 ] as const;
 export const ERRORS = ['provider_error', 'provider_malformed', 'provider_overrun', 'invalid_stream', 'stream_interrupted', 'cancelled', 'unavailable'] as const;
-export const MEMORY_KEYS = ['favourite_colour', 'budget_max_pkr'] as const;
+export const MEMORY_KEYS = ['favourite_colour', 'budget_max_pkr', 'preferred_category'] as const;
 export const MAX_FRAME_BYTES = 16_384;
 const KEY = /^idem_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^[A-Za-z0-9_.:-]{1,128}$/;

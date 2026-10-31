@@ -69,7 +69,7 @@ function ConfirmAction({ item, sessionId, summary }: { item: Proposal; sessionId
   );
 }
 
-const MEMORY_LABEL: Record<string, string> = { favourite_colour: 'favourite colour', budget_max_pkr: 'budget (PKR, at most)' };
+const MEMORY_LABEL: Record<string, string> = { favourite_colour: 'favourite colour', budget_max_pkr: 'budget (PKR, at most)', preferred_category: 'preferred category' };
 
 // A question, not an action: nothing is saved until the customer presses Save, and the memory API re-applies consent and validation.
 function RememberCard({ item }: { item: Extract<AssistantEvent, { type: 'memory_suggestion' }> }) {

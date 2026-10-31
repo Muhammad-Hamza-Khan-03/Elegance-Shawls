@@ -16,7 +16,7 @@ def ok(q, **want):
 
 @pytest.mark.parametrize("q,want", [
     ("brown stole under 4000", dict(colour="brown", max_price=4000, currency="PKR", terms=("stole",))),
-    ("in stock scarves under 2,500", dict(in_stock=True, max_price=2500, terms=("scarves",))),
+    ("in stock scarves under 2,500", dict(in_stock=True, max_price=2500, terms=("scarf",))),
     ("pashmina shawl between 5000 and 9000", dict(min_price=5000, max_price=9000, terms=("pashmina", "shawl"))),
     ("stole above 3k rs", dict(min_price=3000, currency="PKR")),
     ("from 5000 to rs 9000", dict(min_price=5000, max_price=9000)),

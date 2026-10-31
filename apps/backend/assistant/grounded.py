@@ -86,6 +86,19 @@ async def _remember(prefs: personal.Preferences, asked: list[dict]) -> AsyncIter
             yield {"type": "memory_suggestion", **item}
 
 
+async def _recall(prefs: personal.Preferences) -> AsyncIterator[dict]:
+    yield {"type": "text", "delta": personal.recall_text(prefs)}   # the customer's own items, no model
+
+
+async def _with_offer(chunks: AsyncIterator[dict], offer: list[dict]) -> AsyncIterator[dict]:
+    """The normal answer first, then a Save card for a stated taste. Offering is not saving: the customer must press Save."""
+    async for chunk in chunks:
+        yield chunk
+    yield {"type": "text", "delta": "Want me to remember that? Nothing is saved until you press Save. "}
+    for item in offer:
+        yield {"type": "memory_suggestion", **item}
+
+
 async def _no_match(message: str) -> AsyncIterator[dict]:
     fallback = "I could not find a match right now. Try a different colour or budget, or browse the full collection."
     facts = ("No product in the catalogue matched this request. About the shop: it sells shawls, stoles and scarves "
@@ -149,6 +162,9 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
     prefs = await personal.load(session, principal)
     if not voice and (asked := personal.remember_request(message)) is not None:   # saving is typed, explicit and confirmed in the UI
         return _remember(prefs, asked), k.InMemoryCatalogue({})
+    if not voice and personal.is_recall(message):
+        return _recall(prefs), k.InMemoryCatalogue({})
+    offer = [] if voice else personal.taste_offer(message, prefs)
     if voice:
         heard = bridge_voice_transcript(message, provenance="browser_speech")
         intent, plan = heard.intent, heard.handoff
@@ -172,9 +188,10 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
         products, used = personal.rank(products, prefs, colour_in_query=bool(intent.colour))
     products = products[:MAX_CARDS]
     if not products:
-        return _no_match(message), k.InMemoryCatalogue({})
-    return (_cards(message, products, idempotency_key, _applied(intent), " ".join(intent.terms), (used, bool(used) and _may_share())),
-            k.InMemoryCatalogue(snapshot))
+        none = _no_match(message)
+        return (_with_offer(none, offer) if offer else none), k.InMemoryCatalogue({})
+    chunks = _cards(message, products, idempotency_key, _applied(intent), " ".join(intent.terms), (used, bool(used) and _may_share()))
+    return (_with_offer(chunks, offer) if offer else chunks), k.InMemoryCatalogue(snapshot)
 
 
 def _may_share() -> bool:

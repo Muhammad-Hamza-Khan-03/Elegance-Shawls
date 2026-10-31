@@ -18,7 +18,7 @@ from decimal import Decimal
 from repositories.products import VariantFilter
 from utils.colour_vocabulary import CANONICAL, SYNONYMS, VOCABULARY_VERSION
 
-PARSER_VERSION = 4
+PARSER_VERSION = 6
 MAX_QUERY_CHARS = 200
 MAX_TERMS = 8  # same bound hybrid_search applies; more would be silently dropped there
 MAX_PRICE = 2_147_483_647  # variants.price is a 32-bit integer (whole PKR)
@@ -48,14 +48,15 @@ STOCK_OUT = ["out of stock", "sold out", "unavailable", "stock khatam"]
 NEGATION = ["not", "no", "without", "except", "excluding", "nahi", "nahin", "bagair", "بغیر", "نہیں", "نہ"]
 ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": "stole",  # term spellings only, no category filter
            "shaal": "shawl", "chaadar": "shawl", "chadar": "shawl", "chadder": "shawl", "چادر": "shawl",
-           "stoll": "stole", "skarf": "scarf", "muffler": "scarf", "اسکارف": "scarf", "مفلر": "scarf",
+           "stoll": "stole", "skarf": "scarf", "shawls": "shawl", "stoles": "stole", "scarves": "scarf", "scarfs": "scarf",   # plurals, so the keyword half matches names
+            "muffler": "scarf", "اسکارف": "scarf", "مفلر": "scarf",
            "halka": "light", "halki": "light", "garmi": "summer", "garmiyon": "summer", "garam": "warm", "sardi": "winter",
            "sardiyon": "winter", "thand": "winter", "thandi": "winter",
            "گرم": "warm", "سردی": "winter", "سردیوں": "winter", "ہلکا": "light", "گرمی": "summer", "گرمیوں": "summer"}
 FILLER = set("or a an the in of for some something any and with me show everything all i want need looking find please "
              "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں "
              "mujhe chahiye chahiyen chahiya dikhao dikhaiye dikhayen dikha ek koi aur liye show مجھے ایک چاہیے چاہئے "
-             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch".split())
+             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch like love prefer adore really pasand favourite favorite پسند".split())
 # Words that tell us the customer is shopping even when no colour/price is named (used to trust semantic neighbours).
 SHOPPING_WORDS = (set(CANONICAL) | set(SYNONYMS) | set(LOCAL_COLOURS) | set(ALIASES.values()) | set(ALIASES) |
                   {"shawl", "shawls", "stole", "stoles", "scarf", "scarves", "wrap", "dupatta", "garam", "sardi", "sardiyon", "halka", "garmi",

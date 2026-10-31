@@ -18,7 +18,7 @@ MAX_TEXT_CHARS = 4000
 EXECUTABLE = frozenset({"add_to_cart", "start_whatsapp_enquiry"})
 SERVER_PERMISSIONS = frozenset({"catalogue:read", "cart:propose", "enquiry:initiate"})  # never taken from the client
 
-MEMORY_KEYS = frozenset({"favourite_colour", "budget_max_pkr"})  # mirrors assistant/personal.py (this module imports nothing of the app)
+MEMORY_KEYS = frozenset({"favourite_colour", "budget_max_pkr", "preferred_category"})  # mirrors assistant/personal.py (this module imports nothing of the app)
 
 DEMO_PRODUCT = "11111111-1111-4111-8111-111111111111"
 DEMO_VARIANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"

@@ -24,3 +24,9 @@ def test_roman_urdu_and_urdu_season_words_reach_the_search_as_english_terms():
     assert parse_query("kuch halka chahiye garmi ke liye").terms == ("light", "summer")
     assert parse_query("کچھ گرم چاہیے").terms == ("warm",) and not parse_query("کچھ گرم چاہیے").needs_review
     assert parse_query("kaali chaadar").colour == "black" and "shawl" in parse_query("kaali chaadar").terms
+
+
+def test_plural_product_words_become_the_singular_the_keyword_half_can_match():
+    for plural, singular in (("shawls", "shawl"), ("stoles", "stole"), ("scarves", "scarf")):
+        assert parse_query(f"pink {plural}").terms == (singular,)
+    assert parse_query("I like pink shawls").terms == ("shawl",)       # "like" is filler, not a search word

@@ -116,9 +116,46 @@ def test_remember_proposes_the_parsed_value_and_saves_nothing(world):
     assert {d["key"] for e, d in both if e == "memory_suggestion"} == {"favourite_colour", "budget_max_pkr"}
 
 
-def test_a_statement_of_taste_without_remember_is_never_proposed(world):
+def test_a_stated_taste_is_offered_after_the_results_but_never_saved(world):
     world.sign_in(); world.remember()
-    assert not [e for e, _ in ask(world, "I like brown shawls") if e == "memory_suggestion"]
+    events = ask(world, "I like brown shawls")
+    kinds = [e for e, _ in events]
+    assert "product" in kinds and kinds.index("memory_suggestion") > max(i for i, k in enumerate(kinds) if k == "product")   # results first
+    assert {(d["key"], d["value"]) for e, d in events if e == "memory_suggestion"} == {("favourite_colour", "brown"), ("preferred_category", "shawls")}
+    assert "press Save" in said(events) and world.saved() == 0
+
+
+def test_a_taste_is_not_offered_when_signed_out_memory_off_already_saved_or_just_a_search(world):
+    assert not [e for e, _ in ask(world, "I like pink") if e == "memory_suggestion"]                     # anonymous
+    world.sign_in(); world.remember(consent=False)
+    assert not [e for e, _ in ask(world, "I like pink") if e == "memory_suggestion"]                     # not opted in
+    world.remember(favourite_colour="pink")
+    assert not [e for e, _ in ask(world, "I like pink") if e == "memory_suggestion"]                     # already saved, same value
+    assert not [e for e, _ in ask(world, "pink shawl dikhao") if e == "memory_suggestion"]               # no statement of taste
+
+
+def test_what_do_i_like_is_answered_from_the_customers_own_items_without_any_model(world, monkeypatch):
+    monkeypatch.setattr(settings, "assistant_llm", True)
+    gateway = StubGateway(models=["acme/m"])
+    monkeypatch.setattr("assistant.grounded.get_gateway", lambda: gateway)
+    assert "sign in" in said(ask(world, "what do I like?")).lower()                                       # anonymous
+    world.sign_in(); world.remember(consent=False)
+    assert "memory is off" in said(ask(world, "which items are my fav?")).lower()
+    world.remember()
+    assert "not saved anything" in said(ask(world, "what do I like")).lower()
+    world.remember(favourite_colour="pink", preferred_category="shawls")
+    for question in ("what do I like?", "which items are my fav?", "mujhe kya pasand hai"):
+        text = said(ask(world, question))
+        assert "favourite colour: pink" in text and "preferred category: shawls" in text, question
+    assert gateway.prompts == [] and not names(ask(world, "what do I like?"))                             # no model, no product cards
+
+
+def test_a_preferred_category_reorders_softly(world):
+    body = {**payload("scarf-1"), "name": "Pink Scarf", "category": "scarves", "status": "active", "variants": [variant("Pink", color="Pink", price=1000, stock=3)]}
+    assert world.client.post("/products/admin/", json=body, headers=H).status_code == 201
+    world.sign_in(); world.remember(preferred_category="scarves")
+    events = ask(world, "pink")
+    assert names(events)[0] == "Pink Scarf" and "preferred category scarves" in said(events)
 
 
 def test_remember_explains_what_is_missing(world):
