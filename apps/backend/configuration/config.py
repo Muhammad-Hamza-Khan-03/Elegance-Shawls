@@ -22,6 +22,19 @@ class settings(BaseSettings):
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
 
+    # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
+    # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.
+    customer_auth_enabled: bool = False
+    customer_auth_provider: str = ""
+    customer_auth_issuer: str = ""
+    customer_auth_audience: str = ""
+    customer_auth_jwks_url: str = ""
+    customer_auth_jwks_ttl_seconds: int = 3600
+    customer_auth_jwks_min_refresh_seconds: int = 60
+    customer_session_ttl_seconds: int = 7 * 86400
+    customer_session_max_active: int = 5
+    customer_auth_rate_limit_per_minute: int = 10
+
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.
     ingestion_source_id: str = "primary"

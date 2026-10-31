@@ -92,6 +92,25 @@ class CustomerIdentity(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class CustomerSession(Base):
+    """Server-side customer session (M4). Only the SHA-256 of the opaque bearer token is stored, so a database read cannot replay one."""
+    __tablename__ = "customer_sessions"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_format"),
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        UniqueConstraint("token_hash"),
+        Index("ix_customer_sessions_customer_id_live", "customer_id", postgresql_where=text("revoked_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(Text)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
