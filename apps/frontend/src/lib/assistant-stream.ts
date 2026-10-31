@@ -13,6 +13,8 @@ export const MAX_FRAME_BYTES = 16_384;
 const KEY = /^idem_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const PROTOCOL_VERSION = 1;
+const SLUG = /^[a-z0-9][a-z0-9-]{0,200}$/;
+const IMAGE = /^https:\/\/[^\s<>"']{1,480}$/;   // https only: it feeds next/image
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export type VoiceProvenance = {
@@ -24,7 +26,7 @@ export type Decision = { outcome: 'validated' | 'rejected'; reason: (typeof REAS
 export type AssistantEvent =
   | { seq: number; type: 'start'; meta: Meta }
   | { seq: number; type: 'text'; delta: string }
-  | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null } }
+  | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null; slug?: string; image?: string; color?: string } }
   | { seq: number; type: 'proposal'; action_type: string; idempotency_key: string | null; decision: Decision; params?: Record<string, unknown> }
   | { seq: number; type: 'memory_suggestion'; key: (typeof MEMORY_KEYS)[number]; value: string }
   | { seq: number; type: 'done' }
@@ -70,7 +72,13 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
       return typeof d.delta === 'string' && d.delta ? { seq, type, delta: d.delta } : null;
     case 'product':
       return typeof d.product_id === 'string' && UUID.test(d.product_id) && typeof d.name === 'string'
-        ? { seq, type, product: { product_id: d.product_id, name: d.name, price: typeof d.price === 'number' ? d.price : null, currency: typeof d.currency === 'string' ? d.currency : null } }
+        ? { seq, type, product: {
+            product_id: d.product_id, name: d.name, price: typeof d.price === 'number' ? d.price : null, currency: typeof d.currency === 'string' ? d.currency : null,
+            // Card extras are untrusted too: a malformed one is dropped (the card still renders), never believed.
+            ...(typeof d.slug === 'string' && SLUG.test(d.slug) && { slug: d.slug }),
+            ...(typeof d.image === 'string' && IMAGE.test(d.image) && { image: d.image }),
+            ...(typeof d.color === 'string' && d.color.length > 0 && d.color.length <= 40 && { color: d.color }),
+          } }
         : null;
     case 'proposal': {
       const dec = d.decision;

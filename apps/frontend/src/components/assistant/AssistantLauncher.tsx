@@ -1,22 +1,40 @@
 'use client';
 
-import { useState } from 'react';
-import { AssistantChat } from './AssistantChat';
+import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { MessageCircle } from 'lucide-react';
+import { isAssistantEnabled, isAssistantRoute } from '@/lib/assistant/ui';
 
-// Opt-in storefront mount: renders nothing unless NEXT_PUBLIC_ASSISTANT_ENABLED=1, so the shop is unchanged until switched on.
-export function AssistantLauncher() {
+// Panel code only loads once the visitor opens it.
+const AssistantPanel = dynamic(() => import('./AssistantPanel'), { ssr: false });
+
+export const AssistantLauncher = () => {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  if (process.env.NEXT_PUBLIC_ASSISTANT_ENABLED !== '1') return null;
+  const button = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+
+  // Restore focus only after close commits, when the launcher is visible again (hidden on mobile while open).
+  useEffect(() => {
+    if (wasOpen.current && !open) button.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+
+  if (!isAssistantEnabled() || !isAssistantRoute(pathname)) return null;
+
+  const close = () => setOpen(false);
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2">
-      {open && (
-        <section aria-label="Shopping assistant" className="max-h-[70vh] w-80 overflow-y-auto rounded-lg border bg-white p-3 shadow-lg">
-          <AssistantChat context={{ page: 'storefront' }} />
-        </section>
-      )}
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="rounded-full bg-black px-4 py-2 text-sm text-white shadow-lg">
-        {open ? 'Close assistant' : 'Ask the assistant'}
+    <>
+      {open ? <AssistantPanel onClose={close} /> : null}
+      <button
+        ref={button} type="button" onClick={() => setOpen((v) => !v)}
+        aria-label={open ? 'Close shopping assistant' : 'Open shopping assistant'}
+        aria-expanded={open}
+        className={`fixed bottom-5 end-5 z-40 flex size-14 items-center justify-center rounded-full bg-[#2f241f] text-white shadow-xl motion-safe:transition-transform motion-safe:hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9a6b3f] ${open ? 'max-sm:hidden' : ''}`}
+      >
+        <MessageCircle className="size-6" aria-hidden />
       </button>
-    </div>
+    </>
   );
-}
+};

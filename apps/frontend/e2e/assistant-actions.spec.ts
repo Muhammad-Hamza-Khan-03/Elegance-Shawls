@@ -14,22 +14,27 @@ const actions = async (page: Page) => {
 
 async function ask(page: Page, text = 'Show me a shawl') {
   page.on('request', (r) => { if (r.url().endsWith('/api/assistant/stream')) sessions.set(page, r.postDataJSON().session_id); });
-  await page.goto('/e2e-assistant');
-  await page.getByLabel('Message').fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open shopping assistant' }).click();
+  await page.getByLabel('Message the shopping assistant').fill(text);
+  await page.getByLabel('Message the shopping assistant').press('Enter');
   await expect(page.getByTestId('proposal')).toHaveCount(2);
 }
 
 test('a proposal does nothing until the user confirms, then adds to the cart exactly once', async ({ page }) => {
   await ask(page);
   const before = (await actions(page)).executions;
-  await expect(page.getByText('Add Pashmina Shawl × 1 (PKR 3500 each) to your cart?')).toBeVisible();
-  expect((await actions(page)).executions).toBe(before); // proposing executed nothing
+  const card = page.getByTestId('assistant-product-card');
+  await expect(card).toContainText('Pashmina Shawl');
+  await expect(card).toContainText('Ivory · PKR 3500');
+  await card.getByRole('button', { name: 'Add to cart' }).click();               // step 1 only asks: nothing has been executed
+  await expect(page.getByText('Add 1 × Pashmina Shawl (Ivory) to your cart?')).toBeVisible();
+  expect((await actions(page)).executions).toBe(before); // proposing and asking executed nothing
   expect(await cart(page)).toEqual([]);
 
-  const confirm = page.getByRole('button', { name: 'Confirm: add to cart' });
+  const confirm = card.getByRole('button', { name: 'Yes, add' });
   await confirm.dblclick(); // a double press must still be a single action
-  await expect(page.getByTestId('action-done')).toHaveText('Added to your cart.');
+  await expect(page.getByTestId('action-done')).toContainText('Added to your cart.');
   await expect(confirm).toHaveCount(0);
   const lines = await cart(page);
   expect(lines).toHaveLength(1);
@@ -63,17 +68,21 @@ test('a confirmed enquiry shows its reference and only a human click opens the i
 test('a changed price is refused visibly, executes nothing and leaves the cart alone', async ({ page }) => {
   await ask(page, 'stale price please');
   const before = (await actions(page)).executions;
-  await page.getByRole('button', { name: 'Confirm: add to cart' }).click();
+  const card = page.getByTestId('assistant-product-card');
+  await card.getByRole('button', { name: 'Add to cart' }).click();
+  await card.getByRole('button', { name: 'Yes, add' }).click();
   await expect(page.getByTestId('action-failed')).toContainText('price changed');
   expect((await actions(page)).executions).toBe(before);
   expect(await cart(page)).toEqual([]);
-  await expect(page.getByRole('button', { name: 'Confirm: add to cart' })).toBeVisible(); // the person can retry or ask again
+  await expect(card.getByRole('button', { name: 'Add to cart' })).toBeVisible(); // the person can retry or ask again
 });
 
 test('a failing execute call shows a failure and adds nothing', async ({ page }) => {
   await page.route('**/api/assistant/actions/execute', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"down"}' }));
   await ask(page);
-  await page.getByRole('button', { name: 'Confirm: add to cart' }).click();
+  const card = page.getByTestId('assistant-product-card');
+  await card.getByRole('button', { name: 'Add to cart' }).click();
+  await card.getByRole('button', { name: 'Yes, add' }).click();
   await expect(page.getByTestId('action-failed')).toBeVisible();
   expect(await cart(page)).toEqual([]);
 });

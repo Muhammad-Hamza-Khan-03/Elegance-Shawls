@@ -70,7 +70,7 @@ def test_llm_writes_the_wording_but_cards_and_proposals_stay_database_driven(cli
     assert next(d for e, d in events if e == "text")["delta"].startswith("Ye raha")
     prompt = gateway.prompts[0][1]["content"]
     assert "Ruby Shawl (shawls): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt and "looking for, in English: shawl" in prompt
-    assert "add the first one" not in " ".join(d["delta"] for e, d in events if e == "text")  # the model, not the canned line, speaks
+    assert "add the first one" not in " ".join(d["delta"] for e, d in events if e == "text")  # the model speaks; no canned line
     assert "red shawl" in gateway.prompts[0][1]["content"] and gateway.prompts[0][0]["role"] == "system"
 
 
@@ -140,3 +140,15 @@ def test_production_without_a_no_training_chain_degrades_to_fixed_text(client, m
     with_llm(monkeypatch, LLMGateway(completion=lambda *a: (_ for _ in ()).throw(AssertionError("must not be called"))))
     events = ask(client, "red shawl under 2000 in stock")
     assert next(d for e, d in events if e == "text")["delta"] == "I found 1 that match. "
+
+
+def test_every_card_carries_its_catalogue_link_picture_and_colour_and_its_own_validated_cart_suggestion(client):
+    events = ask(client, "shawl")
+    cards = [d for e, d in events if e == "product"]
+    proposals = [d for e, d in events if e == "proposal"]
+    for card in cards:
+        assert card["slug"] and card["image"].startswith("http") and card["color"]
+    in_stock = {c["product_id"] for c in cards if c["name"] != "Rose Shawl"}                        # Rose Shawl is sold out in this fixture
+    assert len(cards) == 3 and {p["params"]["product_id"] for p in proposals} == in_stock           # one per buyable card, none invented, none for sold out
+    assert all(p["decision"]["outcome"] == "validated" for p in proposals)
+    assert len({p["idempotency_key"] for p in proposals}) == len(proposals)

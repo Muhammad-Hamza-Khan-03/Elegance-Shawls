@@ -102,5 +102,5 @@ async def catalogue_snapshot(session: AsyncSession, product_ids: list[uuid.UUID]
                                                  "is_active": product.is_active, "revision": product.revision, "variants": []})
         if variant is not None:
             entry["variants"].append({"id": str(variant.id), "is_active": variant.is_active, "price": variant.price,
-                                      "currency": variant.currency, "stock": variant.stock, "color": variant.color})
+                                      "currency": variant.currency, "stock": variant.stock, "color": variant.color, "image_url": variant.image_url})
     return out

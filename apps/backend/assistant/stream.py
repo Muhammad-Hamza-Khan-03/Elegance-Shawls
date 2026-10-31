@@ -106,8 +106,12 @@ async def stream_events(
                         terminal = ("error", {"code": "provider_malformed"})
                         break
                     v = next((v for v in p.get("variants", ()) if v.get("is_active") is True), {})
-                    yield out("product", {"product_id": pid, "name": str(p.get("name", ""))[:200], "revision": p.get("revision"),
-                                          "price": v.get("price"), "currency": v.get("currency")})
+                    card = {"product_id": pid, "name": str(p.get("name", ""))[:200], "revision": p.get("revision"),
+                            "price": v.get("price"), "currency": v.get("currency")}
+                    for field, value in (("slug", p.get("slug")), ("image", v.get("image_url")), ("color", v.get("color"))):
+                        if isinstance(value, str) and value:   # catalogue data for the card (link, picture, colour); absent for the demo catalogue
+                            card[field] = value[:500]
+                    yield out("product", card)
                 elif kind == "memory_suggestion":
                     key, value = chunk.get("key"), chunk.get("value")
                     if key not in MEMORY_KEYS or not isinstance(value, str) or not 1 <= len(value) <= 200:

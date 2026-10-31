@@ -63,7 +63,7 @@ http.createServer((request, response) => {
       response.setHeader('content-type', 'text/event-stream');
       response.end(sse([
         ['start', { protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context }],
-        ['text', { delta: 'Here is a shawl. ' }], ['product', { product_id: AP, name: 'Pashmina Shawl', revision: 1, price: 3500, currency: 'PKR' }],
+        ['text', { delta: 'Here is a shawl. ' }], ['product', { product_id: AP, name: 'Pashmina Shawl', revision: 1, price: 3500, currency: 'PKR', slug: assistantProduct.slug, image: 'https://placehold.co/600x800/d8c0a8/2f241f?text=Pashmina', color: 'Ivory' }],
         proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_enquiry', { items: [params] }), ['done', { events: 5 }],
       ]));
     });

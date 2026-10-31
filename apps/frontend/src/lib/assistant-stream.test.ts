@@ -197,3 +197,16 @@ describe('memory_suggestion', () => {
   });
 });
 
+describe('product card extras', () => {
+  const card = (extra: Record<string, unknown>) => parseFrame(fr(1, 'product', { product_id: P, name: 'Wool Shawl', price: 4500, currency: 'PKR', ...extra }).trimEnd(), { session_id: 'sess-1' });
+  it('keeps a valid slug, https image and colour', () => {
+    expect(card({ slug: 'wool-shawl', image: 'https://img.example.com/a.jpg', color: 'Brown' })).toMatchObject({ product: { slug: 'wool-shawl', image: 'https://img.example.com/a.jpg', color: 'Brown' } });
+  });
+  it('drops malformed extras but still shows the card', () => {
+    const e = card({ slug: '../admin', image: 'http://insecure.example/a.jpg', color: 'x'.repeat(41) });
+    expect(e).toMatchObject({ type: 'product', product: { name: 'Wool Shawl' } });
+    expect(Object.keys((e as { product: object }).product)).toEqual(['product_id', 'name', 'price', 'currency']);
+    expect(card({ image: 'javascript:alert(1)', slug: 5 })).toMatchObject({ product: { name: 'Wool Shawl' } });
+  });
+});
+

@@ -143,17 +143,16 @@ async def _cards(message: str, products: list[dict], idempotency_key: str, appli
         yield {"type": "text", "delta": f"Using your saved preference ({', '.join(used)}). "}   # always shown: no silent personalisation
         if share:
             facts += f"\nThe customer saved these preferences and results were ordered by them: {', '.join(used)}."
-    text, by_llm = await _wording(message, facts, f"I found {len(products)} that match. ", personal=bool(used and share))
+    text, _ = await _wording(message, facts, f"I found {len(products)} that match. ", personal=bool(used and share))
     yield {"type": "text", "delta": text}
     for product in products:
         yield {"type": "product", "product_id": product["id"]}
-    top, variant = products[0], _buyable(products[0])
-    if variant:
-        yield {"type": "proposal", "action_type": "add_to_cart", "idempotency_key": _key(idempotency_key, 1),
-               "params": {"product_id": top["id"], "variant_id": variant["id"], "quantity": 1, "expected_revision": top["revision"],
-                          "expected_unit_price": variant["price"], "currency": variant["currency"]}}
-        if not by_llm:
-            yield {"type": "text", "delta": "Say the word and I will add the first one to your cart."}
+    for n, product in enumerate(products, start=1):
+        variant = _buyable(product)
+        if variant:
+            yield {"type": "proposal", "action_type": "add_to_cart", "idempotency_key": _key(idempotency_key, n),
+                   "params": {"product_id": product["id"], "variant_id": variant["id"], "quantity": 1, "expected_revision": product["revision"],
+                              "expected_unit_price": variant["price"], "currency": variant["currency"]}}
 
 
 async def ground(session: AsyncSession, message: str, idempotency_key: str, *, voice: bool = False,
