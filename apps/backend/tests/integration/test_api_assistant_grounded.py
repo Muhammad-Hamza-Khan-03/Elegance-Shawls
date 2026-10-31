@@ -47,10 +47,11 @@ def test_no_match_says_so_and_proposes_nothing(client):
 
 class StubGateway:
     def __init__(self, text=None, fail=False):
-        self.text, self.fail, self.prompts = text, fail, []
+        self.text, self.fail, self.prompts, self.calls = text, fail, [], []
 
-    async def complete(self, messages, **_):
+    async def complete(self, messages, **kwargs):
         self.prompts.append(messages)
+        self.calls.append(kwargs)
         if self.fail:
             raise RuntimeError("all providers down")
         return type("R", (), {"text": self.text})()
@@ -68,7 +69,7 @@ def test_llm_writes_the_wording_but_cards_and_proposals_stay_database_driven(cli
     assert [d["name"] for e, d in events if e == "product"] == ["Ruby Shawl"]  # the invented product is only words
     assert next(d for e, d in events if e == "text")["delta"].startswith("Ye raha")
     prompt = gateway.prompts[0][1]["content"]
-    assert "Ruby Shawl (shawls): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt
+    assert "Ruby Shawl (shawls): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt and "looking for, in English: shawl" in prompt
     assert "add the first one" not in " ".join(d["delta"] for e, d in events if e == "text")  # the model, not the canned line, speaks
     assert "red shawl" in gateway.prompts[0][1]["content"] and gateway.prompts[0][0]["role"] == "system"
 
@@ -117,3 +118,25 @@ def test_card_price_is_the_in_stock_variant_the_cart_suggestion_uses(pg_engine_f
     card = next(d for e, d in events if e == "product")
     proposal = next(d for e, d in events if e == "proposal")
     assert card["price"] == proposal["params"]["expected_unit_price"] == 2100
+
+
+def test_outside_development_only_a_no_training_provider_is_used_and_personal_data_is_scrubbed(client, monkeypatch):
+    gateway = StubGateway("Ok.")
+    with_llm(monkeypatch, gateway)
+    ask(client, "red shawl, mail jane@example.com")
+    assert gateway.calls[-1] == {"personal": False}                       # test env is "development"
+    monkeypatch.setattr(settings, "environment", "production")
+    ask(client, "red shawl, mail jane@example.com")
+    assert gateway.calls[-1] == {"personal": True}                        # gateway then refuses free tiers
+    sent = gateway.prompts[-1][1]["content"]
+    assert "jane@example.com" not in sent and "red shawl" in sent
+
+
+def test_production_without_a_no_training_chain_degrades_to_fixed_text(client, monkeypatch):
+    from llm.gateway import LLMGateway
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "llm_chain_default", "groq/openai/gpt-oss-120b")   # free tier
+    monkeypatch.setattr(settings, "llm_production_chain", "")
+    with_llm(monkeypatch, LLMGateway(completion=lambda *a: (_ for _ in ()).throw(AssertionError("must not be called"))))
+    events = ask(client, "red shawl under 2000 in stock")
+    assert next(d for e, d in events if e == "text")["delta"] == "I found 1 that match. "

@@ -108,7 +108,7 @@ def main():
         runs = (("raw E5", raw), ("keyword", keyword_hits(q["q"], docs)), ("pipeline", ranked or []))
         for name, order in runs:
             r, rr = metrics(order, rel)
-            for cohort in (q["lang"], "HELDOUT" if q.get("heldout") else "ALL"):
+            for cohort in (q["lang"], ("HELDOUT_V3" if q.get("heldout") == "v3" else "HELDOUT") if q.get("heldout") else "ALL"):
                 agg[name][cohort].append((r, rr))
         if ranked is None:
             clarified[q["lang"]] += 1
@@ -117,7 +117,7 @@ def main():
     print(f"{'system':10}{'cohort':10}{'n':>4}{'recall@10':>11}{'MRR@10':>9}")
     result = {"cohorts": {}, "gate": {}, "clarified": dict(clarified)}
     for name in ("keyword", "raw E5", "pipeline"):
-        for cohort in ("en", "roman_ur", "ur", "mixed", "ALL", "HELDOUT"):
+        for cohort in ("en", "roman_ur", "ur", "mixed", "ALL", "HELDOUT", "HELDOUT_V3"):
             rows = agg[name].get(cohort, [])
             if rows:
                 r, rr = sum(x for x, _ in rows) / len(rows), sum(y for _, y in rows) / len(rows)

@@ -17,6 +17,7 @@ from llm.gateway import get_gateway
 from repositories.enquiries import catalogue_snapshot
 from repositories.hybrid import hybrid_search
 from semantic.local_e5 import distance_cutoff, get_embedder
+from semantic.representation import _SCRUB
 from semantic.query_parser import handoff, parse_query
 from voice.bridge import bridge_voice_transcript
 
@@ -66,9 +67,14 @@ async def _wording(message: str, facts: str, fallback: str) -> tuple[str, bool]:
     """(text, written_by_llm). LLM wording when ASSISTANT_LLM is on and a model answers; the fixed sentence otherwise (never an error)."""
     if not settings.assistant_llm:
         return fallback, False
+    # Customer text may hold personal details. Outside development it only goes to a no-training provider (LLM_PRODUCTION_CHAIN;
+    # the gateway refuses free tiers and raises when none is configured, which lands in the fallback below), after scrubbing
+    # emails, URLs and phone/order-like numbers. In development the free chain is allowed so you can try real models.
+    clean = " ".join(_SCRUB.sub(" ", message).split())
     try:
         result = await get_gateway().complete([{"role": "system", "content": SYSTEM_PROMPT},
-                                               {"role": "user", "content": f"FACTS:\n{facts}\n\nCUSTOMER MESSAGE:\n{message}"}])
+                                               {"role": "user", "content": f"FACTS:\n{facts}\n\nCUSTOMER MESSAGE:\n{clean}"}],
+                                              personal=settings.environment != "development")
     except Exception as exc:  # budget, privacy policy, timeouts, every provider down: degrade to the fixed sentence
         log.warning("assistant llm unavailable: %s", type(exc).__name__)
         return fallback, False
@@ -82,10 +88,11 @@ def _applied(intent) -> str:
     return ", ".join(p for p in parts if p) or "none"
 
 
-async def _cards(message: str, products: list[dict], idempotency_key: str, applied: str = "none") -> AsyncIterator[dict]:
+async def _cards(message: str, products: list[dict], idempotency_key: str, applied: str = "none", terms: str = "") -> AsyncIterator[dict]:
     lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
                       else f"- {p['name']} ({p.get('category', 'item')}): out of stock" for p in products)
-    facts = f"Filters the customer asked for (every product below already satisfies them): {applied}.\nMatching products:\n{lines}"
+    facts = (f"Filters the customer asked for (every product below already satisfies them): {applied}.\n"
+             f"What the customer is looking for, in English: {terms or 'not specified'}.\nMatching products:\n{lines}")
     text, by_llm = await _wording(message, facts, f"I found {len(products)} that match. ")
     yield {"type": "text", "delta": text}
     for product in products:
@@ -121,4 +128,4 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
         product["variants"].sort(key=lambda v: v is not buyable)
     if not products:
         return _no_match(message), k.InMemoryCatalogue({})
-    return _cards(message, products, idempotency_key, _applied(intent)), k.InMemoryCatalogue(snapshot)
+    return _cards(message, products, idempotency_key, _applied(intent), " ".join(intent.terms)), k.InMemoryCatalogue(snapshot)

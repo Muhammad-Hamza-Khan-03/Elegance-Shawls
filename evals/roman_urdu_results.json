@@ -2,63 +2,73 @@
   "cohorts": {
     "keyword/en": {
       "n": 42,
-      "recall10": 0.796,
-      "mrr10": 0.81
+      "recall10": 0.891,
+      "mrr10": 0.905
     },
     "keyword/roman_ur": {
-      "n": 167,
-      "recall10": 0.71,
-      "mrr10": 0.743
+      "n": 185,
+      "recall10": 0.78,
+      "mrr10": 0.811
     },
     "keyword/ur": {
-      "n": 65,
-      "recall10": 0.782,
-      "mrr10": 0.815
+      "n": 67,
+      "recall10": 0.908,
+      "mrr10": 0.94
     },
     "keyword/mixed": {
       "n": 41,
-      "recall10": 0.748,
-      "mrr10": 0.805
+      "recall10": 0.894,
+      "mrr10": 0.951
     },
     "keyword/ALL": {
       "n": 283,
-      "recall10": 0.778,
-      "mrr10": 0.813
+      "recall10": 0.894,
+      "mrr10": 0.929
     },
     "keyword/HELDOUT": {
       "n": 32,
-      "recall10": 0.414,
-      "mrr10": 0.438
+      "recall10": 0.57,
+      "mrr10": 0.594
+    },
+    "keyword/HELDOUT_V3": {
+      "n": 20,
+      "recall10": 0.4,
+      "mrr10": 0.4
     },
     "raw E5/en": {
       "n": 42,
-      "recall10": 0.955,
+      "recall10": 0.95,
       "mrr10": 0.988
     },
     "raw E5/roman_ur": {
-      "n": 167,
-      "recall10": 0.548,
-      "mrr10": 0.681
+      "n": 185,
+      "recall10": 0.568,
+      "mrr10": 0.71
     },
     "raw E5/ur": {
-      "n": 65,
-      "recall10": 0.696,
-      "mrr10": 0.818
+      "n": 67,
+      "recall10": 0.688,
+      "mrr10": 0.815
     },
     "raw E5/mixed": {
       "n": 41,
       "recall10": 0.434,
-      "mrr10": 0.635
+      "mrr10": 0.665
     },
     "raw E5/ALL": {
       "n": 283,
-      "recall10": 0.621,
-      "mrr10": 0.747
+      "recall10": 0.618,
+      "mrr10": 0.752
     },
     "raw E5/HELDOUT": {
       "n": 32,
-      "recall10": 0.588,
-      "mrr10": 0.72
+      "recall10": 0.618,
+      "mrr10": 0.812
+    },
+    "raw E5/HELDOUT_V3": {
+      "n": 20,
+      "recall10": 0.72,
+      "mrr10": 0.8
     },
     "pipeline/en": {
       "n": 42,
@@ -66,14 +76,14 @@
       "mrr10": 0.857
     },
     "pipeline/roman_ur": {
-      "n": 167,
-      "recall10": 0.93,
-      "mrr10": 0.927
+      "n": 185,
+      "recall10": 0.936,
+      "mrr10": 0.932
     },
     "pipeline/ur": {
-      "n": 65,
-      "recall10": 0.954,
-      "mrr10": 0.954
+      "n": 67,
+      "recall10": 0.955,
+      "mrr10": 0.955
     },
     "pipeline/mixed": {
       "n": 41,
@@ -87,41 +97,46 @@
     },
     "pipeline/HELDOUT": {
       "n": 32,
-      "recall10": 0.872,
-      "mrr10": 0.875
+      "recall10": 0.94,
+      "mrr10": 0.944
+    },
+    "pipeline/HELDOUT_V3": {
+      "n": 20,
+      "recall10": 0.885,
+      "mrr10": 0.874
     }
   },
   "gate": {
     "0.1": {
-      "recall": 0.932,
+      "recall": 0.931,
       "false_positive": 0.0
     },
     "0.14": {
-      "recall": 0.932,
+      "recall": 0.931,
       "false_positive": 0.0
     },
     "0.16": {
-      "recall": 0.932,
+      "recall": 0.931,
       "false_positive": 0.0
     },
     "0.18": {
-      "recall": 0.932,
+      "recall": 0.931,
       "false_positive": 0.0
     },
     "0.2": {
-      "recall": 0.932,
+      "recall": 0.935,
       "false_positive": 0.0
     },
     "0.22": {
-      "recall": 0.932,
+      "recall": 0.935,
       "false_positive": 0.15
     },
     "0.24": {
-      "recall": 0.932,
-      "false_positive": 0.6
+      "recall": 0.936,
+      "false_positive": 0.65
     },
     "1.0": {
-      "recall": 0.932,
+      "recall": 0.936,
       "false_positive": 0.9
     }
   },

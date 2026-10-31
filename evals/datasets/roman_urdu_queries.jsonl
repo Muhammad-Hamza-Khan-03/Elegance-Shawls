@@ -340,3 +340,23 @@
 {"q": "green stoll", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Green"}, "synthetic": true, "reviewed": false, "heldout": true}
 {"q": "brown wool shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
 {"q": "ثقیل گرم شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "something warm for cold weather", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kuch garam chahiye thand ke liye", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "freezing winter ke liye kuch", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "something thick and cosy", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kuch halka chahiye garmi ke liye", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "cool breathable fabric", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "hot weather ke liye kuch", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "something airy for summer evenings", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "کچھ گرم چاہیے", "lang": "ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "گرمی کے لیے کچھ ہلکا", "lang": "ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "mufflar", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "embrodiered shawl", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "silk skarff", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "pashmina shwal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "stoal chahiye", "lang": "roman_ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "scraf dikhao", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "wintr shawl", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "woolen shaal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "red muflar", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kala shwal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false, "heldout": "v3"}

@@ -7,7 +7,16 @@ cd "$(dirname "$0")/.."
 : "${ADMIN_ACCOUNT_PASSWORD:?set ADMIN_ACCOUNT_PASSWORD (12+ chars) for the local owner account}"
 # Optional: LOCAL_ENV_FILE=/path/to/apps/backend/.env supplies provider keys (GROQ_API_KEY ...), LLM_CHAIN_DEFAULT and CUSTOMER_AUTH_*.
 # Sourced first, so the local database settings below always win. Values are never printed.
-if [ -n "${LOCAL_ENV_FILE:-}" ]; then set -a; . "$LOCAL_ENV_FILE"; set +a; fi
+if [ -n "${LOCAL_ENV_FILE:-}" ]; then   # parsed as dotenv (never sourced): unquoted values with spaces are fine
+  eval "$(python - "$LOCAL_ENV_FILE" <<'PY'
+import shlex, sys
+from dotenv import dotenv_values
+for key, value in dotenv_values(sys.argv[1]).items():
+    if value is not None:
+        print(f"export {key}={shlex.quote(value)}")
+PY
+)"
+fi
 export ADMIN_EMAIL="${ADMIN_EMAIL:-owner@elegance.local}"
 export DATABASE_URL='postgresql+asyncpg://elegance:local-dev-only@127.0.0.1:55432/elegance_shawls'
 export ENVIRONMENT=development ALLOWED_ORIGINS=http://localhost:3000 ASSISTANT_CATALOGUE=true

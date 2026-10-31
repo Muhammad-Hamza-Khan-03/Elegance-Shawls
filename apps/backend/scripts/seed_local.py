@@ -21,6 +21,9 @@ from repositories import Conflict, products as repo  # noqa: E402
 KINDS = [("shawls", "Shawl", "Pashmina blend", "70 x 200 cm"), ("shawls", "Wool Shawl", "Merino wool", "100 x 200 cm"),
          ("stoles", "Stole", "Silk blend", "50 x 180 cm"), ("scarves", "Scarf", "Cotton modal", "70 x 180 cm")]
 COLOURS = ["Red", "Blue", "Brown", "Gray", "Black", "Green", "Camel", "Maroon", "Beige", "Pink"]
+# What each fabric is actually for, so descriptions carry real season/warmth signal instead of "warm" on everything.
+USE = {"Pashmina blend": "Soft and very warm, made for cold winter days.", "Merino wool": "Thick, cosy merino wool for freezing winter weather.",
+       "Silk blend": "Light, airy and breathable, ideal for summer evenings.", "Cotton modal": "Lightweight and cool, comfortable in hot weather."}
 STYLES = ["Embroidered", "Plain", "Printed", "Checked", "Fringed", "Jacquard"]
 
 
@@ -35,7 +38,7 @@ def build(index: int, rng: random.Random) -> repo.ProductInput:
                                   price=price + 300 * n, stock=0 if (index + n) % 7 == 0 else rng.randint(1, 9))
                 for n, c in enumerate(colours)]
     return repo.ProductInput(slug=slug, name=f"{style} {base} {noun}", cover_image_url=image, images=[image], category=category,
-                             main_description=f"A {style.lower()} {noun.lower()} in {base.lower()}. Soft, warm and easy to style.",
+                             main_description=f"A {style.lower()} {noun.lower()} in {base.lower()}. {USE[material]}",
                              material=material, sizing=sizing, weight="250 g", item_number=f"SEED-{index:03d}", status="active",
                              price=price, variants=variants)
 

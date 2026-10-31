@@ -9,6 +9,7 @@ Bump PARSER_VERSION on any change to the tables or rules below.
 (shortcut: small controlled Roman Urdu / Urdu lexicon and English clarifications only; grow it from the labelled
 filter_parsing eval set, never by guessing.)
 """
+import difflib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from decimal import Decimal
 from repositories.products import VariantFilter
 from utils.colour_vocabulary import CANONICAL, SYNONYMS, VOCABULARY_VERSION
 
-PARSER_VERSION = 2
+PARSER_VERSION = 4
 MAX_QUERY_CHARS = 200
 MAX_TERMS = 8  # same bound hybrid_search applies; more would be silently dropped there
 MAX_PRICE = 2_147_483_647  # variants.price is a 32-bit integer (whole PKR)
@@ -48,11 +49,13 @@ NEGATION = ["not", "no", "without", "except", "excluding", "nahi", "nahin", "bag
 ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": "stole",  # term spellings only, no category filter
            "shaal": "shawl", "chaadar": "shawl", "chadar": "shawl", "chadder": "shawl", "چادر": "shawl",
            "stoll": "stole", "skarf": "scarf", "muffler": "scarf", "اسکارف": "scarf", "مفلر": "scarf",
+           "halka": "light", "halki": "light", "garmi": "summer", "garmiyon": "summer", "garam": "warm", "sardi": "winter",
+           "sardiyon": "winter", "thand": "winter", "thandi": "winter",
            "گرم": "warm", "سردی": "winter", "سردیوں": "winter", "ہلکا": "light", "گرمی": "summer", "گرمیوں": "summer"}
 FILLER = set("or a an the in of for some something any and with me show everything all i want need looking find please "
              "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں "
              "mujhe chahiye chahiyen chahiya dikhao dikhaiye dikhayen dikha ek koi aur liye show مجھے ایک چاہیے چاہئے "
-             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے".split())
+             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch".split())
 # Words that tell us the customer is shopping even when no colour/price is named (used to trust semantic neighbours).
 SHOPPING_WORDS = (set(CANONICAL) | set(SYNONYMS) | set(LOCAL_COLOURS) | set(ALIASES.values()) | set(ALIASES) |
                   {"shawl", "shawls", "stole", "stoles", "scarf", "scarves", "wrap", "dupatta", "garam", "sardi", "sardiyon", "halka", "garmi",
@@ -125,6 +128,36 @@ _COLOURS = {tuple(k.split()): c for k, c in {**{c: c for c in CANONICAL}, **SYNO
 _TOKEN = re.compile(r"\d[\d.,]*[^\W\d_]*|[^\W\d_]+(?:[-'][^\W\d_]+)*|[$€£₨₹<>-]")
 _NUMBER = re.compile(r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(k)?")
 _DIGITS = {ord(c): str(i) for i, c in enumerate("٠١٢٣٤٥٦٧٨٩")} | {ord(c): str(i) for i, c in enumerate("۰۱۲۳۴۵۶۷۸۹")}
+
+
+# Typo tolerance for TERMS only (product type, fabric, season). Colours are deliberately excluded: a colour is a hard filter and a
+# near-miss must never become one. A misspelling maps to the single nearest target within 1 edit (up to 5 letters) or 2 edits
+# (longer), same first letter, no ties. Known limit: a real but different word one edit away ("stone" ~ "stole") is also mapped; the
+# result is only an extra search term, never a filter. (shortcut: linear scan; index it if the vocabulary grows past a few dozen.)
+# Targets are English words only: fuzzy-matching short Roman Urdu words collides with English ("thank" ~ "thand").
+TYPO_TARGETS = ("cotton", "embroidered", "fringed", "muffler", "pashmina", "printed", "scarf", "shawl", "silk", "stole", "summer", "winter", "wool")
+
+
+def _edits(a: str, b: str) -> int:
+    """Edit distance where swapping two adjacent letters ("scraf") costs one."""
+    d = [[i + j if i * j == 0 else 0 for j in range(len(b) + 1)] for i in range(len(a) + 1)]
+    for i in range(1, len(a) + 1):
+        for j in range(1, len(b) + 1):
+            d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] != b[j - 1]))
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)
+    return d[-1][-1]
+
+
+def _typo(token: str) -> str:
+    """The product/fabric/season word a misspelt Latin token almost certainly means, else the token unchanged."""
+    if len(token) < 5 or not token.isascii() or not token.isalpha() or token in SHOPPING_WORDS or token in FILLER:
+        return token
+    limit = 1 if len(token) <= 5 else 2
+    scored = sorted((_edits(token, w), w) for w in TYPO_TARGETS if w[0] == token[0])
+    if scored and scored[0][0] <= limit and (len(scored) == 1 or scored[1][0] > scored[0][0]):
+        return scored[0][1]
+    return token
 
 
 def normalize_query(raw: str) -> str:
@@ -266,6 +299,8 @@ def parse_query(raw: str | None) -> QueryIntent:
                     flag("dangling_comparator")
                     pending = None
                 word = ALIASES.get(t, t)
+                if _script(t) == "latin" and t == word:
+                    t = word = ALIASES.get(_typo(t), _typo(t))
                 if _script(t) == "latin":
                     if t in ALIASES:
                         langs.add("ur" if not t.isascii() else "roman_ur")
@@ -324,4 +359,4 @@ def handoff(intent: QueryIntent) -> Handoff | None:
 
 def has_shopping_signal(raw: str | None) -> bool:
     """True when the query names something we sell (product type, colour, season or fabric word), in any supported script."""
-    return any(tok in SHOPPING_WORDS for tok in _TOKEN.findall(normalize_query(raw or "")))
+    return any(tok in SHOPPING_WORDS or _typo(tok) in SHOPPING_WORDS for tok in _TOKEN.findall(normalize_query(raw or "")))

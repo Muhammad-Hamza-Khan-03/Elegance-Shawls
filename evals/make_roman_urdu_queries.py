@@ -81,6 +81,18 @@ def build() -> list[dict]:
             ("brown wool shaal", dict(category="shawls", colour="Brown", material="warm")), ("ثقیل گرم شال", dict(category="shawls", material="warm"))]
     for q, rule in held:
         rows.append({"q": q, "lang": "roman_ur" if q.isascii() else "ur", "rule": rule, "synthetic": True, "reviewed": False, "heldout": True})
+    # Held-out v3: written after the fixes above and NOT used for tuning. Weak cases: no product word, misspellings, Urdu script.
+    v3 = [("something warm for cold weather", dict(material="warm")), ("kuch garam chahiye thand ke liye", dict(material="warm")),
+          ("freezing winter ke liye kuch", dict(material="warm")), ("something thick and cosy", dict(material="warm")),
+          ("kuch halka chahiye garmi ke liye", dict(material="light")), ("cool breathable fabric", dict(material="light")),
+          ("hot weather ke liye kuch", dict(material="light")), ("something airy for summer evenings", dict(material="light")),
+          ("کچھ گرم چاہیے", dict(material="warm")), ("گرمی کے لیے کچھ ہلکا", dict(material="light")),
+          ("mufflar", dict(category="scarves")), ("embrodiered shawl", dict(category="shawls")), ("silk skarff", dict(category="scarves", material="light")),
+          ("pashmina shwal", dict(category="shawls", material="warm")), ("stoal chahiye", dict(category="stoles")), ("scraf dikhao", dict(category="scarves")),
+          ("wintr shawl", dict(category="shawls", material="warm")), ("woolen shaal", dict(category="shawls", material="warm")),
+          ("red muflar", dict(category="scarves", colour="Red")), ("kala shwal", dict(category="shawls", colour="Black"))]
+    for q, rule in v3:
+        rows.append({"q": q, "lang": "roman_ur" if q.isascii() else "ur", "rule": rule, "synthetic": True, "reviewed": False, "heldout": "v3"})
     seen, out = set(), []
     for r in rows:
         if r["q"] not in seen:
