@@ -45,9 +45,10 @@ export async function POST(request: Request) {
   }
 
   if (!upstream.ok) {
-    const payload = (await upstream.json().catch(() => null)) as { detail?: unknown } | null;
-    const detail = typeof payload?.detail === 'string' ? payload.detail : 'Sign-in is temporarily unavailable.';
-    return errorResponse(detail, upstream.status);
+    // Never relay upstream detail: map the status onto a fixed set of safe responses.
+    if (upstream.status === 401 || upstream.status === 403) return errorResponse('Invalid identity token', 401);
+    if (upstream.status === 429) return errorResponse('Too many sign-in attempts', 429);
+    return errorResponse('Sign-in is temporarily unavailable', 503);
   }
 
   const session = (await upstream.json().catch(() => null)) as { session_token?: unknown; expires_at?: unknown } | null;

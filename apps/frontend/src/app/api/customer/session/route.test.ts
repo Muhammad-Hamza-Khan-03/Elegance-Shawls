@@ -88,6 +88,66 @@ describe('customer session route', () => {
     expect(unavailable.headers.get('set-cookie')).toBeNull();
   });
 
+  it('never relays hostile upstream detail and maps every refusal to a stable safe class', async () => {
+    const hostile = `${ID_TOKEN} ${SESSION_TOKEN} eyJhbGciOi.JIUzI1NiJ9.sig Traceback (most recent call last): <script>alert(1)</script>`;
+    const cases: Array<[number, number, string]> = [
+      [400, 503, 'Sign-in is temporarily unavailable'],
+      [401, 401, 'Invalid identity token'],
+      [403, 401, 'Invalid identity token'],
+      [418, 503, 'Sign-in is temporarily unavailable'],
+      [429, 429, 'Too many sign-in attempts'],
+      [500, 503, 'Sign-in is temporarily unavailable'],
+      [502, 503, 'Sign-in is temporarily unavailable'],
+    ];
+    for (const [upstreamStatus, status, detail] of cases) {
+      fetchMock.mockResolvedValueOnce(json({ detail: hostile }, upstreamStatus));
+      const response = await POST(exchangeRequest({ id_token: ID_TOKEN }));
+      const text = await response.text();
+      expect(response.status).toBe(status);
+      expect(JSON.parse(text)).toEqual({ detail });
+      expect(text).not.toContain('Traceback');
+      expect(text).not.toContain(ID_TOKEN);
+      expect(text).not.toContain(SESSION_TOKEN);
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+    for (const body of [hostile, { detail: { provider: hostile } }, { detail: [hostile] }]) {
+      fetchMock.mockResolvedValueOnce(json(body, 502));
+      const response = await POST(exchangeRequest({ id_token: ID_TOKEN }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ detail: 'Sign-in is temporarily unavailable' });
+    }
+    fetchMock.mockResolvedValueOnce(new Response(hostile, { status: 500 }));
+    const raw = await POST(exchangeRequest({ id_token: ID_TOKEN }));
+    expect(raw.status).toBe(503);
+    expect(await raw.json()).toEqual({ detail: 'Sign-in is temporarily unavailable' });
+  });
+
+  it('fails closed with a fixed message on malformed successful payloads', async () => {
+    const bad: unknown[] = [
+      null,
+      'Traceback leak',
+      [],
+      {},
+      { session_token: 'not-a-session', expires_at: expiresAt },
+      { session_token: SESSION_TOKEN },
+      { session_token: SESSION_TOKEN, expires_at: 'garbage Traceback' },
+      { session_token: SESSION_TOKEN, expires_at: new Date(Date.now() - 1000).toISOString() },
+      { session_token: { x: 1 }, expires_at: expiresAt },
+    ];
+    for (const body of bad) {
+      fetchMock.mockResolvedValueOnce(json(body));
+      const response = await POST(exchangeRequest({ id_token: ID_TOKEN }));
+      const text = await response.text();
+      expect(response.status).toBe(503);
+      expect(JSON.parse(text)).toEqual({ detail: 'Sign-in is temporarily unavailable.' });
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+    fetchMock.mockResolvedValueOnce(new Response('<html>Traceback</html>', { status: 200 }));
+    const html = await POST(exchangeRequest({ id_token: ID_TOKEN }));
+    expect(html.status).toBe(503);
+    expect(html.headers.get('set-cookie')).toBeNull();
+  });
+
   it('requires same-origin JSON exchange and refuses a missing backend configuration', async () => {
     expect((await POST(exchangeRequest({ id_token: ID_TOKEN }, { origin: 'https://evil.example.invalid' }))).status).toBe(403);
     expect((await POST(exchangeRequest({ id_token: ID_TOKEN }, { origin: null }))).status).toBe(403);
