@@ -6,7 +6,8 @@ Voice is only provenance around the canonical deterministic text parser and M3 a
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from typing import Any
 
 from actions.kernel import ActionProposal, CatalogueState, Decision, IdempotencyLedger, validate
@@ -15,6 +16,8 @@ from semantic.query_parser import Handoff, QueryIntent, handoff, parse_query
 from .contract import PrivacyPolicy, VoiceOutcome, VoiceResult
 
 BRIDGE_VERSION = 1
+SOURCE = "voice_text_bridge"
+_EVAL_ID = re.compile(r"eval:([a-z0-9][a-z0-9._-]{0,31})")
 
 
 @dataclass(frozen=True)
@@ -70,8 +73,10 @@ class VoiceBridgeResult:
 def _provenance(result: VoiceResult) -> VoiceProvenance:
     # Hash the normalized transcript only; never expose or retain raw audio/transcript in provenance.
     digest = hashlib.sha256(result.normalized_transcript.encode("utf-8")).hexdigest()
-    source = result.provenance.strip() or "unknown"
-    evaluation = source.removeprefix("eval:") if source.startswith("eval:") else None
+    # Caller-supplied provenance is untrusted: emit a fixed source and only a strict evaluation slug.
+    match = _EVAL_ID.fullmatch(result.provenance) if isinstance(result.provenance, str) else None
+    source = SOURCE
+    evaluation = match.group(1) if match else None
     return VoiceProvenance(
         input_hash=digest,
         source=source,
@@ -116,9 +121,16 @@ def bridge_voice_transcript(transcript: str, *, provenance: str = "transcript", 
     """Convenience seam for tests/callers that already have normalized transcript text, never audio."""
     from .normalization import normalize_transcript, parse_intent
 
+    if type(transcript) is not str:
+        # Public boundary: anything but plain text fails closed instead of raising.
+        failed = bridge_voice_result(VoiceResult(
+            transcript="", normalized_transcript="", outcome=VoiceOutcome.UNCERTAIN, price_pkr=None,
+            negated=None, confidence=0.0, needs_review=True, provenance="", privacy=PrivacyPolicy(),
+        ))
+        return replace(failed, reasons=(*failed.reasons, "invalid_transcript"))
     normalized = normalize_transcript(transcript)
     parsed = parse_intent(normalized)
-    source = f"eval:{evaluation}" if evaluation else provenance
+    source = f"eval:{evaluation}" if isinstance(evaluation, str) and evaluation else provenance
     return bridge_voice_result(VoiceResult(
         transcript=transcript,
         normalized_transcript=normalized,

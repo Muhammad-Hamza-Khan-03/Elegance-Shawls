@@ -72,3 +72,25 @@ def test_voice_bridge_import_and_execution_are_offline(monkeypatch):
     monkeypatch.setattr(socket, "socket", no_network)
     monkeypatch.setattr(socket, "create_connection", no_network)
     assert bridge_voice_transcript("safaid stole 4500 se kam").intent.colour == "white"
+
+
+def test_caller_provenance_is_never_echoed_into_output():
+    raw = "call 0300-1234567 about brown shawl"
+    for prov in (raw, "transcript", "eval:" + raw):
+        data = bridge_voice_transcript(raw, provenance=prov).as_dict()
+        assert raw not in str(data["provenance"]) and "0300" not in str(data["provenance"])
+        assert data["provenance"]["source"] == "voice_text_bridge"
+        assert data["provenance"]["evaluation"] is None
+    assert bridge_voice_transcript("a b", evaluation="urdu-v1").as_dict()["provenance"]["evaluation"] == "urdu-v1"
+
+
+def test_malformed_public_inputs_fail_closed_without_raising():
+    for bad in (None, 5, 1.5, {"q": "x"}, ["a"], b"shawl", object()):
+        out = bridge_voice_transcript(bad)
+        assert out.needs_review and out.handoff is None and not out.action_allowed
+        assert "invalid_transcript" in out.reasons
+        assert out.as_dict()["provenance"]["outcome"] == "uncertain"
+    # invalid nested/hostile optional args also fail closed
+    out = bridge_voice_transcript("brown shawl", provenance={"x": 1}, evaluation=["y"])
+    assert out.as_dict()["provenance"]["source"] == "voice_text_bridge"
+    assert out.as_dict()["provenance"]["evaluation"] is None
