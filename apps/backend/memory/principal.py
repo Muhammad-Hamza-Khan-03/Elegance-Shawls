@@ -1,6 +1,6 @@
-"""Customer principal/session seam for /v1/me/memory (M4-S2). No customer authentication exists in this repository, so the default
-verifier is absent and every request is refused with 401. A future slice installs a real `CustomerSessionVerifier` through
-`get_session_verifier` (dependency override or replacement); nothing here issues, stores or parses credentials.
+"""Customer principal/session seam for /v1/me/memory (M4-S2). The verifier is absent unless customer authentication is enabled and
+fully configured (security/customer_session.py), and then every request is refused with 401. Nothing here issues, stores or parses
+credentials.
 
 Integration contract for a verifier: given the opaque token presented in the `X-Customer-Session` header, return a `CustomerPrincipal`
 only if the server itself holds a live session for that exact token (expiry, revocation and customer status checked server-side),
@@ -32,8 +32,9 @@ class CustomerSessionVerifier(Protocol):
 
 
 def get_session_verifier() -> CustomerSessionVerifier | None:
-    """shortcut: no customer session store exists, so no verifier; replace when customer authentication is built."""
-    return None
+    """The server-side session verifier when customer authentication is fully configured; otherwise None, which refuses everyone."""
+    from security.customer_session import build_session_verifier  # deferred: security.customer_session imports this module
+    return build_session_verifier()
 
 
 def _deny() -> HTTPException:

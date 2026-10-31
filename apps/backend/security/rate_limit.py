@@ -67,13 +67,17 @@ class RateLimitMiddleware:
         client = request.client.host if request.client else "unknown"
         # Event batches are anonymous POSTs with their own, tighter limit (never exempted).
         # /v1/enquiries is the same kind of anonymous write, in its own bucket so tracking cannot starve a handoff.
-        bucket = "enquiries" if request.url.path.startswith("/v1/enquiries") else "events" if request.url.path.startswith("/v1/events") else None
+        # Customer sign-in/out is anonymous-reachable too and gets its own, tighter bucket (never exempted, never shared with admin).
+        bucket = ("enquiries" if request.url.path.startswith("/v1/enquiries") else "events" if request.url.path.startswith("/v1/events")
+                  else "customer_auth" if request.url.path.startswith("/v1/customer/auth") else None)
         is_events = bucket is not None
         is_admin = not is_events and (
             request.url.path.startswith(("/products/admin", "/v1/admin")) or request.method != "GET"
         )
         limit = (
-            settings.events_rate_limit_per_minute
+            settings.customer_auth_rate_limit_per_minute
+            if bucket == "customer_auth"
+            else settings.events_rate_limit_per_minute
             if is_events
             else settings.admin_rate_limit_per_minute
             if is_admin
