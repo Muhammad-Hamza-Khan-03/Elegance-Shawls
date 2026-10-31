@@ -78,6 +78,43 @@ Browser → Next.js storefront → FastAPI `/products/...` → PostgreSQL `produ
 - Next config sets `output: "standalone"`, strict security headers, and a CSP in `next.config.ts`. New external origins (scripts, connect targets) must be allowed there.
 - Frontend probes: `/api/health`, `/api/ready`.
 
+## Git Branching, Integration and Release Policy
+
+Mandatory for every session. Full detail: `docs/RELEASE_WORKFLOW.md`.
+
+```text
+feature/* fix/* ai/* docs/* refactor/* test/* infra/*
+        -> staging-integration  (development source of truth)
+        -> staging              (release-candidate source of truth)
+        -> main                 (production source of truth)
+```
+
+**Never assume `main` is the base for new feature development.** Exactly three permanent branches exist: `staging-integration`, `staging`, `main`. Never delete them, never force-push them, never reset or recreate `staging-integration` from `main`.
+
+### When asked to implement a feature or fix
+1. `git fetch --prune`; identify the current branch and worktree (use a worktree if the main checkout has uncommitted work; never bare `git stash`).
+2. Base on the latest `origin/staging-integration` and create a short-lived, meaningfully named branch (`feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`).
+3. Implement, run the relevant tests (frontend lint/typecheck/test, backend `pytest`, `-m integration` when the DB layer or migrations change).
+4. Commit with conventional prefixes (no Co-Authored-By or attribution trailers), push the branch.
+5. Open a PR targeting `staging-integration`; squash merge is the only merge method the repo allows. Never target `main` unless the user explicitly requests a production promotion.
+6. Do not bypass staging for normal releases. Do not deploy to production, modify production databases, or run migrations against shared environments without explicit approval.
+7. Do not force-push shared branches. Do not delete active development branches or unique unfinished work; delete completed branches only after their commits are reachable from `staging-integration` and nothing depends on them.
+8. Keep documentation in sync with architectural changes.
+
+### When asked to promote to staging
+Compare `staging-integration` with `staging` (`git log origin/staging..origin/staging-integration`), pick a green release-candidate SHA, check CI, open a PR targeting `staging`, and record the candidate SHA in the PR. Do not involve `main`. Fixes found in staging are made on `staging-integration` first.
+
+### When asked to promote to production
+Use only a verified `staging` SHA. Verify CI and QA evidence, review migrations and the rollback procedure, ask for explicit production approval, then promote through a PR to `main`. Never deploy silently.
+
+### Hotfixes
+`hotfix/<name>` from the latest `main`; explicit approval before merging; then carry the same fix into `staging-integration` and `staging` (cherry-pick; do not promote unrelated unfinished work).
+
+### Branch cleanup
+Audit merged branches periodically (`git branch -r --merged origin/staging-integration`). Delete obsolete temporary branches non-forcibly when they have no unique commits, open PRs, worktrees or deployment references. Preserve unmerged unique work. Never rewrite history. Never delete tags.
+
+`staging-integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
+
 ## Conventions
 
 - Conventional commit prefixes (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`, `refactor:`). Recent history also uses scoped forms like `fix(p0-66): ...`.

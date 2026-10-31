@@ -8,6 +8,10 @@ Before planning, modifying, reviewing, or testing any feature related to the Ele
 
 That document is the source of truth for the current architecture direction, repository boundaries, ingestion workflow, job lifecycle, security requirements, phased roadmap, acceptance criteria, and production gates.
 
+## Git workflow
+
+Permanent branches: `staging-integration` (development), `staging` (release candidates), `main` (production). Branch new work from `staging-integration` and open PRs into it; never target `main` without an explicit production-promotion request. See `CLAUDE.md` and `docs/RELEASE_WORKFLOW.md`.
+
 ## Project ownership and boundaries
 
 - `Elegance-Shawls` is the primary commerce application and authoritative business system.
