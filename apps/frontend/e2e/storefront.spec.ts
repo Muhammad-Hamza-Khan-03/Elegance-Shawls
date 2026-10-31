@@ -50,6 +50,7 @@ test('a product page backend outage shows a retryable error, not a 404', async (
   await page.goto('/product/no-such-product');
   await expect(page.getByRole('heading', { name: 'This page could not be found.' })).toBeVisible();
 });
+
 test('navigation and customer information pages work', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Explore the collection' }).click();
