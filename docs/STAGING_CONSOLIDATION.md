@@ -73,7 +73,7 @@ added the same foundation code (58 conflicts). The true common ancestor in conte
 
 1. **Hybrid retrieval retry** (`ai/m2-s3-hybrid-retrieval-claude-retry`): a second design of hybrid `/v1/search` (offset cursors, query embedding inside the route).
    It competes with the ranked-cursor hybrid search already here (`repositories/hybrid.py`). Left on its branch: `repositories/search.py`, offset-cursor helpers in `utils/pagination.py`,
-   the route wiring and `test_api_hybrid_search.py`. Its RRF fusion (`semantic/fusion.py`) is on this branch but **not yet wired**; the plan asks for RRF, so wiring it is a candidate follow-up.
+   the route wiring and `test_api_hybrid_search.py`. Its alternate RRF fusion (`semantic/fusion.py`) is present but unused. **RRF is already wired into `POST /v1/search/hybrid` through `search/hybrid.py` and `routes/search_routes.py`.** Those are two separate implementations; evaluate and consolidate them only after proving equivalent filtering, pagination and ranking behavior. The unadopted retry route/cursor is not required to activate the existing hybrid endpoint.
 2. **Two embedding systems.** Kept side by side to avoid dropping either; converging on one (and one backfill) is a follow-up. Until then the staging image drives `main`'s system (`EMBEDDING_*` / `LOCAL_E5_*`),
    and the assistant's pipeline stays off unless `SEMANTIC_*` is set.
 3. **Uncommitted work in other checkouts**, which a branch merge cannot include (left untouched, not copied):
