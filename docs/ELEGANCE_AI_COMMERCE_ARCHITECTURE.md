@@ -241,3 +241,100 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 | `plans/ai-platform-alignment-review.md` | Point-in-time comparison of the plan with the repo, with the decisions that section 3 now encodes. |
 | `docs/phase-1-one-source-ingestion.md` | Ingestion states, rules and security model. |
 | `README.md`, `DEPLOYMENT.md`, `OPERATIONS.md`, `LAUNCH_RUNBOOK.md`, `CLAUDE.md` | Setup, deploy and operations. Updated only when their commands, variables or procedures actually change. |
+
+## Appendix A. Product quality control pipeline and MCP connector (carried over)
+
+> Carried over unchanged from branch `docs/staging-first-release-workflow` during the staging-integration consolidation. It was written against an older numbering of this document (it was section 9.1 there); the content is current, only its heading numbers are not.
+
+### 9.1 Product quality control pipeline
+
+Product quality control is part of the ingestion foundation, not a later cosmetic AI feature. Every staged item should receive deterministic validation before it can be approved.
+
+The first quality checks must use normal application code because it is cheaper, faster, predictable, and straightforward to test:
+
+- Missing title, description, category, or required variant fields.
+- Missing or invalid image URLs.
+- Invalid price, currency, stock, or availability values.
+- Broken product URLs or disallowed source domains.
+- Duplicate source identity or likely duplicate content.
+- Unsupported material, origin, or other ungrounded fallback values.
+- Invalid variant combinations and malformed payloads.
+
+Suggested quality states:
+
+```text
+CHECK_PENDING
+  -> READY_FOR_REVIEW
+  -> REVIEW_REQUIRED
+  -> BLOCKED
+  -> APPROVED
+```
+
+The admin review surface should show the failed rule, severity, source value, normalized value, and recommended next action. A corrected item must be revalidated before approval.
+
+AI may assist only where it adds value:
+
+- Suggest a missing description.
+- Flag a possible category mismatch.
+- Explain a possible duplicate.
+- Propose translation or standardized copy.
+
+AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
+
+### Controlled MCP business connector — future Phase 5/6
+
+An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
+
+```text
+Admin AI
+   -> MCP server
+   -> authenticated FastAPI business tool
+   -> authorization and validation
+   -> MongoDB/provider action
+   -> audit event
+```
+
+Start with read-only tools:
+
+```text
+list_failed_imports()
+find_missing_images()
+find_duplicate_candidates()
+get_import_job_summary()
+```
+
+Only later add approval-required proposal/mutation tools:
+
+```text
+propose_product_correction()
+propose_description_update()
+approve_staged_product()
+retry_failed_job()
+```
+
+Every mutation must follow:
+
+```text
+AI suggestion
+    -> human review
+    -> explicit approval
+    -> backend validation
+    -> state change
+    -> audit log
+```
+
+MCP requirements:
+
+- No direct database credentials or unrestricted queries.
+- Server-side authentication and per-tool authorization.
+- Read-only default and least-privilege scopes.
+- Idempotency for retryable actions.
+- Clear confirmation for every mutation.
+- Provider and database errors returned safely.
+- Full actor, tool, target, before/after, and timestamp audit data.
+- Separate admin/demo MCP credentials and environments.
+
+- Deterministic product quality checks.
+- Quality status, rule failures, and revalidation path.
+- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
+- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.
