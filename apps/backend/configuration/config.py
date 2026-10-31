@@ -22,6 +22,7 @@ class settings(BaseSettings):
     internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
+    local_rate_limit_max_keys: int = 10_000
 
     # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
     assistant_catalogue: bool = False
