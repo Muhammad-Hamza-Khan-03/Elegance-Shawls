@@ -64,7 +64,16 @@ async def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--after", type=uuid.UUID, help="resume after this owner id (the last_id of a previous run)")
     parser.add_argument("--scope", default=settings.ingestion_source_id, help="only the single approved catalogue exists")
+    parser.add_argument("--require-staging", action="store_true", help="container startup: needs ENVIRONMENT=staging, RUN_E5_BACKFILL_ON_STARTUP=true and a staging database name")
     args = parser.parse_args()
+    if args.require_staging:
+        from ingestion.staging_guard import StagingGuardError, assert_staging_run
+
+        try:
+            assert_staging_run("RUN_E5_BACKFILL_ON_STARTUP")
+        except StagingGuardError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     if args.scope != settings.ingestion_source_id:
         print(f"unknown scope {args.scope!r}", file=sys.stderr)
         return 2

@@ -8,27 +8,23 @@ Before planning, modifying, reviewing, or testing any feature related to the Ele
 
 That document is the source of truth for the current architecture direction, repository boundaries, ingestion workflow, job lifecycle, security requirements, phased roadmap, acceptance criteria, and production gates.
 
-## Git workflow
-
-Permanent branches: `staging-integration` (development), `staging` (release candidates), `main` (production). Branch new work from `staging-integration` and open PRs into it; never target `main` without an explicit production-promotion request. See `CLAUDE.md` and `docs/RELEASE_WORKFLOW.md`.
-
 ## Project ownership and boundaries
 
 - `Elegance-Shawls` is the primary commerce application and authoritative business system.
 - `quill-store` is a source/reference for scraper and ingestion logic. Its useful modules may be adapted, but scraping must not bypass Elegance approval or publish directly.
 - `quill-panel` is a source/reference for scraper review UI. Do not create a second competing full admin system.
-- The browser must not connect directly to the database.
+- The browser must not connect directly to MongoDB.
 - The public storefront must only expose published products.
 - Ingestion results must enter staging before approval and publication.
 
 ## Current technology direction
 
 - Keep the existing Next.js frontend and FastAPI backend.
-- Use PostgreSQL 17 with pgvector (Render in staging/production) as the single source of truth; MongoDB was retired (architecture 3.1).
-- Use an independent Python ingestion worker with PostgreSQL-backed durable jobs.
+- Use MongoDB as the initial single source of truth.
+- Use an independent Python ingestion worker with MongoDB-backed durable jobs.
 - Use Crawl4AI first and one authorized source in the first ingestion phase.
 - Defer Redis, Cloudflare Queues, Firecrawl dual-provider support, n8n, Qdrant, Kubernetes, and other specialized infrastructure until measured requirements justify them.
-- Redis/arq is used only for new AI workloads (embeddings, enrichment); it never holds catalogue data.
+- PostgreSQL is a future migration option, not a parallel source of truth.
 
 ## Engineering rules
 

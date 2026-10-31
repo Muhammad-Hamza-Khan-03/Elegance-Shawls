@@ -22,6 +22,28 @@ class settings(BaseSettings):
     internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
+    local_rate_limit_max_keys: int = 10_000
+
+    # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
+    assistant_catalogue: bool = False
+    # Let the LLM gateway (LLM_CHAIN_DEFAULT) write the assistant's wording. It never picks products, prices or actions.
+    assistant_llm: bool = False
+    # Semantic neighbours of a query with no shopping word (shawl/colour/season...) are dropped beyond this cosine distance.
+    # 0.18 from evals/roman_urdu_retrieval_eval.py: 0% off-topic false positives at <=0.20, 15% at 0.22.
+    semantic_max_distance: float = 0.18
+
+    # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
+    # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.
+    customer_auth_enabled: bool = False
+    customer_auth_provider: str = ""
+    customer_auth_issuer: str = ""
+    customer_auth_audience: str = ""
+    customer_auth_jwks_url: str = ""
+    customer_auth_jwks_ttl_seconds: int = 3600
+    customer_auth_jwks_min_refresh_seconds: int = 60
+    customer_session_ttl_seconds: int = 7 * 86400
+    customer_session_max_active: int = 5
+    customer_auth_rate_limit_per_minute: int = 10
 
     # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
     assistant_catalogue: bool = False

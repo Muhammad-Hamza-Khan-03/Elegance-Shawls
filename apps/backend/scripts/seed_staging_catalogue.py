@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
-from configuration.config import settings  # noqa: E402
+from ingestion.staging_guard import StagingGuardError, assert_staging_run  # noqa: E402
 from database.pg import make_engine, postgres_configured  # noqa: E402
 from models.relational_model import Product  # noqa: E402
 
@@ -48,8 +48,10 @@ SEED = (
 
 
 async def main() -> int:
-    if settings.environment.strip().lower() != "staging":
-        print("refusing synthetic seed outside staging", file=sys.stderr)
+    try:
+        assert_staging_run("RUN_STAGING_SEED")
+    except StagingGuardError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     if not postgres_configured():
         print("DATABASE_URL is not set", file=sys.stderr)
