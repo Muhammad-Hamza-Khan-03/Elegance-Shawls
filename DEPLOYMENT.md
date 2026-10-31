@@ -84,3 +84,7 @@ The currently accessible `quill-panel` does not yet meet this contract and must 
 ## Rollback
 
 Keep the previous release's images (`elegance-backend:<sha>` and `elegance-frontend:<sha>`). If post-deployment checks fail, run `deploy/rollback.sh <previous-sha>` from the repository root. It replaces only the backend and frontend containers with the existing images (no rebuild, no database changes, proxy and certificates untouched), waits until all four probes pass and reminds you to pin `APP_VERSION` in `.env`. Roll forward the same way. Database rollback is a separate restore procedure (`OPERATIONS.md`); never delete or rewrite production product data during an application rollback.
+
+## Upgrading a database from migration 0009 to head (0015)
+
+Needs explicit approval for any shared database (see `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` section 5). Procedure and rollback strategy: section 3.11 ("Safe upgrade of an existing database"). In short: verified backup, `python scripts/check_migration_stamp.py`, `alembic current` = 0009, `alembic upgrade head`, embedding backfill. Rollback is a restore of the backup. Never `alembic stamp` a database to a revision it has not really reached.

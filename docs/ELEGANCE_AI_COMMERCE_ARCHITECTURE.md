@@ -190,6 +190,44 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 - **Decision:** customer memory routes depend on `memory.principal.current_principal`. A `CustomerSessionVerifier` must confirm a server-held live session for the opaque `X-Customer-Session` token and return a `CustomerPrincipal` (customer id, session id, SHA-256 of the presented token, timezone-aware expiry). The seam re-checks the binding (hash of the presented token), expiry and types, and answers an identical 401 for absent, invalid, expired, mismatched, oversized or erroring verification. No verifier is installed, so production stays 401. Client-supplied ids, headers, query, cookie or body fields are never an identity.
 - **Left for the authentication slice:** issuing and storing customer sessions (hash-only, as in 3.9), login (Google or phone OTP per the plan, needs separate approval), and installing the verifier in `get_session_verifier`. Consent, the provider gate, ownership isolation, audit and retention (M4-S1) are unchanged.
 
+### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
+
+The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+
+**Model and configuration.** `intfloat/multilingual-e5-base`, 768 dimensions, CPU, offline, loaded from a pinned local snapshot (`embeddings/providers/local_e5.py`; the staging image bakes it in). Settings: `EMBEDDING_ENABLED`, `EMBEDDING_PROVIDER` (`local_e5`; `fake` for tests), `EMBEDDING_DIMENSIONS=768`, `EMBEDDING_INDEX_VERSION`, `LOCAL_SEMANTIC_SEARCH_ENABLED`, `LOCAL_E5_MODEL_PATH`, `LOCAL_E5_MODEL_REVISION` (tree digest). Unset or wrong means disabled; nothing blocks start-up or catalogue browsing.
+
+**Representations.** `search/representations.py` (`catalog-text-v1`): a *product* text (name, category, material, description, approved attributes) and a *variant* text (product name, variant name, colour, category, material, approved attributes). Private, price, stock, URL and staged fields are excluded by construction. Over-long text fails loudly instead of being truncated. Queries use the E5 `query:` prefix, documents the `passage:` prefix.
+
+**Storage.** `product_embeddings` and `variant_embeddings` (migration 0009): vector(768) with HNSW cosine indexes. A row is identified by owner + representation version + provider + model + model revision + index version, so a different model, revision or index version is a different row and vectors from different spaces are never compared. The row is also the job (`queued, running, succeeded, failed, stale`) with a lease, attempt counter, bounded retries and backoff.
+
+**Lifecycle.** `embedding_service.ensure_pending` creates the row idempotently (unique identity key, `ON CONFLICT DO NOTHING`), `process` claims it under a lease, re-reads the live source, embeds through `embed_checked` (validated input, bounded time, validated finite vector of the right width), and completes under a row lock; a source that changed meanwhile ends `stale`. Run it via `scripts/embedding_backfill.py --kind product|variant --limit N [--after UUID]` (bounded, resumable, idempotent: finished rows are skipped) or the `embeddings` arq queue (`workers.settings.EmbeddingWorkerSettings`, deterministic job id per row so duplicate enqueues are no-ops).
+
+**Freshness.** Searchable means: succeeded, source revision equals the product's current revision, product active (variant active), identity matches the active provider/model/revision/index, and the stored representation hash still equals the hash of the live content. A catalogue edit therefore removes the old vector at once and a re-embed makes the new one searchable.
+
+**Retrieval.** Three public contracts, all reading the same vectors:
+
+| Endpoint | Strategy | Fusion |
+|---|---|---|
+| `GET /v1/search` and the assistant | SQL-filtered lexical pool + nearest vectors (`repositories/hybrid.py`) | weighted RRF (`semantic/ranking.py`, K=60, default 1:1), keyset cursor bound to query, filters, weights and embedding space; off-topic queries without a shopping word keep only neighbours within `SEMANTIC_MAX_DISTANCE` |
+| `POST /v1/search/hybrid` | exact parser filters first, then lexical top-K + vector top-K of the eligible products (`search/hybrid.py`) | fixed RRF (K=60), cursor bound to the search/index version |
+| `POST /v1/search` | deterministic constraints only, no model | none |
+
+The two RRF implementations are intentionally different strategies (weighted over a SQL pool, versus fixed over an eligible set) and are kept; the third, unused one (`semantic/fusion.py`) was removed. All three apply hard filters first: inactive products and unavailable variants never appear, colour/price/stock are satisfied by the same variant, results are de-duplicated per page and ordered deterministically. Without a query vector (disabled, blank, provider failure, wrong width) they return lexical results; a stale or zero vector is dropped, never guessed.
+
+**Retired.** `semantic/{local_e5,backfill,fusion}.py`, `repositories/semantic_embeddings.py`, `scripts/semantic_backfill.py`, the `embedding_backfill_job` arq job and the `SEMANTIC_*` embedding settings are gone. `semantic/embeddings.py` and `semantic/representation.py` remain only as the offline evaluation contract (`evals/semantic_eval.py`, enrichment).
+
+**Legacy tables.** `semantic_embeddings` and `semantic_embedding_jobs` (migration 0012) are no longer read or written by any code and are empty on every database created from this chain. They are kept deliberately: dropping persisted tables needs a separately approved migration (a future `0016`).
+
+**PostgreSQL schema and migrations.** One linear chain, single head `0015`: 0001 relational foundation, 0002 outbox, 0003 catalogue, 0004 ingestion, 0005 outbox uuid, 0006 job retryability, 0007 catalogue attributes, 0008 enrichment suggestions, 0009 embeddings + search (main's chain ends here), 0010 admin accounts (also adds `audit_log.outcome/detail` and the append-only guard), 0011 enquiries, 0012 semantic embeddings (legacy, see above), 0013 action executions, 0014 customer memory, 0015 customer sessions. 0010-0015 only add tables, apart from the two nullable/defaulted `audit_log` columns and the guard trigger of 0010.
+
+**Safe upgrade of an existing database** (never against production or a shared database without the approval in section 5):
+1. Take a verified backup (`pg_dump -Fc`) and restore it into a scratch database first.
+2. `python scripts/check_migration_stamp.py` (read-only). Exit 3 means the database carries the pre-consolidation numbering: do not stamp, do not upgrade; recreate a disposable database, or restore into a new one.
+3. `alembic current` must print `0009` (or later). `alembic upgrade head` applies 0010-0015 in one pass; each step has a downgrade, but `0010` drops `audit_log.outcome/detail` data and every downgrade drops customer-owned tables, so rollback means restoring the backup, not downgrading.
+4. Run `python scripts/embedding_backfill.py --kind product --limit N` (and `variant`) until `last_id` is empty; search stays lexical until vectors exist.
+
+**Known limitations.** Freshness is verified per candidate (about two reads per vector candidate; fine at the current catalogue size). `POST /v1/search/hybrid` has no relevance gate, so an off-topic query still returns the nearest products (the GET path gates them). Only one model and one index version are searchable at a time; switching means a new index version plus a backfill.
+
 ## 4. Phased roadmap and acceptance gates
 
 A phase is complete only with implementation evidence, passing acceptance criteria, current documentation, a checked rollback/degradation path and independent QA of the intended surface. Own unit tests are not independent QA.
