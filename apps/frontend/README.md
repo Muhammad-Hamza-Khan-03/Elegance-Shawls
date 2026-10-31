@@ -17,6 +17,8 @@ Required public configuration:
 - `NEXT_PUBLIC_SITE_URL` — canonical storefront origin.
 - `NEXT_PUBLIC_WHATSAPP_NUMBER` — international digits only.
 
+Customer sign-in uses the public API origin through the server-side `/api/customer/session` route. The browser stores only the opaque `cs_customer_session` handle in an HttpOnly cookie; identity-provider credentials, JWKS configuration, session tokens and database URLs are backend/deployment configuration, never `NEXT_PUBLIC_*` values. See [`docs/m4-customer-auth-closeout.md`](../../docs/m4-customer-auth-closeout.md) for the provider-neutral contract and future isolated-staging prerequisites.
+
 ## Verification
 
 ```bash
