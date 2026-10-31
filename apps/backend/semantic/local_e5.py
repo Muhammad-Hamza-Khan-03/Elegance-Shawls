@@ -10,7 +10,9 @@ import logging
 import os
 from functools import lru_cache
 
+from configuration.config import settings
 from semantic.embeddings import EmbeddingConfig, EmbeddingConfigError, load_config
+from semantic.query_parser import has_shopping_signal
 
 log = logging.getLogger(__name__)
 
@@ -48,3 +50,9 @@ def get_embedder() -> LocalE5Provider | None:
     except Exception as exc:  # optional capability: log the class only, keep serving keyword search
         log.warning("semantic search disabled: %s", type(exc).__name__)
         return None
+
+
+def distance_cutoff(text: str) -> float | None:
+    """Max semantic distance to trust. None when the query names something we sell; otherwise only close neighbours count,
+    so "delivery kitne din" or "iphone" returns nothing instead of the nearest shawls."""
+    return None if has_shopping_signal(text) else settings.semantic_max_distance

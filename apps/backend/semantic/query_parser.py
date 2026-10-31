@@ -17,7 +17,7 @@ from decimal import Decimal
 from repositories.products import VariantFilter
 from utils.colour_vocabulary import CANONICAL, SYNONYMS, VOCABULARY_VERSION
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2
 MAX_QUERY_CHARS = 200
 MAX_TERMS = 8  # same bound hybrid_search applies; more would be silently dropped there
 MAX_PRICE = 2_147_483_647  # variants.price is a 32-bit integer (whole PKR)
@@ -28,6 +28,10 @@ LOCAL_COLOURS = {
     "kala": "black", "kaala": "black", "کالا": "black", "gulabi": "pink", "گلابی": "pink", "neela": "blue", "نیلا": "blue",
     "lal": "red", "surkh": "red", "لال": "red", "hara": "green", "سبز": "green", "peela": "yellow", "پیلا": "yellow",
     "kreem": "cream", "کریم": "cream", "narangi": "orange", "نارنجی": "orange",
+    "siyah": "black", "سیاہ": "black", "laal": "red", "سرخ": "red", "ہرا": "green", "ہری": "green", "نیلی": "blue",
+    "bhoori": "brown", "بھوری": "brown", "کالی": "black", "سفید": "white",
+    "kali": "black", "kaali": "black", "kale": "black", "kaale": "black", "neeli": "blue", "nili": "blue", "nila": "blue",
+    "hari": "green", "safaid": "white", "gulabi": "pink",   # from the held-out misses in evals/roman_urdu_retrieval_eval.py
 }
 CURRENCIES = {  # token -> ISO code; only PKR is supported (variant prices are PKR, no conversion is ever guessed)
     "rs": "PKR", "pkr": "PKR", "rupee": "PKR", "rupees": "PKR", "rupay": "PKR", "rupaye": "PKR", "₨": "PKR", "روپے": "PKR",
@@ -41,9 +45,18 @@ POST_MIN = ["se zyada", "se ziada", "se upar", "say zyada", "سے زیادہ", "
 STOCK_IN = ["in stock", "available", "stock mein", "dastiyab", "دستیاب", "موجود"]
 STOCK_OUT = ["out of stock", "sold out", "unavailable", "stock khatam"]
 NEGATION = ["not", "no", "without", "except", "excluding", "nahi", "nahin", "bagair", "بغیر", "نہیں", "نہ"]
-ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": "stole"}  # term spellings only, no category filter
+ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": "stole",  # term spellings only, no category filter
+           "shaal": "shawl", "chaadar": "shawl", "chadar": "shawl", "chadder": "shawl", "چادر": "shawl",
+           "stoll": "stole", "skarf": "scarf", "muffler": "scarf", "اسکارف": "scarf", "مفلر": "scarf",
+           "گرم": "warm", "سردی": "winter", "سردیوں": "winter", "ہلکا": "light", "گرمی": "summer", "گرمیوں": "summer"}
 FILLER = set("or a an the in of for some something any and with me show everything all i want need looking find please "
-             "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں".split())
+             "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں "
+             "mujhe chahiye chahiyen chahiya dikhao dikhaiye dikhayen dikha ek koi aur liye show مجھے ایک چاہیے چاہئے "
+             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے".split())
+# Words that tell us the customer is shopping even when no colour/price is named (used to trust semantic neighbours).
+SHOPPING_WORDS = (set(CANONICAL) | set(SYNONYMS) | set(LOCAL_COLOURS) | set(ALIASES.values()) | set(ALIASES) |
+                  {"shawl", "shawls", "stole", "stoles", "scarf", "scarves", "wrap", "dupatta", "garam", "sardi", "sardiyon", "halka", "garmi",
+                   "garmiyon", "warm", "winter", "light", "summer", "wool", "silk", "pashmina", "cotton", "embroidered", "printed", "fringed"})
 ROMAN_URDU = {w for w in LOCAL_COLOURS if w.isascii()} | {"se kam", "say kam", "tak", "se zyada", "se ziada", "se upar",
               "say zyada", "stock mein", "dastiyab", "nahi", "nahin", "bagair", "rupay", "rupaye", "stock khatam",
               "shawal", "shal", "rang", "ka", "ki", "ke"}
@@ -307,3 +320,8 @@ def handoff(intent: QueryIntent) -> Handoff | None:
     variant = VariantFilter(intent.colour, intent.min_price, intent.max_price, intent.in_stock)
     has_filter = intent.colour or intent.min_price is not None or intent.max_price is not None or intent.in_stock
     return Handoff(" ".join(intent.terms) or None, variant if has_filter else None)
+
+
+def has_shopping_signal(raw: str | None) -> bool:
+    """True when the query names something we sell (product type, colour, season or fabric word), in any supported script."""
+    return any(tok in SHOPPING_WORDS for tok in _TOKEN.findall(normalize_query(raw or "")))

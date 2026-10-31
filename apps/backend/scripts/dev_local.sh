@@ -5,9 +5,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${ADMIN_ACCOUNT_PASSWORD:?set ADMIN_ACCOUNT_PASSWORD (12+ chars) for the local owner account}"
+# Optional: LOCAL_ENV_FILE=/path/to/apps/backend/.env supplies provider keys (GROQ_API_KEY ...), LLM_CHAIN_DEFAULT and CUSTOMER_AUTH_*.
+# Sourced first, so the local database settings below always win. Values are never printed.
+if [ -n "${LOCAL_ENV_FILE:-}" ]; then set -a; . "$LOCAL_ENV_FILE"; set +a; fi
 export ADMIN_EMAIL="${ADMIN_EMAIL:-owner@elegance.local}"
 export DATABASE_URL='postgresql+asyncpg://elegance:local-dev-only@127.0.0.1:55432/elegance_shawls'
 export ENVIRONMENT=development ALLOWED_ORIGINS=http://localhost:3000 ASSISTANT_CATALOGUE=true
+# LLM wording turns on by itself when a model chain is configured.
+export ASSISTANT_LLM="${ASSISTANT_LLM:-$([ -n "${LLM_CHAIN_DEFAULT:-}" ] && echo true || echo false)}"
 
 docker inspect elegance-local-db >/dev/null 2>&1 || docker run -d --name elegance-local-db -p 127.0.0.1:55432:5432 \
   -e POSTGRES_USER=elegance -e POSTGRES_PASSWORD=local-dev-only -e POSTGRES_DB=elegance_shawls \
@@ -35,4 +40,4 @@ API=$!
 trap 'kill $API 2>/dev/null' EXIT
 cd ../frontend
 NEXT_PUBLIC_API_URL=http://localhost:8000 NEXT_PUBLIC_SITE_URL=http://localhost:3000 NEXT_PUBLIC_WHATSAPP_NUMBER=923001234567 \
-  NEXT_PUBLIC_ASSISTANT_ENABLED=1 npm run dev
+  NEXT_PUBLIC_ASSISTANT_ENABLED=1 NEXT_PUBLIC_GOOGLE_CLIENT_ID="${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${CUSTOMER_AUTH_AUDIENCE:-}}" npm run dev

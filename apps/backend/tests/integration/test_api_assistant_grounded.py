@@ -67,7 +67,9 @@ def test_llm_writes_the_wording_but_cards_and_proposals_stay_database_driven(cli
     events = ask(client, "red shawl under 2000 in stock")
     assert [d["name"] for e, d in events if e == "product"] == ["Ruby Shawl"]  # the invented product is only words
     assert next(d for e, d in events if e == "text")["delta"].startswith("Ye raha")
-    assert "Ruby Shawl: PKR 1500" in gateway.prompts[0][1]["content"]
+    prompt = gateway.prompts[0][1]["content"]
+    assert "Ruby Shawl (shawls): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt
+    assert "add the first one" not in " ".join(d["delta"] for e, d in events if e == "text")  # the model, not the canned line, speaks
     assert "red shawl" in gateway.prompts[0][1]["content"] and gateway.prompts[0][0]["role"] == "system"
 
 
@@ -101,3 +103,17 @@ def test_uncertain_or_negated_speech_asks_again_instead_of_guessing(client):
         events = ask_voice(client, heard)
         assert not [e for e, _ in events if e in ("product", "proposal")], heard
         assert "say it again" in next(d for e, d in events if e == "text")["delta"], heard
+
+
+def test_card_price_is_the_in_stock_variant_the_cart_suggestion_uses(pg_engine_factory, migrated_url, monkeypatch):
+    env = ApiEnv(migrated_url, monkeypatch)
+    monkeypatch.setattr(settings, "assistant_catalogue", True)
+    env.app.include_router(assistant_router)
+    env.app.dependency_overrides[catalogue_session] = env.app.dependency_overrides[get_pg_session]
+    body = {**payload("two-variants"), "name": "Twin Shawl", "status": "active",
+            "variants": [variant("Sold out Red", color="Red", price=1800, stock=0), variant("Red Large", color="Red", price=2100, stock=4)]}
+    assert env.client.post("/products/admin/", json=body, headers=H).status_code == 201
+    events = ask(env.client, "red shawl")
+    card = next(d for e, d in events if e == "product")
+    proposal = next(d for e, d in events if e == "proposal")
+    assert card["price"] == proposal["params"]["expected_unit_price"] == 2100

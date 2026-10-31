@@ -35,9 +35,12 @@ class HybridPage:
     mode: str  # "hybrid" | "lexical"
 
 
-def _binding(mode: str, terms: list[str], variant: VariantFilter | None, weights: Weights, target: Target | None) -> str:
+def _binding(mode: str, terms: list[str], variant: VariantFilter | None, weights: Weights, target: Target | None,
+             max_distance: float | None = None) -> str:
     doc = [mode, terms, vars(variant) if variant else None, [weights.lexical, weights.semantic],
            [target.provider, target.model, target.representation_version] if target else None, POOL]
+    if max_distance is not None:
+        doc.append(max_distance)  # appended only when set, so existing cursors stay valid
     return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -54,13 +57,13 @@ def _query_vector(embedder: Any, q: str):
 
 async def hybrid_search(session: AsyncSession, *, q: str | None, limit: int, cursor: str | None = None,
                         variant: VariantFilter | None = None, embedder: Any = None,
-                        weights: Weights = DEFAULT_WEIGHTS) -> HybridPage:
+                        weights: Weights = DEFAULT_WEIGHTS, max_distance: float | None = None) -> HybridPage:
     """Fused ranking, one page. A bad/foreign cursor raises ValueError (callers answer 400)."""
     terms = (q or "").split()[:MAX_TERMS]
     semantic = _query_vector(embedder, " ".join(terms)) if terms else None
     target = semantic[1] if semantic else None
     mode = "hybrid" if semantic else "lexical"
-    binding = _binding(mode, [t.casefold() for t in terms], variant, weights, target)
+    binding = _binding(mode, [t.casefold() for t in terms], variant, weights, target, max_distance)
     after = decode_ranked_cursor(cursor, binding) if cursor else None
 
     stmt = select(Product).where(Product.status == "active")
@@ -88,7 +91,7 @@ async def hybrid_search(session: AsyncSession, *, q: str | None, limit: int, cur
                 fresh = stored == represent(_product_dict(p))["fingerprint"]
             except RepresentationError:
                 fresh = False
-            if fresh and d is not None and d == d and d != float("inf"):  # drops stale, NaN (zero vector) and inf
+            if fresh and d is not None and d == d and d != float("inf") and (max_distance is None or d <= max_distance):  # drops stale, NaN (zero vector), inf and too-far neighbours
                 products[p.id] = p
                 cands[p.id] = Candidate(p.id, p.created_at, cands[p.id].lexical if p.id in cands else None, float(d))
 

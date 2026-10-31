@@ -7,7 +7,7 @@ from database.pg import get_pg_session
 from events.recorder import log_listing
 from repositories import Conflict, InvalidDraft, NotFound
 from repositories.hybrid import hybrid_search
-from semantic.local_e5 import get_embedder
+from semantic.local_e5 import distance_cutoff, get_embedder
 from repositories import products as repo
 from repositories.products import ProductInput, VariantFilter, VariantInput
 from schemas.product_schema import (
@@ -118,7 +118,8 @@ async def search_products(
     embedder, text = get_embedder(), (q or "").strip()[:100]
     if embedder is not None and text:  # semantic ranking only when configured; same filters, same response shape
         try:
-            page = await hybrid_search(session, q=text, limit=limit, cursor=cursor, variant=variant if has_filter else None, embedder=embedder)
+            page = await hybrid_search(session, q=text, limit=limit, cursor=cursor, variant=variant if has_filter else None, embedder=embedder,
+                                       max_distance=distance_cutoff(text))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid cursor") from exc
         background.add_task(log_listing, request, limit=limit, paged=bool(cursor), product_ids=[str(item.id) for item in page.items])

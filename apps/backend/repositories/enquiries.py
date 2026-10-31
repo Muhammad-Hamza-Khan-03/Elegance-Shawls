@@ -98,7 +98,7 @@ async def catalogue_snapshot(session: AsyncSession, product_ids: list[uuid.UUID]
     )).all()
     out: dict = {}
     for product, variant in rows:
-        entry = out.setdefault(str(product.id), {"id": str(product.id), "name": product.name, "slug": product.slug, "status": product.status,
+        entry = out.setdefault(str(product.id), {"id": str(product.id), "name": product.name, "category": str(getattr(product.category, "value", product.category)), "slug": product.slug, "status": product.status,
                                                  "is_active": product.is_active, "revision": product.revision, "variants": []})
         if variant is not None:
             entry["variants"].append({"id": str(variant.id), "is_active": variant.is_active, "price": variant.price,

@@ -1,0 +1,131 @@
+{
+  "cohorts": {
+    "keyword/en": {
+      "n": 42,
+      "recall10": 0.796,
+      "mrr10": 0.81
+    },
+    "keyword/roman_ur": {
+      "n": 167,
+      "recall10": 0.71,
+      "mrr10": 0.743
+    },
+    "keyword/ur": {
+      "n": 65,
+      "recall10": 0.782,
+      "mrr10": 0.815
+    },
+    "keyword/mixed": {
+      "n": 41,
+      "recall10": 0.748,
+      "mrr10": 0.805
+    },
+    "keyword/ALL": {
+      "n": 283,
+      "recall10": 0.778,
+      "mrr10": 0.813
+    },
+    "keyword/HELDOUT": {
+      "n": 32,
+      "recall10": 0.414,
+      "mrr10": 0.438
+    },
+    "raw E5/en": {
+      "n": 42,
+      "recall10": 0.955,
+      "mrr10": 0.988
+    },
+    "raw E5/roman_ur": {
+      "n": 167,
+      "recall10": 0.548,
+      "mrr10": 0.681
+    },
+    "raw E5/ur": {
+      "n": 65,
+      "recall10": 0.696,
+      "mrr10": 0.818
+    },
+    "raw E5/mixed": {
+      "n": 41,
+      "recall10": 0.434,
+      "mrr10": 0.635
+    },
+    "raw E5/ALL": {
+      "n": 283,
+      "recall10": 0.621,
+      "mrr10": 0.747
+    },
+    "raw E5/HELDOUT": {
+      "n": 32,
+      "recall10": 0.588,
+      "mrr10": 0.72
+    },
+    "pipeline/en": {
+      "n": 42,
+      "recall10": 0.857,
+      "mrr10": 0.857
+    },
+    "pipeline/roman_ur": {
+      "n": 167,
+      "recall10": 0.93,
+      "mrr10": 0.927
+    },
+    "pipeline/ur": {
+      "n": 65,
+      "recall10": 0.954,
+      "mrr10": 0.954
+    },
+    "pipeline/mixed": {
+      "n": 41,
+      "recall10": 0.983,
+      "mrr10": 0.98
+    },
+    "pipeline/ALL": {
+      "n": 283,
+      "recall10": 0.939,
+      "mrr10": 0.936
+    },
+    "pipeline/HELDOUT": {
+      "n": 32,
+      "recall10": 0.872,
+      "mrr10": 0.875
+    }
+  },
+  "gate": {
+    "0.1": {
+      "recall": 0.932,
+      "false_positive": 0.0
+    },
+    "0.14": {
+      "recall": 0.932,
+      "false_positive": 0.0
+    },
+    "0.16": {
+      "recall": 0.932,
+      "false_positive": 0.0
+    },
+    "0.18": {
+      "recall": 0.932,
+      "false_positive": 0.0
+    },
+    "0.2": {
+      "recall": 0.932,
+      "false_positive": 0.0
+    },
+    "0.22": {
+      "recall": 0.932,
+      "false_positive": 0.15
+    },
+    "0.24": {
+      "recall": 0.932,
+      "false_positive": 0.6
+    },
+    "1.0": {
+      "recall": 0.932,
+      "false_positive": 0.9
+    }
+  },
+  "clarified": {
+    "ur": 1
+  }
+}

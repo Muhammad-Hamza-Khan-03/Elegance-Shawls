@@ -38,3 +38,10 @@ def test_semantic_ranking_respects_hard_filters_and_paginates(env, monkeypatch):
 def test_without_an_embedder_search_stays_keyword_only(env, monkeypatch):
     monkeypatch.setattr("routes.product_routes.get_embedder", lambda: None)
     assert slugs(env, q="alpha") == ["alpha"]
+
+
+def test_off_topic_queries_get_no_semantic_neighbours_but_shopping_words_are_trusted(env, monkeypatch):
+    monkeypatch.setattr("routes.product_routes.get_embedder", lambda: FAKE)
+    monkeypatch.setattr("configuration.config.settings.semantic_max_distance", 0.0)   # nothing is "close enough"
+    assert slugs(env, q="delivery kitne din") == []                                  # no shopping word: neighbours dropped
+    assert len(slugs(env, q="shawl")) == 3                                           # shopping word: ranking trusted, unchanged
