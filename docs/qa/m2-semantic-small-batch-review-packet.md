@@ -11,8 +11,9 @@ This packet is a read-only review handoff for the accepted M2 tip. It does not a
 | Item | Value |
 |---|---|
 | Repository | `/home/hamza/worktrees/m2-semantic-review-packet-44c0d13` |
-| Accepted tip | `44c0d1374e6d478658b10121bb4c8d40c24a3850` |
-| Parent | `d7ebaefa67901132a05aaf32c1ac374227ff3dcd` |
+| Application/evaluation baseline SHA | `44c0d1374e6d478658b10121bb4c8d40c24a3850` |
+| Application/evaluation baseline parent | `d7ebaefa67901132a05aaf32ac1c374227ff3dcd` |
+| Packet artifact commit before this metadata correction | `36dfa8cd8899ff0949ac58e7e8202b7244ac6b60` |
 | Worktree | detached, isolated from the canonical checkout |
 | Representation version | `ps-v1` |
 | Evaluator | `evals/semantic_eval.py` |
@@ -136,10 +137,12 @@ The current parser threshold file requires `exact_match >= 0.90`, `constraint_pr
 
 ## 6. Fixture/version/checksum rules
 
-Before review begins, record:
+Before review begins, record the frozen application/evaluation baseline and the packet artifact separately:
 
 ```text
-repo_sha=44c0d1374e6d478658b10121bb4c8d40c24a3850
+application_evaluation_baseline_sha=44c0d1374e6d478658b10121bb4c8d40c24a3850
+application_evaluation_baseline_parent=d7ebaefa67901132a05aaf32ac1c374227ff3dcd
+packet_artifact_commit_before_metadata_correction=36dfa8cd8899ff0949ac58e7e8202b7244ac6b60
 representation_version=ps-v1
 semantic_fixture_sha256=a27e3ceb36eece21386bd0e3bc3716d4e6ab3790fe578f4d294e6aeadb3d6209
 parser_fixture_sha256=d021ab12244f78ff56d8fe7685e01334e857ad2b30369e72af213cbe38cb78de
