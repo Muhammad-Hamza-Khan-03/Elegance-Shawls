@@ -6,7 +6,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
   if (!siteUrl) return [];
   // Keep sitemap generation within the same backend deadline as the readiness check.
-  const products = await api.getProducts(AbortSignal.timeout(4000)).catch(() => []);
+  const products = await api.getAllProducts(AbortSignal.timeout(4000)).catch(() => []);
   const staticPaths = ['', '/products', '/delivery', '/returns', '/privacy', '/terms', '/contact'];
   return [
     ...staticPaths.map((path) => ({ url: `${siteUrl}${path}`, changeFrequency: path === '' ? 'weekly' as const : 'monthly' as const, priority: path === '' ? 1 : 0.7 })),

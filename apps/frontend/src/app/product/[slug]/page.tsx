@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const product = await api.getProductBySlug(slug);
+  // A transient failure must not become a cacheable noindex "not found"; the page render shows the retry state.
+  const product = await api.getProductBySlug(slug).catch(() => null);
+  if (product === null) return { title: 'Product temporarily unavailable' };
   if (!product || product.status !== 'active') return { title: 'Product not found', robots: { index: false, follow: false } };
   const plain = markdownToPlainText(product.description || '');
   const description = plain.slice(0, 160) || `View ${product.name}, available options and stock.`;
