@@ -1,4 +1,4 @@
-"""Embedding provider boundary: allowlist, fail-closed config, vector validation, test-only fake provider.
+"""Offline-evaluation embedding contract (used by evals/semantic_eval.py only; production vectors come from search/embedding_service): allowlist, fail-closed config, vector validation, test-only fake provider.
 
 Nothing here performs network I/O. Real providers are added by extending ALLOWED_MODELS in a reviewed change;
 the fake needs an explicit test opt-in.

@@ -23,6 +23,7 @@ def client(pg_engine_factory, migrated_url, monkeypatch):
                                              ("blue-cheap", "Navy Shawl", "Blue", 1500, 3), ("red-sold-out", "Rose Shawl", "Red", 1200, 0)]:
         body = {**payload(slug), "name": name, "status": "active", "variants": [variant(name, color=colour, price=price, stock=stock)]}
         assert env.client.post("/products/admin/", json=body, headers=H).status_code == 201
+    env.client.env = env
     return env.client
 
 
@@ -43,6 +44,40 @@ def test_filters_come_from_the_message_and_cards_from_the_database(client):
 def test_no_match_says_so_and_proposes_nothing(client):
     events = ask(client, "green shawl")
     assert not [e for e, _ in events if e in ("product", "proposal")] and events[-1][0] == "done"
+
+
+def test_assistant_ranks_with_the_canonical_embeddings_and_still_respects_hard_filters(client, monkeypatch):
+    from models.relational_model import EMBEDDING_DIMENSIONS
+    from repositories.hybrid import QueryEmbedding
+    from search import embedding_service as svc
+    from search.providers import FakeEmbeddingProvider
+    from tests.integration.repo_helpers import tx
+
+    fake, index, env, asked = FakeEmbeddingProvider(EMBEDDING_DIMENSIONS), "idx-assistant", client.env, []
+    monkeypatch.setattr(settings, "embedding_index_version", index)
+    ids = {r[1]: r[0] for r in env.sql("SELECT id, slug FROM products")}
+
+    async def embed_all(sessions):
+        for owner in ids.values():
+            async with tx(sessions) as s:
+                row, _ = await svc.ensure_pending(s, "product", owner, fake, index_version=index, max_attempts=3)
+            await svc.process(sessions, fake, "product", row.id, lease_seconds=60, backoff_seconds=0)
+        async with sessions() as s:
+            return (await fake.embed([(await svc.load_source(s, "product", ids["blue-cheap"])).representation.text]))[0]
+
+    vector = env.run(embed_all)
+
+    async def embed_query(text):
+        asked.append(text)
+        return QueryEmbedding(fake, vector)
+    monkeypatch.setattr("assistant.grounded.embed_query", embed_query)
+    names = [d["name"] for e, d in ask(client, "red shawl under 2000 in stock") if e == "product"]
+    assert asked and names == ["Ruby Shawl"]          # the vector nearest to the blue shawl cannot override colour, price or stock
+
+    async def down(text):
+        return None
+    monkeypatch.setattr("assistant.grounded.embed_query", down)
+    assert [d["name"] for e, d in ask(client, "red shawl under 2000 in stock") if e == "product"] == names   # provider down: same answer, lexically
 
 
 class StubGateway:

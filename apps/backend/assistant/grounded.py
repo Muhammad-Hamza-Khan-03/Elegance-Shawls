@@ -21,8 +21,7 @@ from datetime import datetime, timezone
 from llm.gateway import get_gateway
 from memory.principal import SESSION_HEADER, CustomerPrincipal, get_session_verifier, resolve_principal
 from repositories.enquiries import catalogue_snapshot
-from repositories.hybrid import hybrid_search
-from semantic.local_e5 import distance_cutoff, get_embedder
+from repositories.hybrid import distance_cutoff, embed_query, hybrid_search
 from semantic.representation import _SCRUB
 from semantic.query_parser import handoff, parse_query
 from utils.colour_vocabulary import normalize
@@ -200,7 +199,7 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
     if plan is None:
         asks = tuple(f"{q} " for q in intent.clarifications) or ("Could you tell me a little more about what you are looking for?",)
         return _say(*asks), k.InMemoryCatalogue({})
-    page = await hybrid_search(session, q=plan.q, limit=MAX_CARDS * 3 if prefs.values else MAX_CARDS, variant=plan.variant, embedder=get_embedder(),
+    page = await hybrid_search(session, q=plan.q, limit=MAX_CARDS * 3 if prefs.values else MAX_CARDS, variant=plan.variant, embedding=await embed_query(plan.q),
                                max_distance=distance_cutoff(" ".join([*intent.terms, intent.colour or ""]) or message))
     snapshot = await catalogue_snapshot(session, [p.id for p in page.items])
     products = [snapshot[str(p.id)] for p in page.items if str(p.id) in snapshot]

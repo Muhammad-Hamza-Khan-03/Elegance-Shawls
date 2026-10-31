@@ -13,18 +13,18 @@ That document is the source of truth for the current architecture direction, rep
 - `Elegance-Shawls` is the primary commerce application and authoritative business system.
 - `quill-store` is a source/reference for scraper and ingestion logic. Its useful modules may be adapted, but scraping must not bypass Elegance approval or publish directly.
 - `quill-panel` is a source/reference for scraper review UI. Do not create a second competing full admin system.
-- The browser must not connect directly to MongoDB.
+- The browser must not connect directly to the database.
 - The public storefront must only expose published products.
 - Ingestion results must enter staging before approval and publication.
 
 ## Current technology direction
 
 - Keep the existing Next.js frontend and FastAPI backend.
-- Use MongoDB as the initial single source of truth.
-- Use an independent Python ingestion worker with MongoDB-backed durable jobs.
+- Use PostgreSQL 17 with pgvector (Render in staging/production) as the single source of truth; MongoDB was retired (architecture 3.1).
+- Use an independent Python ingestion worker with PostgreSQL-backed durable jobs.
 - Use Crawl4AI first and one authorized source in the first ingestion phase.
 - Defer Redis, Cloudflare Queues, Firecrawl dual-provider support, n8n, Qdrant, Kubernetes, and other specialized infrastructure until measured requirements justify them.
-- PostgreSQL is a future migration option, not a parallel source of truth.
+- Redis/arq is used only for new AI workloads (embeddings, enrichment); it never holds catalogue data.
 
 ## Engineering rules
 

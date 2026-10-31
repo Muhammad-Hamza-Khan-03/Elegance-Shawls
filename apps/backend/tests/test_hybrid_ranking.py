@@ -5,8 +5,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from repositories.hybrid import _query_vector
-from semantic.embeddings import EmbeddingConfig, FakeEmbeddingProvider
 from semantic.ranking import Candidate, fuse, lexical_score, normalize_weights, page_after
 from utils.pagination import decode_cursor, decode_ranked_cursor, encode_cursor, encode_ranked_cursor
 
@@ -109,23 +107,3 @@ def test_ranked_and_keyset_cursors_are_not_interchangeable():
         decode_cursor(encode_ranked_cursor((0.1, T0, uid(1)), "b"))
     with pytest.raises(ValueError):
         decode_ranked_cursor(encode_cursor(T0, uid(1)), "b")
-
-
-class _Boom:
-    config = EmbeddingConfig("fake", "fake-hash-v1", 64)
-
-    def embed(self, text):
-        raise RuntimeError("provider down")
-
-
-class _WrongDims(_Boom):
-    def embed(self, text):
-        return [0.1, 0.2]
-
-
-def test_unavailable_embedder_degrades_to_none():
-    assert _query_vector(None, "shawls") is None
-    assert _query_vector(_Boom(), "shawls") is None
-    assert _query_vector(_WrongDims(), "shawls") is None
-    vector, target = _query_vector(FakeEmbeddingProvider(_Boom.config), "shawls")
-    assert len(vector) == 64 and target.model == "fake-hash-v1"
