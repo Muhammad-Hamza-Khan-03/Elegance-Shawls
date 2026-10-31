@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[3]
 FRONT = 'http://127.0.0.1:3200'
 API = 'http://127.0.0.1:4200'
 KEY = 'local-integration-fixture-only-not-a-production-secret'
+EMAIL = 'owner@example.test'
+PASSWORD = 'throwaway-Fixture-Passw0rd-not-real'
 checks = []
 
 
@@ -36,6 +38,8 @@ with database, tempfile.TemporaryDirectory() as temporary:
     backend_env = dict(os.environ, DATABASE_URL=url, ADMIN_API_KEY=KEY, ALLOWED_ORIGINS=FRONT, PYTHONPATH=backend_path)
     subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], cwd=ROOT / 'apps/backend', env=backend_env, check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run([sys.executable, 'scripts/admin_accounts.py', 'bootstrap-owner', '--email', EMAIL], cwd=ROOT / 'apps/backend',
+                   env=dict(backend_env, ADMIN_ACCOUNT_PASSWORD=PASSWORD), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     frontend_env = dict(os.environ, ADMIN_API_KEY=KEY, NEXT_PUBLIC_API_URL=API, NEXT_PUBLIC_SITE_URL=FRONT,
                         NEXT_PUBLIC_WHATSAPP_NUMBER='923001234567')
     backend = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '4200'],
@@ -56,8 +60,8 @@ with database, tempfile.TemporaryDirectory() as temporary:
             check('frontend-to-backend readiness', web.get('/api/ready').status_code == 200)
             check('anonymous proxy access rejected', web.get('/api/admin/products').status_code == 401)
             check('malformed cookie rejected', web.get('/api/admin/products', headers={'cookie':'es_admin_session=%E0%A4%A'}).status_code == 401)
-            check('wrong login rejected', web.post('/api/admin/session', json={'key':'wrong'}).status_code == 401)
-            login = web.post('/api/admin/session', json={'key':KEY})
+            check('wrong login rejected', web.post('/api/admin/session', json={'email':EMAIL,'password':'wrong'}).status_code == 401)
+            login = web.post('/api/admin/session', json={'email':EMAIL,'password':PASSWORD})
             check('admin login accepted', login.status_code == 200)
             check('session cookie HttpOnly and SameSite', 'HttpOnly' in login.headers.get('set-cookie','') and 'SameSite=lax' in login.headers.get('set-cookie',''))
             check('private key absent from login response', KEY not in login.text)

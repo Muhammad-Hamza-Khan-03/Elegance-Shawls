@@ -5,7 +5,9 @@ import { POST as stagedAction } from './staged/[stagedId]/[action]/route';
 import { GET as getEnrichment, POST as postEnrichment } from './staged/[stagedId]/enrichment/route';
 import { POST as cancelEnrichmentRoute } from './staged/[stagedId]/enrichment/[suggestionId]/cancel/route';
 import { GET as listJobs, POST as createJob } from './jobs/route';
-import { ADMIN_SESSION_COOKIE, issueAdminSession } from '@/lib/admin-session';
+import { ADMIN_SESSION_COOKIE } from '@/lib/admin-session';
+
+const TOKEN = `es1.${'a'.repeat(43)}`;
 
 const origin = 'https://store.example.invalid';
 const id = '507f1f77bcf86cd799439011';
@@ -41,20 +43,16 @@ const make = (route: (typeof routes)[number], cookie?: string, requestOrigin?: s
   });
 
 describe('ingestion admin proxy', () => {
-  const oldKey = process.env.ADMIN_API_KEY;
   const oldUrl = process.env.NEXT_PUBLIC_API_URL;
   const fetchMock = vi.fn();
 
   beforeEach(() => {
-    process.env.ADMIN_API_KEY = 'fixture-only-private-admin-key';
     process.env.NEXT_PUBLIC_API_URL = 'https://backend.example.invalid';
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
-    if (oldKey === undefined) delete process.env.ADMIN_API_KEY;
-    else process.env.ADMIN_API_KEY = oldKey;
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
     else process.env.NEXT_PUBLIC_API_URL = oldUrl;
     vi.unstubAllGlobals();
@@ -67,38 +65,35 @@ describe('ingestion admin proxy', () => {
   });
 
   it.each(routes.filter((r) => r.method === 'POST'))('rejects cross-origin and origin-less $name', async (route) => {
-    const session = issueAdminSession()!;
-    expect((await route.handler(make(route, session.token, 'https://other.example.invalid'))).status).toBe(403);
-    expect((await route.handler(make(route, session.token))).status).toBe(403);
+    expect((await route.handler(make(route, TOKEN, 'https://other.example.invalid'))).status).toBe(403);
+    expect((await route.handler(make(route, TOKEN))).status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(routes)('forwards signed-in $name with the private key and never returns it', async (route) => {
-    const session = issueAdminSession()!;
+  it.each(routes)('forwards signed-in $name with only the session token and never returns it', async (route) => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
-    const response = await route.handler(make(route, session.token, origin));
+    const response = await route.handler(make(route, TOKEN, origin));
     expect(response.status).toBe(200);
     expect(fetchMock.mock.calls[0][0].toString()).toBe(`https://backend.example.invalid${route.backend}`);
     expect(fetchMock.mock.calls[0][1].method).toBe(route.method);
-    expect(fetchMock.mock.calls[0][1].headers.get('X-Admin-Key')).toBe(process.env.ADMIN_API_KEY);
-    expect(await response.text()).not.toContain(process.env.ADMIN_API_KEY!);
+    expect(fetchMock.mock.calls[0][1].headers.get('X-Admin-Session')).toBe(TOKEN);
+    expect(fetchMock.mock.calls[0][1].headers.get('X-Admin-Key')).toBeNull();
+    expect(await response.text()).not.toContain(TOKEN);
   });
 
   it.each(['delete', 'publish-all', '..', 'approve%2f..%2f..'])('does not forward unknown action "%s"', async (action) => {
-    const session = issueAdminSession()!;
     const request = new Request(`${origin}/api/admin/ingestion/staged/${id}/${action}`, {
       method: 'POST',
-      headers: { cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`, origin },
+      headers: { cookie: `${ADMIN_SESSION_COOKIE}=${TOKEN}`, origin },
     });
     expect((await stagedAction(request)).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('does not forward a malformed staged id', async () => {
-    const session = issueAdminSession()!;
     const request = new Request(`${origin}/api/admin/ingestion/staged/not-an-id/publish`, {
       method: 'POST',
-      headers: { cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`, origin },
+      headers: { cookie: `${ADMIN_SESSION_COOKIE}=${TOKEN}`, origin },
     });
     expect((await stagedAction(request)).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -127,10 +122,9 @@ describe('ingestion admin proxy', () => {
   });
 
   it('relays backend state errors unchanged', async () => {
-    const session = issueAdminSession()!;
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: 'Cannot publish a staged product that is pending_review' }), { status: 409, headers: { 'content-type': 'application/json' } }));
     const publish = routes.find((r) => r.name === 'publish')!;
-    const response = await publish.handler(make(publish, session.token, origin));
+    const response = await publish.handler(make(publish, TOKEN, origin));
     expect(response.status).toBe(409);
     expect((await response.json()).detail).toContain('pending_review');
   });

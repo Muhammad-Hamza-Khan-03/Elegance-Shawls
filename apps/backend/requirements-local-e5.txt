@@ -6,5 +6,8 @@
 # lock and `pip-audit` the resolved set on the evaluation machine before use; the repo CI audit does not cover this file.
 # The model weights are never downloaded by the provider: fetch them yourself once, print their revision with
 # `python -m embeddings.providers.local_e5 <model dir>`, and pass --local-model-path and --local-model-revision.
+#
+# Also used by the assistant's semantic search (semantic/local_e5.py, same model, same snapshot): CPU-only torch first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
 -r requirements.txt
 sentence-transformers==5.7.0

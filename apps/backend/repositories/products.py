@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import exists, func, or_, select, tuple_, update
+from sqlalchemy import and_, exists, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from catalog.query import ParsedQuery
 from catalog.search import CURRENCY
 from models.relational_model import Product, StagedProduct, Variant
 from repositories import Conflict, InvalidDraft, NotFound
+from utils.colour_vocabulary import spellings
 
 Key = tuple[datetime, uuid.UUID]  # (created_at, id): the cursor position of a product
 
@@ -108,11 +109,53 @@ async def get_public_product_by_slug(session: AsyncSession, slug: str) -> Produc
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def list_products(session: AsyncSession, *, public: bool, limit: int, after: Key | None = None) -> Page:
-    """Newest first with keyset pagination on (created_at, id); public means active products only."""
+def _term_match(term: str):
+    """One search term must appear (case-insensitive substring) in a product field or in one of its variants."""
+    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    fields = (Product.name, Product.slug, Product.material, Product.item_number, Product.main_description)
+    in_variant = exists().where(Variant.product_id == Product.id,
+                                or_(Variant.name.ilike(like, escape="\\"), Variant.color.ilike(like, escape="\\")))
+    return or_(*(f.ilike(like, escape="\\") for f in fields), in_variant)
+
+
+@dataclass
+class VariantFilter:
+    """Constraints that one and the same purchasable variant must satisfy together."""
+    colour: str | None = None  # canonical vocabulary value
+    min_price: int | None = None
+    max_price: int | None = None
+    in_stock: bool = False
+
+
+def _variant_match(f: VariantFilter):
+    """EXISTS over a single variant row, so colour, price and stock can never be satisfied by different variants."""
+    norm = lambda col: func.regexp_replace(func.lower(func.trim(col)), r"\s+", " ", "g")  # noqa: E731
+    conds = [Variant.product_id == Product.id, Variant.is_active.is_(True)]
+    if f.colour:
+        raw = spellings(f.colour)
+        # Same precedence as colour_vocabulary.resolve: the name only counts when colour is null/blank.
+        conds.append(or_(norm(Variant.color).in_(raw),
+                         and_(func.coalesce(func.trim(Variant.color), "") == "", norm(Variant.name).in_(raw))))
+    if f.min_price is not None:
+        conds.append(Variant.price >= f.min_price)
+    if f.max_price is not None:
+        conds.append(Variant.price <= f.max_price)
+    if f.in_stock:
+        conds.append(Variant.stock > 0)
+    return exists().where(*conds)
+
+
+async def list_products(session: AsyncSession, *, public: bool, limit: int, after: Key | None = None,
+                        q: str | None = None, variant: VariantFilter | None = None) -> Page:
+    """Newest first with keyset pagination on (created_at, id); public means active products only.
+    `q` is whitespace-separated terms that must all match (shortcut: ILIKE scan, move to full-text/trigram with the M1 index)."""
     stmt = select(Product).order_by(Product.created_at.desc(), Product.id.desc()).limit(limit + 1)
     if public:
         stmt = stmt.where(Product.status == "active")
+    if q:
+        stmt = stmt.where(and_(*(_term_match(t) for t in q.split()[:8])))
+    if variant is not None:
+        stmt = stmt.where(_variant_match(variant))
     if after is not None:
         stmt = stmt.where(tuple_(Product.created_at, Product.id) < tuple_(*after))
     rows = list((await session.execute(stmt)).scalars())

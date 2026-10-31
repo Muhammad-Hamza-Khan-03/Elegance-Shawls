@@ -10,6 +10,7 @@ from llm.fake import FakeProvider
 from llm.gateway import BudgetTracker, LLMGateway
 from observability import langfuse_client, tracing
 from workers import queues
+from tests.admin_stub import open_legacy_admin
 from workers.jobs import sample_job
 
 TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
@@ -67,10 +68,9 @@ def test_enqueue_carries_the_current_trace_and_worker_continues_it(exporter, poo
 
 
 def test_http_request_trace_reaches_the_job_payload(exporter, pool, monkeypatch):
-    monkeypatch.setattr(settings, "admin_api_key", "k")
     monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1000)
     monkeypatch.setattr(settings, "admin_rate_limit_per_minute", 1000)
-    response = TestClient(main.create_app()).post(
+    response = TestClient(open_legacy_admin(main.create_app(), monkeypatch, "k")).post(
         "/v1/admin/jobs/sample", json={"value": "v"}, headers={"X-Admin-Key": "k", "traceparent": TRACEPARENT})
     assert response.status_code == 202 and response.headers["x-trace-id"] == TRACE_ID
     carried = pool.calls[0][2]["traceparent"]

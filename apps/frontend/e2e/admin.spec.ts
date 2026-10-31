@@ -5,7 +5,8 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
   await expect(page).toHaveURL(/\/admin\/login/);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
-  await page.getByLabel('Admin key').fill('test-admin-secret');
+  await page.getByLabel('Email').fill('owner@example.test');
+  await page.getByLabel('Password').fill('test-owner-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL(/\/admin\/dashboard$/);
@@ -27,7 +28,11 @@ test('admin shell blocks anonymous access and supports navigation', async ({ pag
   });
   expect(mutationStatus).toBe(200);
 
-  await page.getByRole('link', { name: 'Orders' }).click();
-  await expect(page).toHaveURL(/\/admin\/orders$/);
-  await expect(page.getByRole('heading', { name: 'Order operations scaffold' })).toBeVisible();
+  await page.getByRole('link', { name: 'Enquiries' }).click();
+  await expect(page).toHaveURL(/\/admin\/enquiries$/);
+  await expect(page.getByRole('heading', { name: 'WhatsApp enquiry references' })).toBeVisible();
+  await expect(page.getByText('ES-MOCK42')).toBeVisible();
+  await page.getByLabel('Enquiry reference').fill('es-nope22');
+  await page.getByRole('button', { name: 'Look up' }).click();
+  await expect(page.getByText('No enquiry found.')).toBeVisible();
 });

@@ -201,10 +201,11 @@ export const reconcileCartItems = (items: CartItem[], current: Map<string, Produ
 
 export interface CartCheckoutOptions {
   siteUrl?: string;
+  reference?: string;
   customer?: { name?: string; phone?: string; city?: string; address?: string; notes?: string };
 }
 
-export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, { siteUrl = '', customer }: CartCheckoutOptions = {}) => {
+export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, { siteUrl = '', customer, reference }: CartCheckoutOptions = {}) => {
   const currency = items[0]?.product.currency || 'PKR';
   const total = items.reduce((sum, item) => sum + item.variant.price * item.quantity, 0);
   const baseUrl = siteUrl.replace(/\/$/, '');
@@ -218,6 +219,7 @@ export const buildCartCheckoutUrl = (items: CartItem[], whatsappNumber: string, 
 
   const message = [
     'Assalam o Alaikum, I want to place an order from Elegance Shawls.',
+    ...(reference ? [`Enquiry reference: ${reference}`] : []),
     '',
     customer?.name ? `Name: ${customer.name}` : 'Name:',
     customer?.phone ? `Phone: ${customer.phone}` : 'Phone:',

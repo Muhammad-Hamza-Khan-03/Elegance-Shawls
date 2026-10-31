@@ -47,7 +47,7 @@ def listing(monkeypatch):
     monkeypatch.setattr(settings, "session_signing_key", KEY)
     products = [transient_product("a-shawl"), transient_product("b-shawl")]
 
-    async def list_products(session, *, public, limit, after=None):
+    async def list_products(session, *, public, limit, after=None, q=None):
         assert public is True
         return product_repo.Page(products, None)
 
