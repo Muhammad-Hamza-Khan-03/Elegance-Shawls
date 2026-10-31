@@ -123,3 +123,43 @@ test('speech only fills the box; the request is marked voice until the customer 
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1].context.input).toBeUndefined();
 });
+
+test('a remember suggestion is a question: nothing is saved until Save, and problems point to the right page', async ({ page }) => {
+  await stubStream(page, (r) => start(r) + frame(1, 'text', { delta: 'Do you want me to remember this? ' })
+    + frame(2, 'memory_suggestion', { key: 'favourite_colour', value: 'brown' }) + frame(3, 'done', { events: 3 }));
+  const saves: Record<string, unknown>[] = [];
+  let answer: { status: number; json: unknown } = { status: 401, json: { detail: 'Sign in is required.' } };
+  await page.route('**/api/customer/memory', async (route) => {
+    saves.push(route.request().postDataJSON());
+    await route.fulfill({ status: answer.status, json: answer.json });
+  });
+  await ask(page);
+  const card = page.getByTestId('remember-card');
+  await expect(card).toContainText('favourite colour');
+  await expect(card).toContainText('brown');
+  expect(saves).toHaveLength(0);                                              // showing the card saved nothing
+
+  await card.getByRole('button', { name: 'Save' }).click();                   // signed out
+  await expect(card.getByRole('alert')).toContainText('sign in');
+  await expect(card.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/account');
+
+  answer = { status: 403, json: { detail: 'Request was not accepted.', reason: 'consent_required' } };
+  await card.getByRole('button', { name: 'Save' }).click();                   // signed in, memory off
+  await expect(card.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/memory');
+
+  answer = { status: 201, json: { id: 'm1' } };
+  await card.getByRole('button', { name: 'Save' }).click();
+  await expect(card.getByRole('status')).toContainText('Saved');
+  expect(saves[2]).toMatchObject({ category: 'preference', key: 'favourite_colour', value: 'brown', source: 'user_explicit', source_ref: 'assistant' });
+  expect(String(saves[2].idempotency_key)).toMatch(/^idem_/);
+});
+
+test('"No thanks" removes the suggestion without saving', async ({ page }) => {
+  await stubStream(page, (r) => start(r) + frame(1, 'memory_suggestion', { key: 'budget_max_pkr', value: '4000' }) + frame(2, 'done', { events: 2 }));
+  let saved = false;
+  await page.route('**/api/customer/memory', (route) => { saved = true; return route.fulfill({ status: 201, json: {} }); });
+  await ask(page);
+  await page.getByTestId('remember-card').getByRole('button', { name: 'No thanks' }).click();
+  await expect(page.getByTestId('remember-card')).toHaveCount(0);
+  expect(saved).toBe(false);
+});

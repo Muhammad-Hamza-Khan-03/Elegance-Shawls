@@ -175,3 +175,25 @@ describe('voice provenance boundary', () => {
     expect(parseFrame(fr(0, 'start', { protocol: 1, ...META, voice }).slice(0, -2), META)).toBeNull();
   });
 });
+
+describe('memory_suggestion', () => {
+  const frame = (data: unknown) => fr(1, 'memory_suggestion', data).trimEnd();
+  const session = { session_id: 'sess-1' };
+  it('is believed only for an allowlisted key with a short plain value', () => {
+    expect(parseFrame(frame({ key: 'favourite_colour', value: 'brown' }), session)).toEqual({ seq: 1, type: 'memory_suggestion', key: 'favourite_colour', value: 'brown' });
+    expect(parseFrame(frame({ key: 'budget_max_pkr', value: '4000' }), session)).toMatchObject({ type: 'memory_suggestion', key: 'budget_max_pkr' });
+  });
+  it('rejects unknown keys, empty or oversized values and wrong types (the stream then ends as invalid)', () => {
+    for (const bad of [{ key: 'email', value: 'a' }, { key: 'favourite_colour', value: '' }, { key: 'favourite_colour', value: 'x'.repeat(201) },
+      { key: 'favourite_colour', value: 5 }, { key: 'favourite_colour' }, { value: 'brown' }]) {
+      expect(parseFrame(frame(bad), session)).toBeNull();
+    }
+  });
+  it('carries no action: it is a normal item in order and executes nothing', () => {
+    const events = [{ seq: 0, type: 'start', meta: META }, { seq: 1, type: 'memory_suggestion', key: 'favourite_colour', value: 'brown' }, { seq: 2, type: 'done' }] as AssistantEvent[];
+    const state = events.reduce(reduce, initialState());
+    expect(state.status).toBe('done');
+    expect(state.items).toHaveLength(1);
+  });
+});
+

@@ -18,6 +18,8 @@ MAX_TEXT_CHARS = 4000
 EXECUTABLE = frozenset({"add_to_cart", "start_whatsapp_enquiry"})
 SERVER_PERMISSIONS = frozenset({"catalogue:read", "cart:propose", "enquiry:initiate"})  # never taken from the client
 
+MEMORY_KEYS = frozenset({"favourite_colour", "budget_max_pkr"})  # mirrors assistant/personal.py (this module imports nothing of the app)
+
 DEMO_PRODUCT = "11111111-1111-4111-8111-111111111111"
 DEMO_VARIANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
@@ -106,6 +108,12 @@ async def stream_events(
                     v = next((v for v in p.get("variants", ()) if v.get("is_active") is True), {})
                     yield out("product", {"product_id": pid, "name": str(p.get("name", ""))[:200], "revision": p.get("revision"),
                                           "price": v.get("price"), "currency": v.get("currency")})
+                elif kind == "memory_suggestion":
+                    key, value = chunk.get("key"), chunk.get("value")
+                    if key not in MEMORY_KEYS or not isinstance(value, str) or not 1 <= len(value) <= 200:
+                        terminal = ("error", {"code": "provider_malformed"})
+                        break
+                    yield out("memory_suggestion", {"key": key, "value": value})   # a question for the customer; nothing is saved here
                 elif kind == "proposal":
                     proposal = k.ActionProposal(chunk.get("action_type"), chunk.get("idempotency_key"), chunk.get("params"), ctx)
                     decision = k.validate(proposal, catalogue, ledger)

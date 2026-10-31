@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCart } from '@/components/cart/CartProvider';
 import { confirmAction, resolveLines } from '@/lib/assistant-actions';
 import { buildCartCheckoutUrl, createCartItem } from '@/lib/cart';
+import { memoryApi, type MemoryApiError } from '@/lib/memory';
 import { initialState, reduce, streamAssistant, type AssistantEvent, type ChatState } from '@/lib/assistant-stream';
 
 const ERROR_TEXT: Record<string, string> = {
@@ -68,6 +69,39 @@ function ConfirmAction({ item, sessionId, summary }: { item: Proposal; sessionId
   );
 }
 
+const MEMORY_LABEL: Record<string, string> = { favourite_colour: 'favourite colour', budget_max_pkr: 'budget (PKR, at most)' };
+
+// A question, not an action: nothing is saved until the customer presses Save, and the memory API re-applies consent and validation.
+function RememberCard({ item }: { item: Extract<AssistantEvent, { type: 'memory_suggestion' }> }) {
+  const [state, setState] = useState<{ kind: 'ask' | 'saving' | 'saved' | 'dismissed' | 'problem'; text?: string; link?: string }>({ kind: 'ask' });
+  async function save() {
+    setState({ kind: 'saving' });
+    try {
+      await memoryApi.create({ category: 'preference', key: item.key, value: item.value, reason: 'Saved from assistant chat', source: 'user_explicit', source_ref: 'assistant' });
+      setState({ kind: 'saved' });
+    } catch (caught) {
+      const failure = caught as MemoryApiError;
+      setState(failure.status === 401 ? { kind: 'problem', text: 'Please sign in first.', link: '/account' }
+        : failure.reason === 'consent_required' ? { kind: 'problem', text: 'Memory is off. Turn it on first.', link: '/memory' }
+        : failure.reason === 'duplicate_key' ? { kind: 'problem', text: 'You already saved something with that name. Change it on the memory page.', link: '/memory' }
+        : { kind: 'problem', text: 'Could not save that. Please try again.' });
+    }
+  }
+  if (state.kind === 'dismissed') return null;
+  return (
+    <div data-testid="remember-card" className="rounded border p-2 text-sm">
+      <p>Remember your {MEMORY_LABEL[item.key]}: <strong>{item.value}</strong>?</p>
+      {state.kind === 'saved' ? <p role="status">Saved. You can review it on the <Link href="/memory" className="underline">memory page</Link>.</p> : (
+        <div className="flex gap-2">
+          <button type="button" onClick={save} disabled={state.kind === 'saving'}>{state.kind === 'saving' ? 'Saving…' : 'Save'}</button>
+          <button type="button" onClick={() => setState({ kind: 'dismissed' })}>No thanks</button>
+        </div>
+      )}
+      {state.kind === 'problem' && <p role="alert">{state.text} {state.link && <Link href={state.link} className="underline">Open</Link>}</p>}
+    </div>
+  );
+}
+
 // Renders server output as plain text only (React escapes it); a proposal only becomes a control through ConfirmAction.
 export function AssistantView({ state }: { state: ChatState }) {
   const names = new Map(state.items.flatMap((i) => (i.type === 'product' ? [[i.product.product_id, i.product.name] as const] : [])));
@@ -85,7 +119,8 @@ export function AssistantView({ state }: { state: ChatState }) {
             <strong>{item.product.name}</strong>
             {item.product.price !== null && <span> {item.product.currency} {item.product.price}</span>}
           </div>
-        ) : item.type === 'proposal' ? (
+        ) : item.type === 'memory_suggestion' ? <RememberCard key={item.seq} item={item} />
+        : item.type === 'proposal' ? (
           <div key={item.seq}>
             <p data-testid="proposal" data-outcome={item.decision.outcome} className="text-sm">
               {item.decision.outcome === 'validated' ? 'Suggested (nothing has been done yet).' : REJECTED_TEXT}

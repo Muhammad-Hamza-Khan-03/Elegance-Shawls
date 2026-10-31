@@ -19,7 +19,8 @@ PY
 fi
 export ADMIN_EMAIL="${ADMIN_EMAIL:-owner@elegance.local}"
 export DATABASE_URL='postgresql+asyncpg://elegance:local-dev-only@127.0.0.1:55432/elegance_shawls'
-export ENVIRONMENT=development ALLOWED_ORIGINS=http://localhost:3000 ASSISTANT_CATALOGUE=true
+# Next picks 3001 when 3000 is busy, and the browser-side catalogue fetches are cross-origin, so both ports must be allowed.
+export ENVIRONMENT=development ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001 ASSISTANT_CATALOGUE=true
 # LLM wording turns on by itself when a model chain is configured.
 export ASSISTANT_LLM="${ASSISTANT_LLM:-$([ -n "${LLM_CHAIN_DEFAULT:-}" ] && echo true || echo false)}"
 

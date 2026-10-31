@@ -37,9 +37,9 @@ export const memoryApi = {
   getConsent: () => request<Consent>('/consent'),
   setConsent: (granted: boolean) => request<Consent>('/consent', { method: 'PUT', body: JSON.stringify({ granted }) }),
   list: () => request<{ items: MemoryItem[] }>(''),
-  create: (item: { category: MemoryItem['category']; key: string; value: string; reason?: string }) => request<MemoryItem>('', {
+  create: (item: { category: MemoryItem['category']; key: string; value: string; reason?: string; source?: MemoryItem['source']; source_ref?: string }) => request<MemoryItem>('', {
     method: 'POST',
-    body: JSON.stringify({ ...item, source: 'memory_page', idempotency_key: `idem_${crypto.randomUUID().replace(/-/g, '')}` }),
+    body: JSON.stringify({ source: 'memory_page', ...item, idempotency_key: `idem_${crypto.randomUUID().replace(/-/g, '')}` }),
   }),
   get: (id: string) => request<MemoryItem>(`/${encodeURIComponent(id)}`),
   update: (id: string, value?: string, reason?: string) => request<MemoryItem>(`/${encodeURIComponent(id)}`, {

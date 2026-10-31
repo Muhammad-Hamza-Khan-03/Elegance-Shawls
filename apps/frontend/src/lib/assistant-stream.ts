@@ -8,6 +8,7 @@ export const REASONS = [
   'variant_not_found', 'variant_unavailable', 'currency_mismatch', 'stale_price', 'out_of_stock', 'insufficient_stock', 'invalid_state',
 ] as const;
 export const ERRORS = ['provider_error', 'provider_malformed', 'provider_overrun', 'invalid_stream', 'stream_interrupted', 'cancelled', 'unavailable'] as const;
+export const MEMORY_KEYS = ['favourite_colour', 'budget_max_pkr'] as const;
 export const MAX_FRAME_BYTES = 16_384;
 const KEY = /^idem_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -25,6 +26,7 @@ export type AssistantEvent =
   | { seq: number; type: 'text'; delta: string }
   | { seq: number; type: 'product'; product: { product_id: string; name: string; price: number | null; currency: string | null } }
   | { seq: number; type: 'proposal'; action_type: string; idempotency_key: string | null; decision: Decision; params?: Record<string, unknown> }
+  | { seq: number; type: 'memory_suggestion'; key: (typeof MEMORY_KEYS)[number]; value: string }
   | { seq: number; type: 'done' }
   | { seq: number; type: 'error'; code: (typeof ERRORS)[number] };
 
@@ -84,6 +86,9 @@ export function parseFrame(frame: string, expected: Pick<Meta, 'session_id'> | n
       const params = ok && EXECUTABLE.includes(d.action_type as string) && rec(d.params) ? d.params : undefined;
       return { seq, type, action_type: known ? (d.action_type as string) : 'unknown', idempotency_key: key, decision, ...(params && { params }) };
     }
+    case 'memory_suggestion':
+      // A question for the customer, never an action: only allowlisted keys and short plain values are believed.
+      return oneOf(MEMORY_KEYS, d.key) && typeof d.value === 'string' && d.value.length >= 1 && d.value.length <= 200 ? { seq, type, key: d.key, value: d.value } : null;
     case 'done':
       return { seq, type };
     case 'error':

@@ -1,5 +1,6 @@
 import { internalApiHeaders } from '@/lib/api';
 import { hasSameOrigin } from '@/lib/admin-backend';
+import { looksLikeCustomerSessionToken, readCustomerSession } from '@/lib/customer-session';
 import { traceHeaders } from '@/lib/trace';
 
 // Same-origin streaming proxy for POST /v1/assistant/stream. Validation stays in the backend; this passes the SSE body through
@@ -14,6 +15,8 @@ export async function POST(request: Request) {
   if (body.length > MAX_BODY_BYTES) return Response.json({ detail: 'Request body too large.' }, { status: 413 });
 
   const headers: Record<string, string> = { 'content-type': 'application/json', ...internalApiHeaders(), ...traceHeaders(request.headers.get('traceparent')) };
+  const session = readCustomerSession(request);   // optional: a signed-in customer lets the assistant use saved memory
+  if (looksLikeCustomerSessionToken(session)) headers['X-Customer-Session'] = session;
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) headers['x-forwarded-for'] = forwarded;
   try {
