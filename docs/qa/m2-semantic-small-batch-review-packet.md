@@ -32,7 +32,7 @@ The semantic checksum above is the digest of the exact JSONL bytes, not a digest
 
 - `semantic_retrieval.jsonl`: **2** synthetic English retrieval cases; both have `reviewed: false`.
 - `filter_parsing.jsonl`: **17** parser cases: English **10**, Roman Urdu **4**, Urdu **3**.
-- Parser coverage includes **2** negation cases and **8** price-constrained cases.
+- Parser coverage includes **3** negation cases — `fp-003` (`not black`), `fp-010` (`not under 1000`), and `fp-015` (`white nahi`) — and **8** price-constrained cases.
 - `datasets/variant_constraints.jsonl` is **absent**. Same-variant behavior is therefore a required manual review topic, not a currently scored global suite.
 - The semantic evaluator uses `fake` / `fake-hash-v1`, 64 dimensions, `k=3`; this is a harness provider and cannot constitute quality evidence.
 
