@@ -2,13 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import PLATFORM_OPERATE, require_permission
 from workers.queues import QueueUnavailable, enqueue, job_state
 
 router = APIRouter(
     prefix="/v1/admin/jobs",
     tags=["AI jobs"],
-    dependencies=[Depends(require_admin_api_key)],
+    dependencies=[Depends(require_permission(PLATFORM_OPERATE))],
 )
 
 

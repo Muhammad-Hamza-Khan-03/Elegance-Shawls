@@ -31,6 +31,7 @@ COUNTERS = (
     "discovered_urls", "duplicate_urls", "ignored_urls", "jobs_created", "jobs_reused", "skipped_unchanged",
     "succeeded", "created", "unchanged", "updated", "source_changed",
     "retryable_failures", "non_retryable_failures", "unprocessed_jobs", "missing_from_sitemap",
+    "skipped_category",
 )
 MAX_EXPLICIT_PRODUCTS = 5
 URI_PATTERN = re.compile(r"(?:postgres(?:ql)?(?:\+\w+)?)://\S+|(?i:bearer)\s+\S+|(?i:x-admin-key)\S*\s*[:=]\s*\S+")
@@ -197,6 +198,8 @@ async def _tally(sessions, ids: list, counts: dict) -> None:
                 counts[outcome] += 1
         elif status == JobStatus.FAILED.value:
             counts["retryable_failures" if job.last_error_retryable else "non_retryable_failures"] += 1
+            if (job.last_error or "").startswith("Category not allowed"):
+                counts["skipped_category"] += 1
         elif status == JobStatus.RETRYING.value:
             counts["retryable_failures"] += 1
         else:

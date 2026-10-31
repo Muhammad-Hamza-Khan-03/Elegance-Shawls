@@ -1,7 +1,7 @@
 """PostgreSQL relational schema (issues #95, S1): the sole source of truth for the catalogue, ingestion and platform tables.
 
 Enums are constrained text (CHECK), timestamps are timezone-aware UTC, IDs are UUIDs.
-Memory, embeddings, voice, enrichment, enquiries and the catalogue are later phases.
+Memory, embeddings, voice and enrichment are later phases.
 """
 import uuid
 from datetime import datetime
@@ -9,9 +9,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, Identity, Index, Integer, MetaData, Numeric, Text,
+    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
     UniqueConstraint, func, text,
 )
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -23,12 +24,24 @@ MESSAGE_SCRIPTS = ("en", "ur", "roman_ur")
 TOOL_CALL_STATUSES = ("ok", "error", "rejected", "timeout")
 EVENT_TYPES = ("view", "search", "impression", "click", "add_to_cart", "ui_action", "voice", "handoff")
 ACTOR_TYPES = ("system", "admin", "customer", "agent")
+ADMIN_ROLES = ("viewer", "editor", "owner")
+ADMIN_STATUSES = ("active", "disabled")
+# "accepted" = an authorised mutation was admitted and not yet finalised; a row left there means its outcome was not recorded.
+AUDIT_OUTCOMES = ("accepted", "success", "failure", "denied")
 OUTBOX_AGGREGATES = ("product", "variant")
 OUTBOX_EVENT_TYPES = ("created", "updated", "archived")
+MEMORY_CATEGORIES = ("preference", "session_constraint", "purchase_context")  # explicit only; weak signals are inferred, so out of scope
+MEMORY_SOURCES = ("user_explicit", "memory_page")
+MEMORY_STATUSES = ("active", "deleted")  # deleted = tombstone: identity and timestamps only, content scrubbed
+ACTION_EXECUTION_TYPES = ("add_to_cart", "start_whatsapp_enquiry")
+ACTION_EXECUTION_STATUSES = ("pending", "committed", "failed")
 PRODUCT_CATEGORIES = ("shawls", "stoles", "scarves")
 PRODUCT_STATUSES = ("active", "draft", "out_of_stock", "archived")
 JOB_STATUSES = ("queued", "running", "succeeded", "retrying", "failed", "cancelled")
 STAGED_STATUSES = ("pending_review", "approved", "rejected", "published", "unpublished", "archived")
+ATTRIBUTE_KEYS = ("color_name", "color_family", "fabric", "composition", "pattern", "occasion", "season", "style", "authenticity")
+ATTRIBUTE_SOURCES = ("visual_suggestion", "supplier_declared", "staff_approved", "imported")
+ENRICHMENT_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
 # States that only exist once a reviewer has approved a price and a catalogue product has been created.
 STAGED_APPROVED_STATES = ("approved", "published", "unpublished")
 
@@ -80,6 +93,25 @@ class CustomerIdentity(Base):
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     subject: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = _created_at()
+
+
+class CustomerSession(Base):
+    """Server-side customer session (M4). Only the SHA-256 of the opaque bearer token is stored, so a database read cannot replay one."""
+    __tablename__ = "customer_sessions"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_format"),
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        UniqueConstraint("token_hash"),
+        Index("ix_customer_sessions_customer_id_live", "customer_id", postgresql_where=text("revoked_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Conversation(Base):
@@ -160,6 +192,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
     __table_args__ = (
         CheckConstraint(_in("actor_type", ACTOR_TYPES), name="actor_type"),
+        CheckConstraint(_in("outcome", AUDIT_OUTCOMES), name="outcome"),
         Index("ix_audit_log_created_at", "created_at"),
         Index("ix_audit_log_target_created_at", "target", "created_at"),
     )
@@ -172,6 +205,56 @@ class AuditLog(Base):
     before: Mapped[dict | None] = mapped_column(JSONB)
     after: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
+    outcome: Mapped[str] = mapped_column(Text, nullable=False, server_default="success")
+    # Non-secret context only (HTTP status, reason codes); never credentials, tokens or request bodies.
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class AdminAccount(Base):
+    """An individual administrator. Accounts are disabled, never deleted, so audit attribution stays resolvable."""
+    __tablename__ = "admin_accounts"
+    __table_args__ = (
+        CheckConstraint(_in("role", ADMIN_ROLES), name="role"),
+        CheckConstraint(_in("status", ADMIN_STATUSES), name="status"),
+        CheckConstraint("email = lower(email) AND char_length(email) BETWEEN 3 AND 254", name="email_format"),
+        CheckConstraint("failed_login_count >= 0", name="failed_logins_nonnegative"),
+        UniqueConstraint("email"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)   # scrypt$n$r$p$salt$hash, see security/passwords.py
+    failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime] = _created_at()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin_accounts.id"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AdminSession(Base):
+    """Server-side session. Only the SHA-256 of the bearer token is stored, so a database read cannot replay a session."""
+    __tablename__ = "admin_sessions"
+    __table_args__ = (
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        UniqueConstraint("token_hash"),
+        Index("ix_admin_sessions_account_id_live", "account_id", postgresql_where=text("revoked_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin_accounts.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Outbox(Base):
@@ -262,6 +345,7 @@ class Variant(Base):
     __table_args__ = (
         # Deferred so a reorder inside one transaction can swap positions.
         UniqueConstraint("product_id", "position", deferrable=True, initially="DEFERRED"),
+        UniqueConstraint("id", "product_id"),  # target of catalog_attributes' composite FK: a variant attribute stays in its own product
         CheckConstraint("position >= 0", name="position_nonnegative"),
         CheckConstraint("char_length(name) >= 1", name="name_present"),
         CheckConstraint("char_length(color) >= 1", name="color_not_empty"),
@@ -286,6 +370,38 @@ class Variant(Base):
     )
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class CatalogAttribute(Base):
+    """One normalised attribute of a product (variant_id NULL) or of one of its variants. value NULL = explicitly unknown."""
+    __tablename__ = "catalog_attributes"
+    __table_args__ = (
+        ForeignKeyConstraint(["variant_id", "product_id"], ["variants.id", "variants.product_id"],
+                             ondelete="CASCADE", name="fk_catalog_attributes_variant_id_variants"),
+        CheckConstraint(_in("key", ATTRIBUTE_KEYS), name="key"),
+        CheckConstraint(_in("source", ATTRIBUTE_SOURCES), name="source"),
+        CheckConstraint("char_length(value) BETWEEN 1 AND 200", name="value_length"),
+        CheckConstraint("char_length(model_version) BETWEEN 1 AND 100 AND char_length(approved_by) BETWEEN 1 AND 200",
+                        name="provenance_length"),
+        CheckConstraint(
+            "(source = 'staff_approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL) "
+            "OR (source <> 'staff_approved' AND approved_by IS NULL AND approved_at IS NULL)", name="approval"),
+        Index("ix_catalog_attributes_product_key", "product_id", "key", unique=True, postgresql_where=text("variant_id IS NULL")),
+        Index("ix_catalog_attributes_variant_key", "variant_id", "key", unique=True, postgresql_where=text("variant_id IS NOT NULL")),
+        Index("ix_catalog_attributes_product_id", "product_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    model_version: Mapped[str | None] = mapped_column(Text)
+    approved_by: Mapped[str | None] = mapped_column(Text)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class IngestionJob(Base):
@@ -409,3 +525,288 @@ class StagedProductAudit(Base):
     to_status: Mapped[str | None] = mapped_column(Text)
     actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="admin")
     note: Mapped[str | None] = mapped_column(Text)
+
+
+class Enquiry(Base):
+    """A WhatsApp handoff reference. Deliberately holds no customer details or session identifier, and is not an order."""
+    __tablename__ = "enquiries"
+    __table_args__ = (
+        UniqueConstraint("reference"),
+        CheckConstraint("reference ~ '^ES-[A-Z0-9]{6,12}$'", name="reference_format"),
+        CheckConstraint("currency = upper(currency)", name="currency_upper"),
+        CheckConstraint("total >= 0", name="total_nonnegative"),
+        CheckConstraint("jsonb_typeof(items) = 'array' AND jsonb_array_length(items) BETWEEN 1 AND 50", name="items_array"),
+        Index("ix_enquiries_created_at", text("created_at DESC"), text("id DESC")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    reference: Mapped[str] = mapped_column(Text, nullable=False)
+    # Snapshot of what the server validated: product_id, variant_id, product, color, size, quantity, unit_price.
+    items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    total: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ActionExecution(Base):
+    """Cross-worker idempotency claim and fixed-shape audit record for one confirmed assistant action (M3-S4). Holds only the
+    SHA-256 of the session id, never params, prices or customer details."""
+    __tablename__ = "action_executions"
+    __table_args__ = (
+        UniqueConstraint("session_hash", "idempotency_key"),
+        CheckConstraint(_in("action_type", ACTION_EXECUTION_TYPES), name="action_type"),
+        CheckConstraint(_in("status", ACTION_EXECUTION_STATUSES), name="status"),
+        CheckConstraint("session_hash ~ '^[0-9a-f]{64}$' AND fingerprint ~ '^[0-9a-f]{64}$'", name="hash_format"),
+        CheckConstraint("attempt >= 1 AND replay_count >= 0", name="counters"),
+        CheckConstraint("(status = 'committed') = (result IS NOT NULL)", name="result_iff_committed"),
+        CheckConstraint("(status = 'failed') = (reason IS NOT NULL)", name="reason_iff_failed"),
+        CheckConstraint("jsonb_typeof(audit) = 'object'", name="audit_object"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    action_type: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    # Bumped on every (re)claim; commit/fail only apply to the attempt that still owns the row.
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    result: Mapped[dict | None] = mapped_column(JSONB)  # set iff committed: the non-sensitive payload already returned to the browser
+    reason: Mapped[str | None] = mapped_column(Text)  # set iff failed: a fixed code, never exception text
+    audit: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    replay_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _created_at()
+
+
+class MemoryConsent(Base):
+    """Per-customer opt-in to explicit memory. No row means no consent: memory is off by default."""
+    __tablename__ = "memory_consents"
+    __table_args__ = (UniqueConstraint("customer_id"), CheckConstraint("char_length(policy_version) BETWEEN 1 AND 32", name="policy_version"))
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    policy_version: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemoryItem(Base):
+    """One thing a customer explicitly asked to be remembered (M4-S1). Always read and written with customer_id in the predicate.
+    Deleting scrubs key, value, reason, source_ref and fingerprint in place and keeps a tombstone so a replayed create cannot
+    resurrect it; the tombstone holds no content."""
+    __tablename__ = "memory_items"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "idempotency_key"),
+        CheckConstraint(_in("category", MEMORY_CATEGORIES), name="category"),
+        CheckConstraint(_in("source", MEMORY_SOURCES), name="source"),
+        CheckConstraint(_in("status", MEMORY_STATUSES), name="status"),
+        CheckConstraint("idempotency_key ~ '^idem_[A-Za-z0-9_-]{16,64}$'", name="idempotency_key_format"),
+        CheckConstraint("retention_days BETWEEN 1 AND 365 AND version >= 1", name="bounds"),
+        CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
+        CheckConstraint("status <> 'active' OR (key ~ '^[a-z][a-z0-9_]{0,63}$' AND char_length(value) BETWEEN 1 AND 200 "
+                        "AND (reason IS NULL OR char_length(reason) BETWEEN 1 AND 200) AND fingerprint ~ '^[0-9a-f]{64}$')", name="active_content"),
+        CheckConstraint("status <> 'deleted' OR (key IS NULL AND value IS NULL AND reason IS NULL AND source_ref IS NULL "
+                        "AND fingerprint IS NULL AND deleted_at IS NOT NULL)", name="deleted_is_scrubbed"),
+        Index("ix_memory_items_customer_id_key_active", "customer_id", "key", unique=True, postgresql_where=text("status = 'active'")),
+        Index("ix_memory_items_customer_id_created_at", "customer_id", "created_at", "id"),
+        Index("ix_memory_items_expires_at_active", "expires_at", postgresql_where=text("status = 'active'")),
+        Index("ix_memory_items_deleted_at", "deleted_at", postgresql_where=text("status = 'deleted'")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    key: Mapped[str | None] = mapped_column(Text)
+    value: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False)      # provenance: who stated it, never inferred
+    source_ref: Mapped[str | None] = mapped_column(Text)           # opaque pointer (e.g. a message id), never content
+    reason: Mapped[str | None] = mapped_column(Text)               # why it is remembered; schema only, nothing generates it
+    fingerprint: Mapped[str | None] = mapped_column(CHAR(64))      # SHA-256 of the canonical create request, for idempotency
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _created_at()
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SemanticEmbedding(Base):
+    """One vector per (product, provider, model, representation version). Fresh = content_hash equals the current
+    fingerprint of the product's public text; product_revision records the revision it was read at."""
+    __tablename__ = "semantic_embeddings"
+    __table_args__ = (
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
+        CheckConstraint("product_revision >= 1", name="revision_positive"),
+        CheckConstraint("dimensions >= 1 AND vector_dims(embedding) = dimensions", name="dimensions_match"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    product_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+# Explicit short name: the four-column unique constraint name would exceed PostgreSQL's 63 characters.
+Index("ix_semantic_embeddings_target", SemanticEmbedding.product_id, SemanticEmbedding.provider, SemanticEmbedding.model,
+      SemanticEmbedding.representation_version, unique=True)
+
+
+class SemanticEmbeddingJob(Base):
+    """Backfill work item, one reusable row per embedding target. Same lease/retry/cancel contract as ingestion_jobs."""
+    __tablename__ = "semantic_embedding_jobs"
+    __table_args__ = (
+        CheckConstraint(_in("status", JOB_STATUSES), name="status"),
+        CheckConstraint("attempts >= 0 AND max_attempts >= 1 AND attempts <= max_attempts", name="attempts_bounded"),
+        CheckConstraint(
+            "status <> 'running' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            name="lease_present_while_running",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+Index("ix_semantic_embedding_jobs_target", SemanticEmbeddingJob.product_id, SemanticEmbeddingJob.provider, SemanticEmbeddingJob.model,
+      SemanticEmbeddingJob.representation_version, unique=True)
+Index("ix_semantic_embedding_jobs_claimable", SemanticEmbeddingJob.available_at,
+      postgresql_where=text("status IN ('queued', 'retrying') AND NOT cancel_requested"))
+Index("ix_semantic_embedding_jobs_running_lease", SemanticEmbeddingJob.lease_expires_at, postgresql_where=text("status = 'running'"))
+
+
+class EnrichmentSuggestion(Base):
+    """Reviewable, non-authoritative model suggestions for one staged product. Never read by the catalogue."""
+    __tablename__ = "enrichment_suggestions"
+    __table_args__ = (
+        UniqueConstraint("staged_product_id", "input_content_hash", "prompt_version", "model",
+                         name="uq_enrichment_suggestions_idempotency"),
+        CheckConstraint(_in("status", ENRICHMENT_STATUSES), name="status"),
+        CheckConstraint("attempts BETWEEN 0 AND 2", name="attempts_bounded"),
+        Index("ix_enrichment_suggestions_active", "staged_product_id", unique=True,
+              postgresql_where=text("status IN ('queued', 'running')")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    staged_product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("staged_products.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    suggestions: Mapped[dict | None] = mapped_column(JSONB)
+    validation_errors: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    vocabulary_version: Mapped[str] = mapped_column(Text, nullable=False)
+    input_content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# --------------------------------------------------------------------------------------------
+# Embeddings (S4b): derived, rebuildable vectors. Nothing here is catalogue truth and nothing reads back into it.
+# --------------------------------------------------------------------------------------------
+EMBEDDING_DIMENSIONS = 768  # the column width; a different width needs a new column and index (new migration)
+EMBEDDING_STATUSES = ("queued", "running", "succeeded", "failed", "stale")
+HNSW_M, HNSW_EF_CONSTRUCTION = 16, 64
+EMBEDDING_KEY = ("source_revision", "representation_version", "representation_hash", "provider", "model",
+                 "model_revision", "index_version")
+
+
+class _EmbeddingColumns:
+    """Shared by both tables. status: queued -> running -> succeeded | failed | stale (the source moved on)."""
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    source_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    representation_version: Mapped[str] = mapped_column(Text, nullable=False)
+    representation_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    model_revision: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False, server_default=str(EMBEDDING_DIMENSIONS))
+    index_version: Mapped[str] = mapped_column(Text, nullable=False)
+    distance_metric: Mapped[str] = mapped_column(Text, nullable=False, server_default="cosine")
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_error_retryable: Mapped[bool | None] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+def _embedding_table_args(table: str, owner: str) -> tuple:
+    return (
+        UniqueConstraint(owner, *EMBEDDING_KEY, name=f"uq_{table}_identity"),
+        CheckConstraint(_in("status", EMBEDDING_STATUSES), name="status"),
+        CheckConstraint(f"dimensions = {EMBEDDING_DIMENSIONS}", name="dimensions"),
+        CheckConstraint("distance_metric = 'cosine'", name="distance_metric"),
+        CheckConstraint("source_revision >= 1", name="source_revision_positive"),
+        CheckConstraint("attempts >= 0 AND max_attempts >= 1 AND attempts <= max_attempts", name="attempts_bounded"),
+        CheckConstraint("status <> 'succeeded' OR embedding IS NOT NULL", name="succeeded_has_vector"),
+        CheckConstraint("status <> 'running' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+                        name="lease_present_while_running"),
+        Index(f"ix_{table}_embedding_hnsw", "embedding", postgresql_using="hnsw",
+              postgresql_with={"m": HNSW_M, "ef_construction": HNSW_EF_CONSTRUCTION},
+              postgresql_ops={"embedding": "vector_cosine_ops"}, postgresql_where=text("status = 'succeeded'")),
+        Index(f"ix_{table}_claimable", "available_at", postgresql_where=text("status = 'queued'")),
+    )
+
+
+class ProductEmbedding(_EmbeddingColumns, Base):
+    __tablename__ = "product_embeddings"
+    __table_args__ = (*_embedding_table_args("product_embeddings", "product_id"),
+                      Index("ix_product_embeddings_product_id", "product_id"))
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+
+
+class VariantEmbedding(_EmbeddingColumns, Base):
+    __tablename__ = "variant_embeddings"
+    __table_args__ = (
+        *_embedding_table_args("variant_embeddings", "variant_id"),
+        # product_id is the variant's own product (composite FK), so a vector can never point at another product's variant.
+        ForeignKeyConstraint(["variant_id", "product_id"], ["variants.id", "variants.product_id"], ondelete="CASCADE",
+                             name="fk_variant_embeddings_variant_id_variants"),
+        Index("ix_variant_embeddings_product_id", "product_id"),
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)

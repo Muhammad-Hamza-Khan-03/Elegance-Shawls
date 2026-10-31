@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.pg import get_pg_session
 from events.recorder import log_listing
 from repositories import Conflict, InvalidDraft, NotFound
+from repositories.hybrid import hybrid_search
+from semantic.local_e5 import distance_cutoff, get_embedder
 from repositories import products as repo
-from repositories.products import ProductInput, VariantInput
+from repositories.products import ProductInput, VariantFilter, VariantInput
 from schemas.product_schema import (
     ProductCreateSchema,
     ProductListResponse,
@@ -15,14 +17,16 @@ from schemas.product_schema import (
     ProductStatusUpdateSchema,
     VariantStockUpdateSchema,
 )
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import require_admin
+from utils.colour_vocabulary import normalize
 from utils.pagination import decode_cursor, encode_cursor
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
+search_router = APIRouter(prefix="/v1/search", tags=["Search"])
 admin_router = APIRouter(
     prefix="/admin",
-    dependencies=[Depends(require_admin_api_key)],
+    dependencies=[Depends(require_admin)],
 )
 
 
@@ -67,6 +71,15 @@ def _http(exc: Exception) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
+async def _public_list(request, background, limit, cursor, q, session, variant=None):
+    q = (q or "").strip()[:100] or None
+    page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor), q=q, **({"variant": variant} if variant else {}))
+    # Best effort and after the response: an event failure never affects the catalogue.
+    background.add_task(log_listing, request, limit=limit, paged=bool(cursor),
+                        product_ids=[str(item.id) for item in page.items])
+    return _page(page)
+
+
 @router.get("/", response_model=ProductListResponse)
 async def get_products(
     request: Request,
@@ -75,11 +88,43 @@ async def get_products(
     cursor: str | None = None,
     session: AsyncSession = Depends(get_pg_session),
 ):
-    page = await repo.list_products(session, public=True, limit=limit, after=_after(cursor))
-    # Best effort and after the response: an event failure never affects the catalogue.
-    background.add_task(log_listing, request, limit=limit, paged=bool(cursor),
-                        product_ids=[str(item.id) for item in page.items])
-    return _page(page)
+    return await _public_list(request, background, limit, cursor, None, session)
+
+
+@search_router.get("", response_model=ProductListResponse)
+async def search_products(
+    request: Request,
+    background: BackgroundTasks,
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = None,
+    q: str | None = None,
+    colour: str | None = None,
+    min_price: int | None = Query(default=None, ge=0),
+    max_price: int | None = Query(default=None, ge=0),
+    in_stock: bool = False,
+    session: AsyncSession = Depends(get_pg_session),
+):
+    """Same live-published catalogue as GET /products/ plus `q`, under the M1 /v1/search contract path.
+    colour/min_price/max_price/in_stock are ANDed on a single purchasable variant of each product."""
+    canonical = None
+    if colour is not None:
+        canonical = normalize(colour)
+        if canonical is None:
+            raise HTTPException(status_code=422, detail="Unknown colour")
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(status_code=422, detail="min_price exceeds max_price")
+    variant = VariantFilter(canonical, min_price, max_price, in_stock)
+    has_filter = canonical or min_price is not None or max_price is not None or in_stock
+    embedder, text = get_embedder(), (q or "").strip()[:100]
+    if embedder is not None and text:  # semantic ranking only when configured; same filters, same response shape
+        try:
+            page = await hybrid_search(session, q=text, limit=limit, cursor=cursor, variant=variant if has_filter else None, embedder=embedder,
+                                       max_distance=distance_cutoff(text))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+        background.add_task(log_listing, request, limit=limit, paged=bool(cursor), product_ids=[str(item.id) for item in page.items])
+        return {"items": page.items, "next_cursor": page.next_cursor}
+    return await _public_list(request, background, limit, cursor, q, session, variant if has_filter else None)
 
 
 @router.get("/slug/{slug}", response_model=ProductResponseSchema)

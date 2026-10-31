@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Archive, Check, Edit3, Loader2, Plus, RefreshCcw, Search, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ActionErrorBanner } from '@/components/admin/ActionErrorBanner';
@@ -268,11 +269,14 @@ export function AdminProductManager() {
     }
   };
 
+  const searchParams = useSearchParams();
+  const requestedId = searchParams?.get('product') ?? null;
+
   useEffect(() => {
-    // Intentionally load initial data on mount.
+    // Loads on mount and again when the header search deep-links to a product.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadProducts();
-  }, []);
+    void loadProducts(requestedId);
+  }, [requestedId]);
 
   const filteredProducts = useMemo(() => {
     const needle = query.trim().toLowerCase();

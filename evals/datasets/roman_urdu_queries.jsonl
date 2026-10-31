@@ -1,0 +1,362 @@
+{"q": "shawl", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shawl chahiye", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shawl dikhao", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shawls", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shawls chahiye", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shawls dikhao", "lang": "en", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shaal", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shaal chahiye", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shaal dikhao", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shal", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shal chahiye", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "shal dikhao", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chaadar", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chaadar chahiye", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chaadar dikhao", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadar", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadar chahiye", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadar dikhao", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadder", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadder chahiye", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "chadder dikhao", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "شال", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "شال chahiye", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "شال dikhao", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "چادر", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "چادر chahiye", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "چادر dikhao", "lang": "ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false}
+{"q": "stole", "lang": "en", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "stole chahiye", "lang": "en", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "stole dikhao", "lang": "en", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "stoll", "lang": "roman_ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "stoll chahiye", "lang": "roman_ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "stoll dikhao", "lang": "roman_ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "اسٹول", "lang": "ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "اسٹول chahiye", "lang": "ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "اسٹول dikhao", "lang": "ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false}
+{"q": "scarf", "lang": "en", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "scarf chahiye", "lang": "en", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "scarf dikhao", "lang": "en", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "skarf", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "skarf chahiye", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "skarf dikhao", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "muffler", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "muffler chahiye", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "muffler dikhao", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "اسکارف", "lang": "ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "اسکارف chahiye", "lang": "ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "اسکارف dikhao", "lang": "ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false}
+{"q": "black shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black stole", "lang": "en", "rule": {"category": "stoles", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "black skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kala skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "kaala skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "siyah skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "کالا skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Black"}, "synthetic": true, "reviewed": false}
+{"q": "red shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red stole", "lang": "en", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "red skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "laal skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "lal skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "surkh skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "سرخ skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "لال skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false}
+{"q": "brown shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown stole", "lang": "en", "rule": {"category": "stoles", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "brown skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhoora skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "bhura skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "بھورا skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Brown"}, "synthetic": true, "reviewed": false}
+{"q": "green shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green stole", "lang": "en", "rule": {"category": "stoles", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "green skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "hara skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "سبز skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Green"}, "synthetic": true, "reviewed": false}
+{"q": "pink shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink stole", "lang": "en", "rule": {"category": "stoles", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "pink skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "gulabi skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "گلابی skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false}
+{"q": "blue shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue stole", "lang": "en", "rule": {"category": "stoles", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "blue skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "neela skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا shawl", "lang": "ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا shaal", "lang": "mixed", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا chaadar", "lang": "mixed", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا stole", "lang": "ur", "rule": {"category": "stoles", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا scarf", "lang": "ur", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "نیلا skarf", "lang": "mixed", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false}
+{"q": "gray shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray stole", "lang": "en", "rule": {"category": "stoles", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "gray skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey shawl", "lang": "en", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey شال", "lang": "ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey stole", "lang": "en", "rule": {"category": "stoles", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey scarf", "lang": "en", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "grey skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty شال", "lang": "mixed", "rule": {"category": "shawls", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "slaty skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Gray"}, "synthetic": true, "reviewed": false}
+{"q": "garam shawl", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "garam chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "garam شال", "lang": "mixed", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "garam stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardi ke liye shawl", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardi ke liye chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardi ke liye شال", "lang": "mixed", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardi ke liye stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardiyon ke liye shawl", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardiyon ke liye chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardiyon ke liye شال", "lang": "mixed", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "sardiyon ke liye stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "warm shawl", "lang": "en", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "warm chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "warm شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "warm stole", "lang": "en", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "winter shawl", "lang": "en", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "winter chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "winter شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "winter stole", "lang": "en", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "گرم shawl", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "گرم chaadar", "lang": "mixed", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "گرم شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "گرم stole", "lang": "ur", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "سردی shawl", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "سردی chaadar", "lang": "mixed", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "سردی شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "سردی stole", "lang": "ur", "rule": {"category": "stoles", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "halka scarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "halka skarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "halka stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "halka اسکارف", "lang": "mixed", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "garmi ke liye scarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "garmi ke liye skarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "garmi ke liye stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "garmi ke liye اسکارف", "lang": "mixed", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "light scarf", "lang": "en", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "light skarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "light stole", "lang": "en", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "light اسکارف", "lang": "ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "summer scarf", "lang": "en", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "summer skarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "summer stole", "lang": "en", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "summer اسکارف", "lang": "ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "ہلکا scarf", "lang": "ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "ہلکا skarf", "lang": "mixed", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "ہلکا stole", "lang": "ur", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "ہلکا اسکارف", "lang": "ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "garam kala chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "warm laal shawl", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "halka hara scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Green", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "light neela stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Blue", "material": "light"}, "synthetic": true, "reviewed": false}
+{"q": "sardi ke liye bhoora shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown", "material": "warm"}, "synthetic": true, "reviewed": false}
+{"q": "delivery kitne din mein hoti hai", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "hello", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "aap ka naam kya hai", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "iphone ki price", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "return policy kya hai", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "aaj ka mausam", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "pizza order karna hai", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "mujhe job chahiye", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "how do I pay", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "cricket score", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "ڈلیوری کتنے دن میں ہوتی ہے", "lang": "ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "آپ کا نام کیا ہے", "lang": "ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "laptop chahiye", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "thank you", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "shukriya", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "kya haal hai", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "weather in lahore", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "car for sale", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "wedding dress", "lang": "en", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "shoes dikhao", "lang": "roman_ur", "rule": {"no_answer": true}, "synthetic": true, "reviewed": false}
+{"q": "kaali chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "kaale rang ki shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "laal rang ka stole", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Red"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "surkh rang ki chaddar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Red"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "neeli shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "nila scarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Blue"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "hari chadar", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Green"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "bhoori shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "gulabi rang ka skarf", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Pink"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "thand ke liye shaal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "sardi mein pehenne ke liye chaadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "garmiyon ke liye halka scarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "halki si stole", "lang": "roman_ur", "rule": {"category": "stoles", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "wool ki shaal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "pashmina wali chadar", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "silk ka scarf", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "kali shaal sardi ke liye", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "kala stole garmi ke liye", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Black", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "کالی چادر", "lang": "ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "نیلی چادر", "lang": "ur", "rule": {"category": "shawls", "colour": "Blue"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "بھوری اسٹول", "lang": "ur", "rule": {"category": "stoles", "colour": "Brown"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "سردی کے لیے گرم شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "گرمی کے لیے ہلکا اسکارف", "lang": "ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "ek achi si shal dikhana", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "woolen shawl for winter", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "something warm to wear in cold weather", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "lightweight summer wrap", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "ladies chaadar", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "mufflar chahiye", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "green stoll", "lang": "roman_ur", "rule": {"category": "stoles", "colour": "Green"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "brown wool shaal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Brown", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "ثقیل گرم شال", "lang": "ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": true}
+{"q": "something warm for cold weather", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kuch garam chahiye thand ke liye", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "freezing winter ke liye kuch", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "something thick and cosy", "lang": "roman_ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kuch halka chahiye garmi ke liye", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "cool breathable fabric", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "hot weather ke liye kuch", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "something airy for summer evenings", "lang": "roman_ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "کچھ گرم چاہیے", "lang": "ur", "rule": {"material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "گرمی کے لیے کچھ ہلکا", "lang": "ur", "rule": {"material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "mufflar", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "embrodiered shawl", "lang": "roman_ur", "rule": {"category": "shawls"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "silk skarff", "lang": "roman_ur", "rule": {"category": "scarves", "material": "light"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "pashmina shwal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "stoal chahiye", "lang": "roman_ur", "rule": {"category": "stoles"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "scraf dikhao", "lang": "roman_ur", "rule": {"category": "scarves"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "wintr shawl", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "woolen shaal", "lang": "roman_ur", "rule": {"category": "shawls", "material": "warm"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "red muflar", "lang": "roman_ur", "rule": {"category": "scarves", "colour": "Red"}, "synthetic": true, "reviewed": false, "heldout": "v3"}
+{"q": "kala shwal", "lang": "roman_ur", "rule": {"category": "shawls", "colour": "Black"}, "synthetic": true, "reviewed": false, "heldout": "v3"}

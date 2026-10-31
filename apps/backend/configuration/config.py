@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -8,12 +9,40 @@ class settings(BaseSettings):
     app_name: str = "Products API"
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
+    # Legacy shared key. Ignored unless ADMIN_LEGACY_KEY_EXPIRES_AT (ISO 8601 with offset, e.g.
+    # 2026-12-31T00:00:00+00:00) is a future instant; after it passes the key stops working with no redeploy.
     admin_api_key: str = ""
+    admin_legacy_key_expires_at: str = ""
+    # Individual admin accounts: server-side sessions and per-account login lockout.
+    admin_session_ttl_seconds: int = 8 * 3600
+    admin_login_max_failures: int = 5
+    admin_login_lockout_seconds: int = 15 * 60
     # Shared with the storefront server so server-rendered reads, which all come
     # from one address, are not limited as if they were a single client.
     internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
+
+    # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
+    assistant_catalogue: bool = False
+    # Let the LLM gateway (LLM_CHAIN_DEFAULT) write the assistant's wording. It never picks products, prices or actions.
+    assistant_llm: bool = False
+    # Semantic neighbours of a query with no shopping word (shawl/colour/season...) are dropped beyond this cosine distance.
+    # 0.18 from evals/roman_urdu_retrieval_eval.py: 0% off-topic false positives at <=0.20, 15% at 0.22.
+    semantic_max_distance: float = 0.18
+
+    # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
+    # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.
+    customer_auth_enabled: bool = False
+    customer_auth_provider: str = ""
+    customer_auth_issuer: str = ""
+    customer_auth_audience: str = ""
+    customer_auth_jwks_url: str = ""
+    customer_auth_jwks_ttl_seconds: int = 3600
+    customer_auth_jwks_min_refresh_seconds: int = 60
+    customer_session_ttl_seconds: int = 7 * 86400
+    customer_session_max_active: int = 5
+    customer_auth_rate_limit_per_minute: int = 10
 
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.
@@ -39,6 +68,8 @@ class settings(BaseSettings):
     ingestion_max_urls_per_source: int = 500
     ingestion_max_sitemaps: int = 50
     ingestion_run_max_seconds: int = 2700
+    # Comma-separated extracted categories to keep (shawl, stole, scarf). Empty = no category filter.
+    ingestion_allowed_categories: str = ""
 
     # PostgreSQL is the sole database and is required by the API and the ingestion worker.
     database_url: str = ""
@@ -66,6 +97,9 @@ class settings(BaseSettings):
     llm_chain_default: str = ""
     llm_production_chain: str = ""
     llm_free_tier_providers: str = "groq,gemini,openrouter"
+    # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
+    # Empty = every provider unknown = no model may touch customer memory.
+    llm_provider_training_policies: str = ""
     llm_daily_budget_usd: float = 1.0
     llm_environment_budget_usd: float = 10.0
     llm_budget_warn_ratio: float = 0.8
@@ -74,6 +108,29 @@ class settings(BaseSettings):
     llm_price_per_million_output_usd: float = 0.0
     llm_max_attempts: int = 3
     llm_timeout_seconds: float = 20.0
+    # Staged-product enrichment suggestions (P1-S3). Empty model = disabled. Attempts (2) are fixed by the contract.
+    enrichment_model: str = ""
+    enrichment_backoff_seconds: float = 1.0
+    enrichment_backoff_cap_seconds: float = 8.0
+    # Catalogue embeddings (P1-S4b). Off and provider-less by default: nothing embeds until an operator opts in.
+    embedding_enabled: bool = False
+    embedding_provider: str = ""
+    embedding_dimensions: int = 768  # must equal the vector column width (models.relational_model.EMBEDDING_DIMENSIONS)
+    embedding_index_version: str = "hnsw-cosine-m16-efc64-v1"
+    # Local-only semantic search (offline local_e5). Off by default and refused outside a local ENVIRONMENT; see search/local_e5.py.
+    local_semantic_search_enabled: bool = False
+    local_e5_model_path: str = ""
+    local_e5_model_revision: str = ""
+    embedding_max_jobs: int = 2
+    embedding_job_timeout_seconds: int = 60
+    embedding_max_attempts: int = 3
+    embedding_lease_seconds: int = 90
+    embedding_backoff_seconds: float = 30.0
+    embedding_backfill_max_limit: int = 500
+    # Hybrid search (P1-S4c). Bounded: K candidates per branch, rows examined while applying the hard filters.
+    hybrid_lexical_k: int = Field(default=50, ge=1, le=200)
+    hybrid_semantic_k: int = Field(default=50, ge=1, le=200)
+    hybrid_max_scan: int = Field(default=2000, ge=1, le=5000)
     # Advisory provider model discovery; cache is fresh for 6h and serveable stale for 48h.
     llm_discovery_fresh_ttl_seconds: int = 6 * 3600
     llm_discovery_stale_ceiling_seconds: int = 48 * 3600

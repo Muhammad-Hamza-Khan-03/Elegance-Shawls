@@ -1,6 +1,6 @@
-import { readAdminSession, verifyAdminSession } from '@/lib/admin-session';
+import { expiredAdminSessionCookie, looksLikeSessionToken, readAdminSession } from '@/lib/admin-session';
 
-const getBackendBaseUrl = () => {
+export const getBackendBaseUrl = () => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!apiUrl) {
     return null;
@@ -8,8 +8,6 @@ const getBackendBaseUrl = () => {
 
   return apiUrl.replace(/\/$/, '');
 };
-
-const getAdminKey = () => process.env.ADMIN_API_KEY?.trim() || '';
 
 export const hasSameOrigin = (request: Request) => {
   const origin = request.headers.get('origin');
@@ -25,7 +23,7 @@ export const hasSameOrigin = (request: Request) => {
   }
 };
 
-const buildTargetUrl = (backendPath: string, requestUrl: string) => {
+export const buildTargetUrl = (backendPath: string, requestUrl: string) => {
   const baseUrl = getBackendBaseUrl();
   if (!baseUrl) {
     return null;
@@ -39,8 +37,26 @@ const buildTargetUrl = (backendPath: string, requestUrl: string) => {
   return target;
 };
 
+export type AdminIdentity = { email: string; role: 'viewer' | 'editor' | 'owner'; displayName: string | null };
+
+// Asks the backend who this session belongs to (null when it is invalid, expired, revoked or the backend is down).
+export const fetchAdminIdentity = async (token?: string | null): Promise<AdminIdentity | null> => {
+  const baseUrl = getBackendBaseUrl();
+  if (!baseUrl || !looksLikeSessionToken(token)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/v1/admin/auth/me`, { headers: { 'X-Admin-Session': token }, cache: 'no-store' });
+    if (!response.ok) return null;
+    const body = await response.json();
+    if (!body?.account?.email) return null;
+    return { email: body.account.email, role: body.role, displayName: body.account.display_name ?? null };
+  } catch {
+    return null;
+  }
+};
+
 export const proxyAdminRequest = async (request: Request, backendPath: string) => {
-  if (!verifyAdminSession(readAdminSession(request))) {
+  const token = readAdminSession(request);
+  if (!looksLikeSessionToken(token)) {
     return Response.json({ detail: 'Administrative authentication is required.' }, { status: 401 });
   }
 
@@ -48,10 +64,9 @@ export const proxyAdminRequest = async (request: Request, backendPath: string) =
     return Response.json({ detail: 'Invalid request origin.' }, { status: 403 });
   }
 
-  const adminKey = getAdminKey();
   const target = buildTargetUrl(backendPath, request.url);
 
-  if (!target || !adminKey) {
+  if (!target) {
     return new Response(
       JSON.stringify({ detail: 'Admin product management is not configured.' }),
       {
@@ -61,7 +76,7 @@ export const proxyAdminRequest = async (request: Request, backendPath: string) =
     );
   }
 
-  const headers = new Headers({ 'X-Admin-Key': adminKey });
+  const headers = new Headers({ 'X-Admin-Session': token });
   const contentType = request.headers.get('content-type');
   if (contentType) {
     headers.set('content-type', contentType);
@@ -85,6 +100,8 @@ export const proxyAdminRequest = async (request: Request, backendPath: string) =
   const responseHeaders = new Headers();
   const responseContentType = response.headers.get('content-type');
   responseHeaders.set('content-type', responseContentType || 'application/json');
+  // The backend says the session is gone (expired, revoked, account disabled): drop the dead cookie too.
+  if (response.status === 401) responseHeaders.append('set-cookie', expiredAdminSessionCookie());
 
   return new Response(await response.text(), {
     status: response.status,

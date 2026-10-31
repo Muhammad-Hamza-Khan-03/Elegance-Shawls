@@ -1,0 +1,32 @@
+[
+  {"id": "h01", "scope": "store-a", "name": "Brown Pashmina Stole", "category": "stoles", "status": "active", "material": "Pure pashmina",
+   "description": "Soft hand-woven stole.\n\nIdeal for  winter.", "private_note": "supplier cost 1200, call Ahmed 0300-0000000", "staged_suggestion": "pattern: paisley",
+   "attributes": [{"key": "fabric", "value": "pashmina", "source": "staff_approved"}, {"key": "fabric", "value": "Pashmina", "source": "imported"},
+                  {"key": "season", "value": "winter", "source": "supplier_declared"}, {"key": "style", "value": "floral", "source": "visual_suggestion"}],
+   "variants": [
+     {"id": "h01a", "name": "Brown", "color": "Brown", "price": 3500, "stock": 5, "sku": "ST-01-BR", "attributes": [{"key": "color_name", "value": "brown", "source": "imported"}]},
+     {"id": "h01b", "name": "Camel", "color": "Camel", "price": 3500, "stock": 0, "sku": "ST-01-CA", "attributes": []}]},
+  {"id": "h02", "scope": "store-a", "name": "بھورا پشمینہ شال", "category": "shawls", "status": "active", "material": "خالص پشمینہ",
+   "description": "نرم اور گرم، ہاتھ سے بنی ہوئی شال۔", "private_note": "customer asked for refund",
+   "attributes": [{"key": "fabric", "value": "پشمینہ", "source": "staff_approved"}],
+   "variants": [{"id": "h02a", "name": "بھورا", "color": "بھورا", "price": 9000, "stock": 2, "sku": "SH-02-BR", "attributes": []}]},
+  {"id": "h03", "scope": "store-a", "name": "Kali Oon Chadar", "category": "shawls", "status": "active", "material": "Oon",
+   "description": "Sardi ke liye garam kali chadar, shaadi aur roz marra ke liye.", "private_note": null,
+   "attributes": [{"key": "occasion", "value": "wedding", "source": "supplier_declared"}, {"key": "occasion", "value": "daily wear", "source": "staff_approved"}],
+   "variants": [
+     {"id": "h03a", "name": "Black", "color": "Black", "price": 6000, "stock": 3, "sku": "SH-03-BK", "attributes": []},
+     {"id": "h03b", "name": "Black sale", "color": "Black", "price": 4000, "stock": 1, "sku": "SH-03-BK2", "attributes": []},
+     {"id": "h03c", "name": "Charcoal", "color": null, "price": 6000, "stock": 0, "sku": "SH-03-CH", "attributes": []}]},
+  {"id": "h04", "scope": "store-a", "name": "Cream Silk Scarf", "category": "scarves", "status": "active", "material": null,
+   "description": null, "private_note": "price boundary: exactly 1800 / 0 stock",
+   "attributes": [], "variants": [{"id": "h04a", "name": "Cream", "color": "Cream", "price": 1800, "stock": 0, "sku": "SC-04", "attributes": []}]},
+  {"id": "h05", "scope": "store-a", "name": "Wrap", "category": "shawls", "status": "active", "material": "Wool blend",
+   "description": "Ambiguous name: wrap, shawl or stole? Cut as a wrap.", "private_note": null,
+   "attributes": [], "variants": [{"id": "h05a", "name": "Grey", "color": "Grey", "price": 2500, "stock": 4, "sku": "WR-05", "attributes": []}]},
+  {"id": "d01", "scope": "store-a", "name": "Brown Pashmina Draft Stole", "category": "stoles", "status": "draft", "material": "Pashmina",
+   "description": "Not yet published.", "private_note": null, "attributes": [], "variants": [{"id": "d01a", "name": "Brown", "color": "Brown", "price": 3000, "stock": 9, "sku": "D-01", "attributes": []}]},
+  {"id": "d02", "scope": "store-a", "name": "Old Brown Pashmina Shawl", "category": "shawls", "status": "archived", "material": "Pashmina",
+   "description": "Discontinued.", "private_note": null, "attributes": [], "variants": [{"id": "d02a", "name": "Brown", "color": "Brown", "price": 7000, "stock": 0, "sku": "D-02", "attributes": []}]},
+  {"id": "x01", "scope": "store-b", "name": "Brown Pashmina Stole", "category": "stoles", "status": "active", "material": "Pure pashmina",
+   "description": "Same name in another store: must never surface here.", "private_note": null, "attributes": [], "variants": [{"id": "x01a", "name": "Brown", "color": "Brown", "price": 3500, "stock": 5, "sku": "X-01", "attributes": []}]}
+]

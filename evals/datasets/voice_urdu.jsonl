@@ -1,0 +1,6 @@
+{"id":"ur-price","transcript":"مجھے یہ دوپٹہ ۲،۵۰۰ روپے کا چاہیے","expected_price_pkr":2500,"expected_negated":false,"reviewed":true}
+{"id":"roman-price","transcript":"mujhe yeh shawl 3500 rupay ka chahiye","expected_price_pkr":3500,"expected_negated":false,"reviewed":true}
+{"id":"ur-negation","transcript":"مجھے کالا شال نہیں چاہیے","expected_price_pkr":null,"expected_negated":true,"reviewed":true}
+{"id":"roman-negation","transcript":"2500 PKR nahi chahiye","expected_price_pkr":2500,"expected_negated":true,"reviewed":true}
+{"id":"ur-accept","transcript":"یہ 4500 روپے کا ہے","expected_price_pkr":4500,"expected_negated":false,"reviewed":true}
+{"id":"roman-accept","transcript":"yeh 1200 rupay ka hai","expected_price_pkr":1200,"expected_negated":false,"reviewed":true}

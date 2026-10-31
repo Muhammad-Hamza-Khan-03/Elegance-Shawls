@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 
@@ -49,4 +50,43 @@ def decode_cursor(cursor: str) -> Key:
             raise ValueError
         return created_at.astimezone(timezone.utc), row_id
     except Exception as exc:  # any malformed input, whatever the cause, is one error to callers
+        raise ValueError("Invalid cursor") from exc
+
+
+# Ranked (hybrid search) cursors: position is (fused score, created_at, id) inside one query. Version 2 and a
+# different key set mean the keyset decoder above rejects them (and vice versa); `binding` ties a cursor to the
+# query/mode/weights it was issued for, so replaying it elsewhere is an error rather than a silent jump.
+RANKED_VERSION = 2
+RankedKey = tuple[float, datetime, uuid.UUID]
+
+
+def encode_ranked_cursor(key: RankedKey, binding: str) -> str:
+    score, created_at, row_id = key
+    if created_at.tzinfo is None or not math.isfinite(score):
+        raise ValueError("invalid ranked position")
+    payload = json.dumps(
+        {"v": RANKED_VERSION, "s": score, "c": created_at.astimezone(timezone.utc).isoformat(timespec="microseconds"),
+         "i": str(row_id), "b": binding}, separators=(",", ":")).encode()
+    return f"{base64.urlsafe_b64encode(payload).decode().rstrip('=')}.{_checksum(payload)}"
+
+
+def decode_ranked_cursor(cursor: str, binding: str) -> RankedKey:
+    try:
+        if not isinstance(cursor, str) or not cursor or len(cursor) > MAX_LENGTH:
+            raise ValueError
+        body, dot, checksum = cursor.partition(".")
+        if not dot or "." in checksum:
+            raise ValueError
+        payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+        if not hmac.compare_digest(checksum, _checksum(payload)):
+            raise ValueError
+        data = json.loads(payload)
+        if not isinstance(data, dict) or set(data) != {"v", "s", "c", "i", "b"} or data["v"] != RANKED_VERSION:
+            raise ValueError
+        score, created_at, row_id = data["s"], datetime.fromisoformat(data["c"]), uuid.UUID(data["i"])
+        if (isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score)
+                or created_at.tzinfo is None or str(row_id) != data["i"] or data["b"] != binding):
+            raise ValueError
+        return float(score), created_at.astimezone(timezone.utc), row_id
+    except Exception as exc:
         raise ValueError("Invalid cursor") from exc

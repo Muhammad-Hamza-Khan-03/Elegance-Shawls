@@ -9,6 +9,7 @@ from configuration.config import settings
 from security import rate_limit
 from security.rate_limit import RateLimitMiddleware
 from workers import queues
+from tests.admin_stub import open_legacy_admin
 from workers.queues import QueueUnavailable
 
 
@@ -67,10 +68,9 @@ def test_no_redis_uses_in_process_limit(monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(settings, "admin_api_key", "test-key")
     monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1000)
     monkeypatch.setattr(settings, "admin_rate_limit_per_minute", 1000)
-    return TestClient(main.create_app())
+    return TestClient(open_legacy_admin(main.create_app(), monkeypatch, "test-key"))
 
 
 def test_job_routes_require_admin_key(client):

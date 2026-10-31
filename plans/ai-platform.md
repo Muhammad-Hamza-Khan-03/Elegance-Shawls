@@ -7,6 +7,8 @@
 > - Authoritative documents: `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md`, `DEPLOYMENT.md`, `OPERATIONS.md`.
 > - The roadmap content below is otherwise unchanged.
 
+> **Admin authentication note.** Any shared `ADMIN_API_KEY` / HMAC-signed session-cookie description below is the retired flow. Current behaviour: individual admin accounts with opaque server-side `X-Admin-Session` sessions, a server-side Next.js proxy, audit attribution, and `ADMIN_API_KEY` only as an expiring legacy fallback (`docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` 3.9, `DEPLOYMENT.md`).
+
 > Turning a catalogue + WhatsApp storefront into a shop that understands its customers, built mostly on free and open-source tooling, and used as a structured path through AI engineering, data science, ML/LLMOps and DevOps.
 
 | | |

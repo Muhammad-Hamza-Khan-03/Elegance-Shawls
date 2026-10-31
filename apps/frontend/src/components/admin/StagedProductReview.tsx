@@ -1,13 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Archive, Check, Eye, EyeOff, Loader2, Plus, RefreshCcw, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Archive, Check, Eye, EyeOff, Loader2, Plus, RefreshCcw, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MarkdownText } from '@/components/common/MarkdownText';
 import { CATEGORY_LABELS } from '@/lib/categories';
 import {
   STAGED_STATUSES,
+  StagingApiError,
+  UUID,
   availableActions,
+  canRequestEnrichment,
+  cancelEnrichment,
+  fetchEnrichment,
+  isActiveEnrichment,
+  requestEnrichment,
   describeMissing,
   formatSourcePrice,
   fetchPkrSuggestion,
@@ -16,6 +23,7 @@ import {
   queueProductPath,
   runStagedAction,
   type ActionBody,
+  type Enrichment,
   type PkrSuggestion,
   type StagedAction,
   type StagedProduct,
@@ -49,6 +57,165 @@ const Fact = ({ label, children, muted = false }: { label: string; children: Rea
     <dd className={`mt-1 text-sm ${muted ? 'text-[#8a7b70]' : 'font-medium text-[#2f241f]'}`}>{children}</dd>
   </div>
 );
+
+type EnrichmentApi = {
+  load: typeof fetchEnrichment;
+  request: typeof requestEnrichment;
+  cancel: typeof cancelEnrichment;
+};
+const enrichmentApi: EnrichmentApi = { load: fetchEnrichment, request: requestEnrichment, cancel: cancelEnrichment };
+
+const FIELD_LABELS: Record<string, string> = {
+  color_family: 'Colour family', color_name: 'Colour', pattern: 'Pattern', occasion: 'Occasion',
+  season: 'Season', style: 'Style', description: 'Description', seo_title: 'SEO title', seo_description: 'SEO description',
+};
+
+const fmtTime = (value?: string | null) => (value ? value.replace('T', ' ').replace(/(\.\d+)?(Z|[+-]\d\d:\d\d)?$/, ' UTC') : '—');
+
+type EnrichmentViewProps = {
+  stagedStatus: StagedStatus;
+  data: Enrichment | null | undefined; // undefined = still loading, null = none requested yet
+  busy: boolean;
+  error: string | null;
+  notice: string | null;
+  onRequest: () => void;
+  onCancel: () => void;
+  onRefresh: () => void;
+};
+
+// Read-only and advisory: there is deliberately no apply, edit or auto-fill control here.
+export const EnrichmentView = ({ stagedStatus, data, busy, error, notice, onRequest, onCancel, onRefresh }: EnrichmentViewProps) => {
+  const canRequest = canRequestEnrichment(stagedStatus, data);
+  const meta: [string, string][] = data
+    ? [
+        ['Provider', data.provider], ['Model', data.model], ['Prompt', data.prompt_version], ['Vocabulary', data.vocabulary_version],
+        ['Input hash', data.input_content_hash], ['Attempts', String(data.attempts)], ['Trace', data.trace_id || '—'],
+        ['Requested', fmtTime(data.created_at)], ['Started', fmtTime(data.started_at)], ['Finished', fmtTime(data.finished_at)],
+      ]
+    : [];
+  return (
+    <section aria-label="Enrichment suggestions" className="mx-6 mb-4 rounded-2xl border border-dashed border-[#c9a577] bg-[#fffdf9] p-4 text-sm" data-testid="enrichment">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9a6b3f]">Enrichment suggestions</h4>
+        <p className="rounded-full bg-amber-100 px-3 py-0.5 text-xs font-semibold text-amber-900">Advisory suggestion — not catalogue truth</p>
+      </div>
+      <p className="mt-1 text-xs text-[#6f625a]">Nothing here changes the product. Use the review fields to set real values.</p>
+
+      {error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 p-2 text-red-800">{error}</p> : null}
+      {notice ? <p role="status" className="mt-3 rounded-xl bg-green-50 p-2 text-green-800">{notice}</p> : null}
+      {data === undefined && !error ? <p role="status" className="mt-3 text-[#6f625a]">Loading suggestions…</p> : null}
+      {data === null ? <p className="mt-3 text-[#6f625a]" data-testid="enrichment-empty">No suggestions have been requested for this product yet.</p> : null}
+
+      {data ? (
+        <div className="mt-3 space-y-3">
+          <p>
+            <span className="sr-only">Run status: </span>
+            <span className="rounded-full border border-[#e2d2bb] bg-white px-3 py-0.5 text-xs font-bold uppercase tracking-wide" data-testid="enrichment-status">{data.status}</span>
+            {isActiveEnrichment(data) ? <span role="status" className="ml-2 text-[#6f625a]">Run in progress — refresh to see the result.</span> : null}
+          </p>
+          {data.status === 'failed' ? (
+            <p role="alert" className="rounded-xl bg-red-50 p-2 text-red-800">
+              The run failed{data.last_error ? `: ${data.last_error}` : '.'}
+            </p>
+          ) : null}
+          {data.validation_errors.length > 0 ? (
+            <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-2 text-amber-900" data-testid="enrichment-warnings">
+              <p className="font-semibold">Validation warnings — suggestions were rejected</p>
+              <ul className="list-disc pl-5">{data.validation_errors.map((message, i) => <li key={i}>{message}</li>)}</ul>
+            </div>
+          ) : null}
+          {data.suggestions && Object.keys(data.suggestions).length > 0 ? (
+            <ul className="grid gap-2 md:grid-cols-2" aria-label="Suggested fields">
+              {Object.entries(data.suggestions).map(([name, s]) => (
+                <li key={name} className="min-w-0 rounded-xl border border-[#efe4d3] bg-white px-3 py-2" data-testid="enrichment-field">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9a6b3f]">{FIELD_LABELS[name] ?? name}</p>
+                  <p className="break-words font-medium text-[#2f241f]">{s.value ?? <span className="text-[#8a7b70]">No suggestion</span>}</p>
+                  {s.reason ? <p className="break-words text-xs text-[#6f625a]">Reason: {s.reason}</p> : null}
+                  <p className="text-xs text-[#8a7b70]">Source: {s.source}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <dl className="grid gap-x-4 gap-y-1 text-xs text-[#6f625a] sm:grid-cols-2">
+            {meta.map(([label, value]) => (
+              <div key={label} className="flex min-w-0 gap-1"><dt className="shrink-0 font-semibold">{label}:</dt><dd className="break-all">{value}</dd></div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {canRequest ? (
+          <Button type="button" variant="outline" disabled={busy || data === undefined} onClick={onRequest}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {data ? 'Request new suggestions' : 'Request suggestions'}
+          </Button>
+        ) : null}
+        {isActiveEnrichment(data) ? (
+          <Button type="button" variant="outline" disabled={busy} onClick={onCancel}><X className="h-4 w-4" /> Cancel run</Button>
+        ) : null}
+        <Button type="button" variant="outline" disabled={busy} onClick={onRefresh}><RefreshCcw className="h-4 w-4" /> Reload suggestions</Button>
+      </div>
+      {stagedStatus === 'rejected' || stagedStatus === 'archived' ? (
+        <p className="mt-2 text-xs text-[#6f625a]">Suggestions cannot be requested for {statusLabel(stagedStatus)} products.</p>
+      ) : null}
+    </section>
+  );
+};
+
+export const EnrichmentPanel = ({ stagedId, stagedStatus, api = enrichmentApi }: { stagedId: string; stagedStatus: StagedStatus; api?: EnrichmentApi }) => {
+  const [data, setData] = useState<Enrichment | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const inflight = useRef(false); // blocks repeated clicks before React re-renders the disabled button
+
+  const reload = useCallback(async () => {
+    try {
+      setData(await api.load(stagedId));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load suggestions.');
+    }
+  }, [api, stagedId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void reload();
+  }, [reload]);
+
+  const run = async (call: () => Promise<Enrichment>, done: string) => {
+    if (inflight.current) return;
+    inflight.current = true;
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      setData(await call());
+      setNotice(done);
+    } catch (err) {
+      const status = err instanceof StagingApiError ? err.status : 0;
+      const message = err instanceof Error ? err.message : 'Action failed.';
+      setError(status === 503 || status === 502 || status === 0 ? `${message} Try again shortly.` : message);
+      if (status === 409) await reload(); // someone else changed the run; show what the backend now says
+    } finally {
+      inflight.current = false;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <EnrichmentView
+      stagedStatus={stagedStatus}
+      data={data}
+      busy={busy}
+      error={error}
+      notice={notice}
+      onRequest={() => void run(() => api.request(stagedId), 'Suggestion run requested.')}
+      onCancel={() => data && void run(() => api.cancel(stagedId, data.id), 'Suggestion run cancelled.')}
+      onRefresh={() => void reload()}
+    />
+  );
+};
 
 export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetchPkrSuggestion }: CardProps) => {
   const [suggestion, setSuggestion] = useState<PkrSuggestion | null>(null);
@@ -165,6 +332,8 @@ export const StagedProductCard = ({ item, busy = false, onAction, suggest = fetc
           ) : null}
         </div>
       </div>
+
+      {UUID.test(item._id) ? <EnrichmentPanel stagedId={item._id} stagedStatus={item.status} /> : null}
 
       {actions.includes('approve') && (suggestion || suggestError) ? (
         <div className="mx-6 mb-4 rounded-2xl border border-[#d8c8b4] bg-[#faf5ee] p-4 text-sm" data-testid="pkr-suggestion">

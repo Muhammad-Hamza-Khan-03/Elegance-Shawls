@@ -16,13 +16,13 @@ from schemas.ingestion_schema import (
     SourceInfo, StagedProductListResponse, StagedProductResponse, StagedStatus,
 )
 from schemas.product_schema import ProductCreateSchema, ProductStatus
-from security.admin_auth import require_admin_api_key
+from security.admin_auth import require_admin
 from utils.pagination import decode_cursor, encode_cursor
 
 router = APIRouter(
     prefix="/products/admin/ingestion",
     tags=["Ingestion"],
-    dependencies=[Depends(require_admin_api_key)],
+    dependencies=[Depends(require_admin)],
 )
 S = StagedStatus
 CATALOGUE_FIELDS = ("name", "slug", "cover_image_url", "images", "main_description", "category", "material", "sizing", "weight")

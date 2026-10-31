@@ -8,7 +8,8 @@ export const AdminLoginForm = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = useMemo(() => searchParams.get('next') || '/admin/dashboard', [searchParams]);
-  const [adminKey, setAdminKey] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +22,7 @@ export const AdminLoginForm = () => {
       const response = await fetch('/api/admin/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: adminKey }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
@@ -41,17 +42,31 @@ export const AdminLoginForm = () => {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label htmlFor="admin-key" className="mb-2 block text-sm font-medium text-[#4b3a31]">
-          Admin key
+        <label htmlFor="admin-email" className="mb-2 block text-sm font-medium text-[#4b3a31]">
+          Email
         </label>
         <input
-          id="admin-key"
+          id="admin-email"
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="w-full rounded-2xl border border-[#d8c8b4] bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-[#9a6b3f] focus:ring-2 focus:ring-[#d8b994]/60"
+          required
+        />
+      </div>
+
+      <div>
+        <label htmlFor="admin-password" className="mb-2 block text-sm font-medium text-[#4b3a31]">
+          Password
+        </label>
+        <input
+          id="admin-password"
           type="password"
           autoComplete="current-password"
-          value={adminKey}
-          onChange={(event) => setAdminKey(event.target.value)}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
           className="w-full rounded-2xl border border-[#d8c8b4] bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-[#9a6b3f] focus:ring-2 focus:ring-[#d8b994]/60"
-          placeholder="Enter the shared admin key"
           required
         />
       </div>

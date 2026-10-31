@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 const quickStats = [
   { label: 'Products', value: 'Ready', detail: 'Product CRUD pages can attach here next.' },
-  { label: 'Orders', value: 'Ready', detail: 'Order follow-up pages can use this shell.' },
+  { label: 'Enquiries', value: 'Ready', detail: 'Look up WhatsApp enquiry references.' },
   { label: 'Access', value: 'Protected', detail: 'Session cookie gate blocks unauthenticated access.' },
 ];
 
@@ -44,7 +44,7 @@ export default function AdminDashboardPage() {
           <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#9a6b3f]">Navigation</p>
           <h2 className="font-heading mt-3 text-2xl font-semibold">Consistent admin flow</h2>
           <p className="mt-3 leading-7 text-[#6f625a]">
-            Use the left rail to move between dashboard, products and orders while keeping the storefront isolated.
+            Use the left rail to move between dashboard, products and enquiries while keeping the storefront isolated.
           </p>
         </article>
       </section>

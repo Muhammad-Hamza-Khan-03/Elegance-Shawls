@@ -2,6 +2,8 @@
 
 > **Historical record (pre-PostgreSQL).** Written when the catalogue ran on MongoDB; those parts no longer apply. Current setup: `DEPLOYMENT.md`.
 
+> **Admin authentication note.** Any shared `ADMIN_API_KEY` / HMAC-signed session-cookie description below is the retired flow. Current behaviour: individual admin accounts with opaque server-side `X-Admin-Session` sessions, a server-side Next.js proxy, audit attribution, and `ADMIN_API_KEY` only as an expiring legacy fallback (`docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` 3.9, `DEPLOYMENT.md`).
+
 **Status: implementation complete on fixtures; independent QA NOT yet performed.** Implementation tests below are not independent QA. This record must not be treated as staging evidence.
 
 **Code under test:** branch `phase-1/one-source-ingestion`, commit `32c9520405e4926c91840386b000d5ca7bd06113` (docs-only commits may follow; re-record the SHA QA actually deploys).

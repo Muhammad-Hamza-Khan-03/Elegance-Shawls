@@ -49,6 +49,7 @@ jobs:
       - run: pytest -q
       - run: python -m compileall -q .
       - run: pip-audit -r requirements.txt
+      - run: pip-audit --no-deps --disable-pip -r requirements-local-e5.lock.txt
 
   backend-integration:
     # Real PostgreSQL (pgvector) and Redis via Testcontainers; the default backend job stays container-free.

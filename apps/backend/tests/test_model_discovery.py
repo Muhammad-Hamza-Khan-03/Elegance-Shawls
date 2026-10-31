@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from configuration.config import settings
 from llm import model_discovery as md
 from main import create_app
+from tests.admin_stub import open_legacy_admin
 
 
 class ClientFactory:
@@ -119,8 +120,7 @@ async def test_concurrent_refreshes_share_one_provider_request():
 
 @pytest.mark.asyncio
 async def test_admin_visibility_and_auth(monkeypatch):
-    monkeypatch.setattr(settings, "admin_api_key", "admin-test-key")
-    client = TestClient(create_app())
+    client = TestClient(open_legacy_admin(create_app(), monkeypatch, "admin-test-key"))
     assert client.get("/v1/llm/models").status_code in (401, 403)
     response = client.get("/v1/llm/models", headers={"X-Admin-Key": "admin-test-key"})
     assert response.status_code == 200

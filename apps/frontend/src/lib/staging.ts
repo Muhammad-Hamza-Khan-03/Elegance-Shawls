@@ -114,7 +114,57 @@ export const fetchPkrSuggestion = (id: string) =>
 export const formatSuggestion = (s: PkrSuggestion) =>
   `≈ PKR ${s.suggested_pkr.toLocaleString('en-US')} (1 ${s.source_currency} = ${s.rate.toFixed(2)} PKR, rate of ${s.rate_date})`;
 
-export const queueProductPath = (path: string) =>
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const ENRICHMENT_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'cancelled'] as const;
+export type EnrichmentStatus = (typeof ENRICHMENT_STATUSES)[number];
+
+export type EnrichmentField = { value: string | null; reason: string | null; source: string };
+
+export type Enrichment = {
+  id: string;
+  staged_product_id: string;
+  status: EnrichmentStatus;
+  authoritative: false;
+  suggestions: Record<string, EnrichmentField> | null;
+  validation_errors: string[];
+  provider: string;
+  model: string;
+  prompt_version: string;
+  vocabulary_version: string;
+  input_content_hash: string;
+  attempts: number;
+  last_error?: string | null;
+  trace_id?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
+export const isActiveEnrichment = (e?: Pick<Enrichment, 'status'> | null) => e?.status === 'queued' || e?.status === 'running';
+
+// Mirrors the backend rules (rejected/archived are not enrichable, one active run); the backend still decides.
+export const canRequestEnrichment = (status: StagedStatus, e?: Pick<Enrichment, 'status'> | null) =>
+  status !== 'rejected' && status !== 'archived' && !isActiveEnrichment(e);
+
+const enrichmentUrl = (id: string) => `/api/admin/ingestion/staged/${id}/enrichment`;
+
+// A staged product with no suggestion yet is an expected empty state, not an error.
+export const fetchEnrichment = async (id: string): Promise<Enrichment | null> => {
+  try {
+    return await request<Enrichment>(enrichmentUrl(id));
+  } catch (err) {
+    if (err instanceof StagingApiError && err.status === 404) return null;
+    throw err;
+  }
+};
+
+export const requestEnrichment = (id: string) => request<Enrichment>(enrichmentUrl(id), { method: 'POST' });
+
+export const cancelEnrichment = (id: string, suggestionId: string) =>
+  request<Enrichment>(`${enrichmentUrl(id)}/${suggestionId}/cancel`, { method: 'POST' });
+
+export const queueProductPath =(path: string) =>
   request<{ _id: string; status: string }>('/api/admin/ingestion/jobs', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

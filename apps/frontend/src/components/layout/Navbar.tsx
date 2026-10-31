@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/products?category=shawls', label: 'Shawls' },
   { href: '/products?category=stoles', label: 'Stoles' },
   { href: '/products?category=scarves', label: 'Scarves' },
+  ...(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? [{ href: '/account', label: 'Account' }] : []),
 ];
 
 export const Navbar = () => {

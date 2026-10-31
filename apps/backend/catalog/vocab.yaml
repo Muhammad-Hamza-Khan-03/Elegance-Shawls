@@ -1,0 +1,60 @@
+# Controlled search vocabulary: English, Urdu script and Roman Urdu. Reviewed by hand; every term the
+# query parser understands is listed here and nothing is inferred. Entries are normalised on load
+# (catalog/query.py: case-folded, Urdu diacritics removed, digits ASCII) and may be multi-word.
+# To extend coverage add the term here AND a case in evals/datasets/retrieval_constraints.jsonl.
+version: 1
+
+categories:   # canonical values equal products.category
+  shawls: [shawl, shawls, wrap, wraps, شال, شالیں, shaal, shawal, shaul, chadar, چادر]
+  stoles: [stole, stoles, اسٹول, سٹول, estol, stol]
+  scarves: [scarf, scarves, سکارف, اسکارف, skarf]
+
+colors:       # canonical value -> synonyms, matched against variants.color (whole words)
+  black: [black, کالا, کالی, کالے, سیاہ, kala, kali, kaala, kaali, siyah]
+  white: [white, سفید, safaid, safed, sufaid]
+  brown: [brown, بھورا, بھوری, بھورے, bhoora, bhura, bhoori, bhuri]
+  grey: [grey, gray, سرمئی, سلیٹی, surmai, slaty]
+  beige: [beige, بیج, bej]
+  cream: [cream, کریم, krem]
+  pink: [pink, گلابی, gulabi]
+  red: [red, لال, سرخ, laal, lal, surkh]
+  maroon: [maroon, مرون, عنابی, marun, anabi]
+  blue: [blue, نیلا, نیلی, نیلے, neela, nila, neeli, nili]
+  green: [green, ہرا, ہری, ہرے, hara, hari, sabz, سبز]
+  yellow: [yellow, پیلا, پیلی, peela, pila, peeli, pili]
+  purple: [purple, جامنی, jamni, jamuni]
+  navy: [navy, نیوی]
+  orange: [orange, نارنجی, narangi]
+  mustard: [mustard, سرسوں, sarson]
+
+materials:    # matched against products.material only; a missing material is "unknown", never a guess
+  pashmina: [pashmina, پشمینہ, pashmeena]
+  wool: [wool, woolen, woollen, اون, اونی, oon, ooni]
+  cashmere: [cashmere, kashmiri]
+  silk: [silk, ریشم, ریشمی, resham, reshmi]
+  cotton: [cotton, سوتی, sooti]
+  linen: [linen]
+  viscose: [viscose]
+
+availability:
+  in_stock: [available, in stock, instock, موجود, اسٹاک میں, maujood, mojood, stock mein, stock main]
+
+price:
+  # Operators that come BEFORE the number: "under 4000".
+  max_before: [under, below, less than, upto, up to, within, max, maximum, not more than, at most]
+  min_before: [above, over, more than, at least, min, minimum, starting from, not under, not below, not less than]
+  # Operators that come AFTER the number: "4000 se kam", "۴۰۰۰ سے کم".
+  max_after: [tak, تک, se kam, se kum, سے کم, se neeche, se niche, سے نیچے, ke andar, کے اندر, or less, or below]
+  min_after: [se zyada, se ziada, se zyaada, se upar, سے زیادہ, سے اوپر, or more, or above]
+  between_start: [between, from]
+  between_joiner: [and, to, اور, aur]
+  currency_words: [rs, pkr, rupees, rupee, rupay, rupaye, روپے, روپیہ]
+
+negation:
+  before: [not, no, without, except, excluding, bina, bagair, بغیر, بنا]
+  after: [nahi, nahin, nahee, نہیں, نہ]
+
+# Carry no catalogue meaning: dropped, never matched as text.
+stopwords: [a, an, the, in, of, for, with, me, show, something, everything, anything, any, all, some, i, want, need,
+  looking, find, get, please, or, ka, ki, ke, ko, mein, main, hai, dikhao, dikhayen, rang, color, colour, colors, colours,
+  price, rate, qeemat, چاہیے, دکھائیں, دکھاؤ, کا, کی, کے, کو, میں, ہے, رنگ, قیمت]

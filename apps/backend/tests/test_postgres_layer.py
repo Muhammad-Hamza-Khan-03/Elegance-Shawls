@@ -37,6 +37,15 @@ def test_connect_is_noop_when_unconfigured(monkeypatch):
     assert asyncio.run(pg.postgres_is_ready()) is False
 
 
+@pytest.mark.parametrize("url", [
+    "postgresql://u:p@host/db",
+    "postgres://u:p@host/db",
+])
+def test_provider_postgres_urls_use_asyncpg(url):
+    assert pg.async_database_url(url) == "postgresql+asyncpg://u:p@host/db"
+    assert pg.async_database_url("postgresql+asyncpg://u:p@host/db") == "postgresql+asyncpg://u:p@host/db"
+
+
 def test_connect_returns_false_when_unreachable(monkeypatch):
     monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://u:p@127.0.0.1:1/db")
     monkeypatch.setattr(settings, "pg_connect_timeout_seconds", 0.2)

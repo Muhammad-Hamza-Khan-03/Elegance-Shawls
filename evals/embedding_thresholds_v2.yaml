@@ -1,0 +1,42 @@
+# Gates for the bounded synthetic embedding evaluation (run_embedding_eval.py). Separate from thresholds.yaml:
+# nothing here changes run_evals.py or any existing release flag. Metrics are 0..1.
+fixture:
+  path: datasets/embedding_synthetic_v2.jsonl
+  sha256: a8511afd90b58e0bb82d4c15de5081ab20de92268c0449138f9610fbf054bdac   # v2; v1 (c5382437d5bad1ee823b9286fe163e4bc69b11162bdcbdb152ba4b283ab78b96) is immutable
+  records: 96
+  queries: 53          # v1: 64; 11 synonym queries are kind=excluded_query (see docs/qa/embedding-synthetic-v2-review.md)
+  cohorts: [en, ur, roman_ur, synonym]
+  queries_per_cohort: {en: 16, ur: 16, roman_ur: 16, synonym: 5}   # v1: scalar 16; mapping is accepted by run_embedding_eval.py
+  min_hard_constraint_queries: 13   # v1: 16; the synonym category/stock/size constraints were unsupported
+  missing_vector_records: 10
+  stale_vector_records: 10
+retrieval:          # scored only on records whose vector is current; missing/stale are excluded and reported as coverage
+  overall:
+    recall_at_10: {min: 0.85}
+    mrr_at_10: {min: 0.70}
+    ndcg_at_10: {min: 0.75}
+  cohort:           # every cohort must clear these
+    recall_at_10: {min: 0.80}
+    mrr_at_10: {min: 0.60}
+    ndcg_at_10: {min: 0.65}
+constraints:
+  hard_violations: {max: 0}      # a returned record that breaks price/stock/category/material/color/size/same-variant
+vectors:
+  count_match: {min: 1.0}
+  finite: {min: 1.0}             # finite and non-zero
+  stable_dimension: {min: 1.0}
+exclusion:
+  missing_or_stale_ranked: {max: 0}
+fallback:
+  allowed: false
+reproducibility:
+  top10_jaccard: {min: 0.99}
+bounds:
+  max_batch: 16
+  max_input_chars: 256
+  max_requests: 32
+  timeout_s: 20
+  max_repeats: 3
+  max_candidates: 4              # across the whole programme; each invocation evaluates exactly one
+  max_cost_usd: 2
+  max_transport_retries: 1

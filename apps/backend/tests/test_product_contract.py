@@ -1,10 +1,7 @@
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 
-from configuration.config import settings
 from schemas.product_schema import ProductCreateSchema
-from security.admin_auth import require_admin_api_key
 
 
 def product_payload() -> dict:
@@ -46,23 +43,6 @@ def test_contract_rejects_unknown_fields():
     payload["unreviewed_field"] = "must not be silently discarded"
     with pytest.raises(ValidationError):
         ProductCreateSchema.model_validate(payload)
-
-
-@pytest.mark.asyncio
-async def test_admin_auth_fails_closed_when_not_configured(monkeypatch):
-    monkeypatch.setattr(settings, "admin_api_key", "")
-    with pytest.raises(HTTPException) as error:
-        await require_admin_api_key("anything")
-    assert error.value.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_admin_auth_rejects_invalid_and_accepts_valid_key(monkeypatch):
-    monkeypatch.setattr(settings, "admin_api_key", "a-long-production-secret")
-    with pytest.raises(HTTPException) as error:
-        await require_admin_api_key("wrong")
-    assert error.value.status_code == 401
-    assert await require_admin_api_key("a-long-production-secret") is None
 
 
 @pytest.mark.parametrize("category", ["shawls", "stoles", "scarves"])

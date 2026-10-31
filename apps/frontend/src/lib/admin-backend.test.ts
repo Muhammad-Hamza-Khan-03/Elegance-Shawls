@@ -3,7 +3,9 @@ import { GET as listProducts, POST as createProduct } from '@/app/api/admin/prod
 import { GET as getProduct, PUT as updateProduct, DELETE as archiveProduct } from '@/app/api/admin/products/[productId]/route';
 import { PATCH as updateStatus } from '@/app/api/admin/products/[productId]/status/route';
 import { PATCH as updateStock } from '@/app/api/admin/products/[productId]/stock/route';
-import { ADMIN_SESSION_COOKIE, issueAdminSession } from './admin-session';
+import { ADMIN_SESSION_COOKIE } from './admin-session';
+
+const TOKEN = `es1.${'a'.repeat(43)}`;
 
 const origin = 'https://store.example.invalid';
 const productId = '507f1f77bcf86cd799439011';
@@ -29,20 +31,16 @@ const makeRequest = (route: (typeof routes)[number], cookie?: string, requestOri
   });
 
 describe('admin API proxy authorization', () => {
-  const oldKey = process.env.ADMIN_API_KEY;
   const oldUrl = process.env.NEXT_PUBLIC_API_URL;
   const fetchMock = vi.fn();
 
   beforeEach(() => {
-    process.env.ADMIN_API_KEY = 'fixture-only-private-admin-key';
     process.env.NEXT_PUBLIC_API_URL = 'https://backend.example.invalid';
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
-    if (oldKey === undefined) delete process.env.ADMIN_API_KEY;
-    else process.env.ADMIN_API_KEY = oldKey;
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
     else process.env.NEXT_PUBLIC_API_URL = oldUrl;
     vi.restoreAllMocks();
@@ -54,39 +52,43 @@ describe('admin API proxy authorization', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(routes)('blocks forged sessions on $name without calling the backend', async (route) => {
+  it.each(routes)('blocks malformed sessions on $name without calling the backend', async (route) => {
     expect((await route.handler(makeRequest(route, 'forged-session', origin))).status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(routes)('blocks expired sessions on $name without calling the backend', async (route) => {
-    const session = issueAdminSession()!;
-    vi.spyOn(Date, 'now').mockReturnValue((session.expiresAt + 1) * 1000);
-    expect((await route.handler(makeRequest(route, session.token, origin))).status).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it.each(routes)('relays the backend verdict on a revoked or expired session for $name and clears the dead cookie', async (route) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: 'Invalid administrative credentials' }), { status: 401, headers: { 'content-type': 'application/json' } }));
+    const response = await route.handler(makeRequest(route, TOKEN, origin));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toMatch(new RegExp(`${ADMIN_SESSION_COOKIE}=;.*Max-Age=0`, 'i'));
+  });
+
+  it.each(routes)('relays a role denial for $name unchanged and keeps the session cookie', async (route) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: 'Your role does not permit this action' }), { status: 403, headers: { 'content-type': 'application/json' } }));
+    const response = await route.handler(makeRequest(route, TOKEN, origin));
+    expect(response.status).toBe(403);
+    expect(response.headers.get('set-cookie')).toBeNull();
   });
 
   it.each(routes.filter((route) => route.method !== 'GET'))('blocks cross-origin $name without calling the backend', async (route) => {
-    const session = issueAdminSession()!;
-    expect((await route.handler(makeRequest(route, session.token, 'https://other.example.invalid'))).status).toBe(403);
+    expect((await route.handler(makeRequest(route, TOKEN, 'https://other.example.invalid'))).status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each(routes.filter((route) => route.method !== 'GET'))('blocks $name with no Origin without calling the backend', async (route) => {
-    const session = issueAdminSession()!;
-    expect((await route.handler(makeRequest(route, session.token))).status).toBe(403);
+    expect((await route.handler(makeRequest(route, TOKEN))).status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('uses the public Host when Next.js canonicalizes the request URL', async () => {
-    const session = issueAdminSession()!;
     fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
     const request = new Request('http://localhost:3200/api/admin/products', {
       method: 'POST',
       headers: {
         host: '127.0.0.1:3200',
         origin: 'http://127.0.0.1:3200',
-        cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`,
+        cookie: `${ADMIN_SESSION_COOKIE}=${TOKEN}`,
       },
     });
 
@@ -95,13 +97,12 @@ describe('admin API proxy authorization', () => {
   });
 
   it('rejects an Origin that matches the internal URL but not the public Host', async () => {
-    const session = issueAdminSession()!;
     const request = new Request('http://localhost:3200/api/admin/products', {
       method: 'POST',
       headers: {
         host: '127.0.0.1:3200',
         origin: 'http://localhost:3200',
-        cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`,
+        cookie: `${ADMIN_SESSION_COOKIE}=${TOKEN}`,
       },
     });
 
@@ -109,19 +110,22 @@ describe('admin API proxy authorization', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(routes)('forwards signed-in same-origin $name with the private key', async (route) => {
-    const session = issueAdminSession()!;
+  it.each(routes)('forwards signed-in same-origin $name with only the session token', async (route) => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }));
-    const response = await route.handler(makeRequest(route, session.token, origin));
+    const response = await route.handler(makeRequest(route, TOKEN, origin));
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0].toString()).toBe(`https://backend.example.invalid${route.backendPath}`);
     expect(fetchMock.mock.calls[0][1].method).toBe(route.method);
-    expect(fetchMock.mock.calls[0][1].headers.get('X-Admin-Key')).toBe(process.env.ADMIN_API_KEY);
-    expect(await response.text()).not.toContain(process.env.ADMIN_API_KEY!);
+    const sent = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(sent.get('X-Admin-Session')).toBe(TOKEN);
+    expect(sent.get('X-Admin-Key')).toBeNull();
+    expect(sent.get('cookie')).toBeNull();
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(await response.text()).not.toContain(TOKEN);
   });
 });

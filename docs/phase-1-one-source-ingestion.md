@@ -45,7 +45,7 @@ Not ported: CSV storage, Quill DB models, API routes, service layer, credentials
 
 ## Security rules
 
-- Every ingestion route sits under the existing admin router (`X-Admin-Key`, constant-time compare). The frontend uses `proxyAdminRequest`.
+- Every ingestion route requires an admin credential through `security.admin_auth.require_admin` (an individual account's `X-Admin-Session`, role-checked and audited; the legacy `X-Admin-Key` works only until `ADMIN_LEGACY_KEY_EXPIRES_AT`). The browser reaches them only through the frontend's `proxyAdminRequest`, which forwards `X-Admin-Session`.
 - Source allowlist by exact host: `INGESTION_SOURCE_DOMAIN` plus any exact hosts in `INGESTION_ALLOWED_HOSTS` (for example the `www.` variant). Subdomains and look-alike hosts are rejected. HTTPS only; no userinfo; standard port only. All hosts of the source share one rate-limit bucket, and staged URLs are rewritten to the canonical `INGESTION_SOURCE_DOMAIN` so apex and `www` pages are the same product.
 - DNS is resolved once, every address must be public, and the connection is pinned to the validated address. Private, loopback, link-local, multicast, reserved, and cloud metadata ranges are rejected. Redirects are followed manually (limit 3) and revalidated per hop.
 - Connect/read timeouts, response-size cap, bounded retries, per-domain rate limit.

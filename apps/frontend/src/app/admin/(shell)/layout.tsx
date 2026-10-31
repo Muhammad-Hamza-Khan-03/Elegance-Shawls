@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { AdminShell } from '@/components/admin/AdminShell';
-import { verifyAdminSession } from '@/lib/admin-session';
+import { fetchAdminIdentity } from '@/lib/admin-backend';
+import { ADMIN_SESSION_COOKIE } from '@/lib/admin-session';
 
 export const metadata: Metadata = {
   title: {
@@ -14,11 +15,11 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminShellLayout({ children }: { children: ReactNode }) {
-  const session = (await cookies()).get('es_admin_session')?.value;
+  const identity = await fetchAdminIdentity((await cookies()).get(ADMIN_SESSION_COOKIE)?.value);
 
-  if (!verifyAdminSession(session)) {
+  if (!identity) {
     redirect('/admin/login');
   }
 
-  return <AdminShell>{children}</AdminShell>;
+  return <AdminShell account={identity}>{children}</AdminShell>;
 }

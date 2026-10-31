@@ -1,0 +1,20 @@
+{
+  "id": "synthetic-enrichment-fixture-1",
+  "synthetic": true,
+  "note": "Invented data for tests and the provider smoke gate. Not from any catalogue, customer or supplier.",
+  "product": {
+    "name": "Sample Ivory Stole With Floral Border",
+    "slug": "sample-ivory-stole",
+    "cover_image_url": "https://img.example/sample.jpg",
+    "images": ["https://img.example/sample.jpg"],
+    "main_description": "A light stole in ivory with a floral border, suited to winter evenings.",
+    "category": "stoles",
+    "material": null,
+    "sizing": null,
+    "weight": null,
+    "variants": [
+      {"name": "Ivory", "color": "Cream", "size": "Free Size", "image_url": "https://img.example/sample.jpg", "stock": 0},
+      {"name": "Black", "color": "Black", "size": "Free Size", "image_url": "https://img.example/sample-b.jpg", "stock": 0}
+    ]
+  }
+}

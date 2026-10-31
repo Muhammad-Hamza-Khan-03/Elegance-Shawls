@@ -16,13 +16,24 @@ _engine: AsyncEngine | None = None
 _sessions: async_sessionmaker[AsyncSession] | None = None
 
 
+def async_database_url(url: str) -> str:
+    """Use the asyncpg dialect for provider-native PostgreSQL URLs."""
+    if url.startswith("postgresql+asyncpg://"):
+        return url
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgresql://")
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgres://")
+    return url
+
+
 def postgres_configured() -> bool:
     return bool(settings.database_url)
 
 
 def make_engine(url: str | None = None) -> AsyncEngine:
     return instrument_engine(create_async_engine(
-        url or settings.database_url,
+        async_database_url(url or settings.database_url),
         pool_size=settings.pg_pool_size,
         max_overflow=settings.pg_max_overflow,
         pool_timeout=settings.pg_pool_timeout_seconds,
