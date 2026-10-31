@@ -102,6 +102,10 @@ http.createServer((request, response) => {
     if (request.url === '/v1/admin/auth/logout') return response.end(JSON.stringify({ ok: true }));
   }
   if (request.url === '/health/' || request.url === '/ready/') return response.end(JSON.stringify({ status: 'ready' }));
+  if (request.url === '/products/slug/unavailable-product') {
+    response.statusCode = 503;
+    return response.end(JSON.stringify({ detail: 'Service unavailable' }));
+  }
   if (request.url?.startsWith('/products/slug/')) {
     const product = [...products, assistantProduct].find((item) => item.slug === decodeURIComponent(request.url.split('/').pop() || ''));
     response.statusCode = product ? 200 : 404;
@@ -110,4 +114,4 @@ http.createServer((request, response) => {
   if (request.url?.startsWith('/products/')) return response.end(JSON.stringify({ items: products, next_cursor: null }));
   response.statusCode = 404;
   response.end(JSON.stringify({ detail: 'Not found' }));
-}).listen(4100, '127.0.0.1');
+}).listen(Number(process.env.MOCK_API_PORT || 4100), '127.0.0.1');
