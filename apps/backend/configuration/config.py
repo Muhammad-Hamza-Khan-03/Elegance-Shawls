@@ -22,6 +22,9 @@ class settings(BaseSettings):
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
 
+    # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
+    assistant_catalogue: bool = False
+
     # Customer authentication (M4). Off by default: nothing is accepted until an operator sets every value below. The provider is
     # one of the customer_identities providers (google|phone); the issuer's signing keys come from the https JWKS URL.
     customer_auth_enabled: bool = False

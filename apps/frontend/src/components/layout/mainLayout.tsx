@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
+import { AssistantLauncher } from '@/components/assistant/AssistantLauncher';
 import { CartProvider } from '@/components/cart/CartProvider';
 
 interface MainLayoutProps {
@@ -23,6 +24,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
+        <AssistantLauncher />
       </div>
     </CartProvider>
   );

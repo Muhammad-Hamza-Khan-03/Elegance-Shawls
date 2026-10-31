@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from assistant.grounded import catalogue_session, ground
 from assistant.stream import demo_catalogue, fake_provider, stream_events
 
 router = APIRouter(prefix="/v1/assistant", tags=["Assistant"])
@@ -31,9 +32,14 @@ def get_provider():
 
 
 @router.post("/stream")
-async def stream(body: StreamRequest, request: Request, provider=Depends(get_provider)):
+async def stream(body: StreamRequest, request: Request, provider=Depends(get_provider),
+                 session=Depends(catalogue_session)):
+    if session is None:
+        chunks, catalogue = provider(body.message, body.idempotency_key), demo_catalogue()
+    else:  # search before streaming so no DB session is held open while the client reads
+        chunks, catalogue = await ground(session, body.message, body.idempotency_key)
     events: AsyncIterator[str] = stream_events(
-        provider(body.message, body.idempotency_key), session_id=body.session_id, context=body.context,
-        idempotency_key=body.idempotency_key, catalogue=demo_catalogue(), is_disconnected=request.is_disconnected)
+        chunks, session_id=body.session_id, context=body.context,
+        idempotency_key=body.idempotency_key, catalogue=catalogue, is_disconnected=request.is_disconnected)
     return StreamingResponse(events, media_type="text/event-stream",
                              headers={"cache-control": "no-store", "x-accel-buffering": "no"})

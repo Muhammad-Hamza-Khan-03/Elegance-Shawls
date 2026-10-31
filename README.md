@@ -194,6 +194,7 @@ Backend environment variables:
 | `ADMIN_SESSION_TTL_SECONDS`, `ADMIN_LOGIN_MAX_FAILURES`, `ADMIN_LOGIN_LOCKOUT_SECONDS` | Admin session lifetime (8h), failed sign-ins before lockout (5) and lockout length (15 min) | `28800`, `5`, `900` |
 | `ENVIRONMENT` | Runtime environment label | `development` |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE` | Public route request limit | `120` |
+| `ASSISTANT_CATALOGUE` | `true` makes `/v1/assistant/stream` answer from the live catalogue (parser + search); default is the scripted demo | `false` |
 | `ADMIN_RATE_LIMIT_PER_MINUTE` | Admin route request limit | `60` |
 
 ### 3) Start the backend
@@ -247,6 +248,16 @@ pip install -r requirements-dev.txt
 pytest -q
 python -m compileall -q .
 ```
+
+## One-command local store
+
+From `apps/backend` with the venv active and `npm ci` done in `apps/frontend`:
+
+```bash
+ADMIN_ACCOUNT_PASSWORD='choose-a-long-passphrase' bash scripts/dev_local.sh
+```
+
+Starts a pgvector Postgres container (data kept in a docker volume), runs migrations, creates the owner account (`owner@elegance.local`), seeds a synthetic 36-product catalogue (`scripts/seed_local.py`, development only), then runs the API on :8000 and the storefront with the assistant enabled (`NEXT_PUBLIC_ASSISTANT_ENABLED=1`).
 
 ## Local AI platform services (optional)
 
