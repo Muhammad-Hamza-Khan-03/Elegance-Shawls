@@ -44,7 +44,8 @@ def test_flag_defaults_off():
     assert fields["local_semantic_search_enabled"].default is False and fields["local_e5_model_path"].default == ""
 
 
-@pytest.mark.parametrize("env", ["production", "staging", "prod", "", "preview", "Production "])
+# "staging" is deliberately allowed since staging/e5-semantic-activation (isolated E5 rehearsal with the pinned offline model); it is no longer refused.
+@pytest.mark.parametrize("env", ["production", "prod", "", "preview", "Production "])
 def test_refused_outside_local_environments(monkeypatch, env):
     monkeypatch.setattr(settings, "environment", env)
     monkeypatch.setattr(local_e5, "LocalE5EmbeddingProvider", lambda *a: pytest.fail("model must not load"))

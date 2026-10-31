@@ -345,6 +345,7 @@ class Variant(Base):
     __table_args__ = (
         # Deferred so a reorder inside one transaction can swap positions.
         UniqueConstraint("product_id", "position", deferrable=True, initially="DEFERRED"),
+        UniqueConstraint("id", "product_id"),  # target of catalog_attributes' composite FK: a variant attribute stays in its own product
         CheckConstraint("position >= 0", name="position_nonnegative"),
         CheckConstraint("char_length(name) >= 1", name="name_present"),
         CheckConstraint("char_length(color) >= 1", name="color_not_empty"),

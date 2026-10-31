@@ -234,7 +234,7 @@ def test_table_constraints_refuse_impossible_states(pg_engine_factory):
     assert all(e for e in run_repo(pg_engine_factory, scenario))
 
 
-def test_migration_0010_is_reversible_and_refuses_to_drop_records_silently(pg_url, migrated_url, monkeypatch):
+def test_migration_0013_is_reversible_and_refuses_to_drop_records_silently(pg_url, migrated_url, monkeypatch):
     config = alembic_config(pg_url)
 
     def sql(statement):
@@ -249,15 +249,15 @@ def test_migration_0010_is_reversible_and_refuses_to_drop_records_silently(pg_ur
         return asyncio.run(go_())
 
     sql("truncate action_executions")
-    command.downgrade(config, "0009")
+    command.downgrade(config, "0012")
     assert sql("select to_regclass('action_executions')") == [(None,)]
-    command.upgrade(config, "0010")
+    command.upgrade(config, "0013")
     sql("insert into action_executions (session_hash, idempotency_key, action_type, fingerprint, status, lease_expires_at, audit) "
         "values (repeat('a',64), 'idem_keep', 'add_to_cart', repeat('b',64), 'pending', now(), '{}')")
     monkeypatch.delenv("ALEMBIC_ALLOW_ACTION_EXECUTION_DATA_LOSS", raising=False)
-    with pytest.raises(Exception, match="Refusing to downgrade 0010"):
-        command.downgrade(config, "0009")
+    with pytest.raises(Exception, match="Refusing to downgrade 0013"):
+        command.downgrade(config, "0012")
     assert sql("select count(*) from action_executions") == [(1,)]
     monkeypatch.setenv("ALEMBIC_ALLOW_ACTION_EXECUTION_DATA_LOSS", "1")
-    command.downgrade(config, "0009")
+    command.downgrade(config, "0012")
     command.upgrade(config, "head")

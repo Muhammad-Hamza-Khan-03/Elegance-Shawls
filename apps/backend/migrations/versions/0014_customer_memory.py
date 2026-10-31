@@ -83,7 +83,7 @@ def downgrade() -> None:
     at_risk = bind.execute(sa.text("SELECT (SELECT count(*) FROM memory_items) + (SELECT count(*) FROM memory_consents)")).scalar()
     if at_risk and os.environ.get("ALEMBIC_ALLOW_MEMORY_DATA_LOSS") != "1":
         raise RuntimeError(
-            f"Refusing to downgrade 0011: {at_risk} customer memory/consent records would be lost. "
+            f"Refusing to downgrade 0014: {at_risk} customer memory/consent records would be lost. "
             "Back up with pg_dump, then rerun with ALEMBIC_ALLOW_MEMORY_DATA_LOSS=1."
         )
     op.drop_table("memory_items")

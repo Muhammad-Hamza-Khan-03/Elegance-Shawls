@@ -26,9 +26,12 @@ MIGRATION_STEPS = [
     ("0004", {"ingestion_jobs", "staged_products", "staged_product_audit"}),
     ("0005", set()),
     ("0006", set()),
-    ("0007", {"admin_accounts", "admin_sessions"}),
-    ("0008", {"enquiries"}),
-    ("0009", {"product_embeddings", "embedding_jobs"}),
+    ("0007", {"catalog_attributes"}),                                   # main's chain: 0007-0009
+    ("0008", {"enrichment_suggestions"}),
+    ("0009", {"product_embeddings", "variant_embeddings"}),
+    ("0010", {"admin_accounts", "admin_sessions"}),                     # ours, renumbered after main's: 0010-0015
+    ("0011", {"enquiries"}),
+    ("0012", {"semantic_embeddings", "semantic_embedding_jobs"}),
 ]
 
 

@@ -47,7 +47,7 @@ def downgrade() -> None:
     at_risk = op.get_bind().execute(sa.text("SELECT count(*) FROM enquiries")).scalar()
     if at_risk and os.environ.get("ALEMBIC_ALLOW_ENQUIRY_DATA_LOSS") != "1":
         raise RuntimeError(
-            f"Refusing to downgrade 0008: {at_risk} enquiry references would be lost. "
+            f"Refusing to downgrade 0011: {at_risk} enquiry references would be lost. "
             "Back up with pg_dump, then rerun with ALEMBIC_ALLOW_ENQUIRY_DATA_LOSS=1."
         )
     op.drop_index("ix_enquiries_created_at", table_name="enquiries")

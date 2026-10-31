@@ -1,4 +1,4 @@
-"""Migration 0007 safety: additive on upgrade, and a downgrade that refuses to destroy admin data silently."""
+"""Migration 0010 safety: additive on upgrade, and a downgrade that refuses to destroy admin data silently."""
 import pytest
 from alembic import command
 from sqlalchemy import text
@@ -15,54 +15,54 @@ def tables(env):
 
 
 @pytest.fixture
-def at_0006(pg_url, migrated_url, pg_engine_factory, monkeypatch):
+def at_0009(pg_url, migrated_url, pg_engine_factory, monkeypatch):
     """Database stepped back to 0006 (empty), restored to head afterwards because later tests share it."""
     config = alembic_config(pg_url)
-    command.downgrade(config, "0006")
+    command.downgrade(config, "0009")
     yield config, ApiEnv(pg_url, monkeypatch)
     monkeypatch.undo()
     command.upgrade(config, "head")
 
 
-def test_upgrade_keeps_existing_audit_rows_and_defaults_them_to_success(at_0006):
-    config, env = at_0006
+def test_upgrade_keeps_existing_audit_rows_and_defaults_them_to_success(at_0009):
+    config, env = at_0009
     env.sql(LEGACY_AUDIT)
-    command.upgrade(config, "0007")
+    command.upgrade(config, "0010")
     assert env.sql("select actor_id, action, target, outcome, detail from audit_log") == [("old-actor", "old.action", "product:1", "success", None)]
     assert {"admin_accounts", "admin_sessions"} <= tables(env)
     assert env.sql("select count(*) from admin_accounts")[0][0] == 0                  # no seeded or default account
 
 
-def test_downgrade_refuses_to_destroy_accounts_unless_explicitly_allowed(at_0006, monkeypatch):
-    config, env = at_0006
+def test_downgrade_refuses_to_destroy_accounts_unless_explicitly_allowed(at_0009, monkeypatch):
+    config, env = at_0009
     env.sql(LEGACY_AUDIT)
-    command.upgrade(config, "0007")
+    command.upgrade(config, "0010")
     env.sql(ACCOUNT)
 
     monkeypatch.delenv("ALEMBIC_ALLOW_ADMIN_DATA_LOSS", raising=False)
-    with pytest.raises(Exception, match="Refusing to downgrade 0007"):
-        command.downgrade(config, "0006")
+    with pytest.raises(Exception, match="Refusing to downgrade 0010"):
+        command.downgrade(config, "0009")
     assert "admin_accounts" in tables(env) and env.sql("select count(*) from admin_accounts")[0][0] == 1     # nothing was touched
 
     monkeypatch.setenv("ALEMBIC_ALLOW_ADMIN_DATA_LOSS", "1")
-    command.downgrade(config, "0006")
+    command.downgrade(config, "0009")
     assert not {"admin_accounts", "admin_sessions"} & tables(env)
     assert env.sql("select actor_id, action from audit_log") == [("old-actor", "old.action")]               # attribution survives rollback
     assert not env.sql("select 1 from information_schema.columns where table_name = 'audit_log' and column_name in ('outcome', 'detail')")
 
 
-def test_downgrade_also_refuses_when_only_audit_outcomes_would_be_lost(at_0006, monkeypatch):
-    config, env = at_0006
-    command.upgrade(config, "0007")
+def test_downgrade_also_refuses_when_only_audit_outcomes_would_be_lost(at_0009, monkeypatch):
+    config, env = at_0009
+    command.upgrade(config, "0010")
     env.sql("insert into audit_log (actor_type, action, outcome) values ('admin', 'POST /x', 'denied')")
     monkeypatch.delenv("ALEMBIC_ALLOW_ADMIN_DATA_LOSS", raising=False)
-    with pytest.raises(Exception, match="Refusing to downgrade 0007"):
-        command.downgrade(config, "0006")
+    with pytest.raises(Exception, match="Refusing to downgrade 0010"):
+        command.downgrade(config, "0009")
 
 
-def test_downgrade_of_an_untouched_0007_needs_no_override(at_0006, monkeypatch):
-    config, env = at_0006
-    command.upgrade(config, "0007")
+def test_downgrade_of_an_untouched_0010_needs_no_override(at_0009, monkeypatch):
+    config, env = at_0009
+    command.upgrade(config, "0010")
     monkeypatch.delenv("ALEMBIC_ALLOW_ADMIN_DATA_LOSS", raising=False)
-    command.downgrade(config, "0006")
+    command.downgrade(config, "0009")
     assert not {"admin_accounts", "admin_sessions"} & tables(env)

@@ -106,14 +106,14 @@ describe('ingestion admin proxy', () => {
     ['cancel bad staged', cancelEnrichmentRoute, 'POST', `/staged/nope/enrichment/${suggestionId}/cancel`],
     ['cancel bad suggestion', cancelEnrichmentRoute, 'POST', `/staged/${uuid}/enrichment/${id}/cancel`],
   ])('does not forward malformed enrichment ids (%s)', async (_name, handler, method, path) => {
-    const session = issueAdminSession()!;
+    const session = { token: TOKEN };
     const request = new Request(`${origin}/api/admin/ingestion${path}`, { method, headers: { cookie: `${ADMIN_SESSION_COOKIE}=${session.token}`, origin } });
     expect((await handler(request)).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([404, 409, 502, 503])('relays enrichment backend %i unchanged', async (status) => {
-    const session = issueAdminSession()!;
+    const session = { token: TOKEN };
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: `backend ${status}` }), { status, headers: { 'content-type': 'application/json' } }));
     const route = routes.find((r) => r.name === 'request enrichment')!;
     const response = await route.handler(make(route, session.token, origin));

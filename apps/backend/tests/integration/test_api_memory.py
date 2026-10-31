@@ -383,7 +383,7 @@ def count_items(env) -> int:
     return env.sql("select count(*) from memory_items")[0][0]
 
 
-def test_migration_0011_is_reversible_and_refuses_to_drop_memory_silently(pg_url, migrated_url, monkeypatch):
+def test_migration_0014_is_reversible_and_refuses_to_drop_memory_silently(pg_url, migrated_url, monkeypatch):
     config = alembic_config(pg_url)
 
     def sql(statement):
@@ -398,17 +398,17 @@ def test_migration_0011_is_reversible_and_refuses_to_drop_memory_silently(pg_url
         return asyncio.run(go_())
 
     sql("truncate memory_items, memory_consents, customers cascade")
-    command.downgrade(config, "0010")
+    command.downgrade(config, "0013")
     assert sql("select to_regclass('memory_items'), to_regclass('memory_consents')") == [(None, None)]
-    command.upgrade(config, "0011")
+    command.upgrade(config, "0014")
     sql("insert into customers (id, status) values ('00000000-0000-0000-0000-000000000001', 'registered')")
     sql("insert into memory_consents (customer_id, granted, policy_version, changed_at) values ('00000000-0000-0000-0000-000000000001', true, 'v', now())")
     monkeypatch.delenv("ALEMBIC_ALLOW_MEMORY_DATA_LOSS", raising=False)
-    with pytest.raises(Exception, match="Refusing to downgrade 0011"):
-        command.downgrade(config, "0010")
+    with pytest.raises(Exception, match="Refusing to downgrade 0014"):
+        command.downgrade(config, "0013")
     assert sql("select count(*) from memory_consents") == [(1,)]
     monkeypatch.setenv("ALEMBIC_ALLOW_MEMORY_DATA_LOSS", "1")
-    command.downgrade(config, "0010")
+    command.downgrade(config, "0013")
     assert sql("select to_regclass('memory_items')") == [(None,)]
     command.upgrade(config, "head")
     sql("truncate customers cascade")

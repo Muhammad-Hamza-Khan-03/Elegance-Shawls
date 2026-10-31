@@ -106,7 +106,7 @@ def downgrade() -> None:
         " + (SELECT count(*) FROM audit_log WHERE outcome <> 'success' OR detail IS NOT NULL)")).scalar()
     if at_risk and os.environ.get("ALEMBIC_ALLOW_ADMIN_DATA_LOSS") != "1":
         raise RuntimeError(
-            f"Refusing to downgrade 0007: {at_risk} admin account/session/audit-detail rows would be lost. "
+            f"Refusing to downgrade 0010: {at_risk} admin account/session/audit-detail rows would be lost. "
             "Back up with pg_dump, then rerun with ALEMBIC_ALLOW_ADMIN_DATA_LOSS=1."
         )
     op.execute("DROP TRIGGER IF EXISTS audit_log_guard ON audit_log")

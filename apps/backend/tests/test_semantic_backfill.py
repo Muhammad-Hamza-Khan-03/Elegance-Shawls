@@ -152,8 +152,8 @@ def alembic_sql(*args):
                           env={"DATABASE_URL": "postgresql+asyncpg://u:p@localhost/x", "PATH": ""}, check=True).stdout
 
 
-def test_migration_0009_is_additive_and_its_downgrade_reverses_every_object():
-    up, down = alembic_sql("upgrade", "0008:0009"), alembic_sql("downgrade", "0009:0008")
+def test_migration_0012_is_additive_and_its_downgrade_reverses_every_object():   # was 0009 before it moved after main's own 0007-0009
+    up, down = alembic_sql("upgrade", "0011:0012"), alembic_sql("downgrade", "0012:0011")
     created = {w.rstrip("(") for l in up.splitlines() if l.startswith("CREATE TABLE") for w in [l.split()[2]]}
     assert created == {"semantic_embeddings", "semantic_embedding_jobs"}
     assert "ALTER TABLE" not in up and "DROP" not in up                      # nothing existing is touched

@@ -157,17 +157,17 @@ def test_admin_lookup_requires_authentication_and_finds_by_reference(env):
     assert [e["reference"] for e in env.client.get("/v1/admin/enquiries", headers=H).json()] == [other_ref, ref]   # newest first
 
 
-def test_migration_0008_downgrade_refuses_to_drop_references_unless_allowed(pg_url, migrated_url, pg_engine_factory, monkeypatch):
+def test_migration_0011_downgrade_refuses_to_drop_references_unless_allowed(pg_url, migrated_url, pg_engine_factory, monkeypatch):
     config = alembic_config(pg_url)
     env = ApiEnv(pg_url, monkeypatch)
     env.sql("insert into enquiries (reference, items, currency, total) values ('ES-ABCDEF', '[{}]'::jsonb, 'PKR', 0)")
     try:
         monkeypatch.delenv("ALEMBIC_ALLOW_ENQUIRY_DATA_LOSS", raising=False)
-        with pytest.raises(Exception, match="Refusing to downgrade 0008"):
-            command.downgrade(config, "0007")
+        with pytest.raises(Exception, match="Refusing to downgrade 0011"):
+            command.downgrade(config, "0010")
         assert count(env) == 1                                                            # untouched
         monkeypatch.setenv("ALEMBIC_ALLOW_ENQUIRY_DATA_LOSS", "1")
-        command.downgrade(config, "0007")
+        command.downgrade(config, "0010")
         assert "enquiries" not in {r[0] for r in env.sql("select table_name from information_schema.tables where table_schema = 'public'")}
     finally:
         command.upgrade(config, "head")
