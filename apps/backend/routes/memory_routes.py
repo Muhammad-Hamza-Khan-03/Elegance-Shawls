@@ -1,8 +1,9 @@
 """/v1/me/memory: a customer's own explicit memory (M4-S1). The customer is always the authenticated principal, never a path,
 query or body value. One transaction per request, committed here after the service returns; a refusal rolls everything back.
 
-`memory_customer` resolves the customer from a server-verified session (memory/principal.py). No customer authentication exists yet,
-so no verifier is installed and every request is 401 until one is. Tests override `memory_customer` or the verifier.
+`memory_customer` resolves the customer from a server-verified session (memory/principal.py). Customer authentication exists behind
+`CUSTOMER_AUTH_ENABLED` (security/customer_session.py); while it is disabled or incompletely configured there is no verifier
+and every request is 401, and when enabled only a valid server-side session is accepted. Tests override `memory_customer` or the verifier.
 """
 import uuid
 from datetime import datetime, timezone

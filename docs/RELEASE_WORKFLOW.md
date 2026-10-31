@@ -73,9 +73,9 @@ Delete a short-lived branch only when its commits are reachable from `staging-in
 
 ## Staging conventions
 
-The reusable staging target is an isolated Render service and an isolated Atlas database (for example, a `staging`-named database), each with separate credentials and a staging-only admin key. Never copy production secrets into staging or Vercel Preview. Use disposable, clearly marked QA fixtures only; remove them after QA. Products are added manually through the built-in admin after the workflow is accepted. The legacy catalog is not imported.
+The reusable staging target is an isolated Render service and an isolated PostgreSQL database (for example, a `staging`-named database), each with separate credentials and a staging-only admin key. Never copy production secrets into staging or Vercel Preview. Use disposable, clearly marked QA fixtures only; remove them after QA. Products are added manually through the built-in admin after the workflow is accepted. The legacy catalog is not imported.
 
-As of the baseline record, the isolated Render/Atlas staging tuple is **not provisioned/verified**. Until it exists and its exact credentials, CORS, deployment SHA, and cleanup procedure are recorded, staging QA is blocked; Vercel Preview alone is not an independent staging gate.
+As of the baseline record, the isolated Render/PostgreSQL staging tuple is **not provisioned/verified**. Until it exists and its exact credentials, CORS, deployment SHA, and cleanup procedure are recorded, staging QA is blocked; Vercel Preview alone is not an independent staging gate.
 
 ## Rollback
 
@@ -88,5 +88,5 @@ Record: issue and PR URLs; merged `main` SHA; Vercel Preview and production depl
 ## Current verified boundaries
 
 - Production baseline is infrastructure readiness, not a commercial launch; the catalog is intentionally empty and no legacy records are to be imported.
-- Atlas network access must retain only `74.220.52.0/24` and `74.220.60.0/24`; `0.0.0.0/0` must remain removed.
+- The application database is PostgreSQL; there are no Atlas network-access rules in the current setup. (The earlier MongoDB Atlas allow-list is a historical baseline record only.)
 - The baseline's provider-control verification and isolated staging provisioning remain explicit follow-ups where evidence is absent.
