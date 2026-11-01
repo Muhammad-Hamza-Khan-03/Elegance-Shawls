@@ -35,7 +35,7 @@ python scripts/admin_accounts.py bootstrap-owner --email "$ADMIN_EMAIL"
 python scripts/seed_local.py
 
 # Semantic search (multilingual-e5-base, local CPU) when the model is present: fetch once with `python scripts/fetch_e5_model.py`
-# after `pip install -r requirements-local-e5.txt`. Without it the shop still works with keyword search.
+# after `pip install -r requirements-local-e5.lock.txt`. Without it the shop still works with keyword search.
 E5_DIR="${SEMANTIC_E5_MODEL_PATH:-$HOME/.cache/elegance/multilingual-e5-base}"
 if [ -f "$E5_DIR/model.safetensors" ] && python -c "import sentence_transformers" 2>/dev/null; then
   export SEMANTIC_EMBEDDING_PROVIDER=local_e5 SEMANTIC_EMBEDDING_MODEL=intfloat/multilingual-e5-base SEMANTIC_EMBEDDING_DIMENSIONS=768 \

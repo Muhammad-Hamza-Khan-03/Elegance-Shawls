@@ -1,6 +1,6 @@
 """Local multilingual-e5-base adapter: CPU-only, offline, one pinned model. No download, no network, no fallback.
 
-sentence-transformers is an optional dependency (requirements-local-e5.txt), imported lazily. A missing package or
+sentence-transformers is an optional dependency (requirements-local-e5.lock.txt), imported lazily. A missing package or
 missing/unpinned/mismatched local model is a typed refusal, never a silent download. Errors are fixed strings: no paths,
 texts or vectors.
 
@@ -87,7 +87,7 @@ def _load_model(ref: str, cache_dir: str | None):
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
-        raise LocalDependencyError("sentence-transformers is not installed: pip install -r requirements-local-e5.txt") from None
+        raise LocalDependencyError("sentence-transformers is not installed: pip install -r requirements-local-e5.lock.txt") from None
     return SentenceTransformer(ref, device="cpu", cache_folder=cache_dir, local_files_only=True)
 
 

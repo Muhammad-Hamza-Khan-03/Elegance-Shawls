@@ -161,7 +161,7 @@ def test_missing_optional_dependency_names_the_requirements_file(monkeypatch, md
     monkeypatch.setitem(sys.modules, "sentence_transformers", None)  # makes the import raise ImportError
     with pytest.raises(LocalDependencyError) as e:
         LocalE5EmbeddingProvider(CFG, 768, options=opts(mdir))
-    assert e.value.code == "local_dependency_missing" and "requirements-local-e5.txt" in str(e.value)
+    assert e.value.code == "local_dependency_missing" and "requirements-local-e5.lock.txt" in str(e.value)
 
 
 # --- no network, no fallback, redaction ------------------------------------------------------------------------------
@@ -222,8 +222,12 @@ def test_stuck_encode_times_out_and_disables_the_provider(monkeypatch, mdir):
 # --- packaging -------------------------------------------------------------------------------------------------------
 
 def test_optional_requirement_is_exactly_pinned_and_not_in_core_requirements():
-    reqs = (BACKEND / "requirements-local-e5.txt").read_text(encoding="utf-8").splitlines()
+    reqs = (BACKEND / "requirements-local-e5.in").read_text(encoding="utf-8").splitlines()
     pins = [line for line in reqs if line.startswith("sentence-transformers")]
     assert len(pins) == 1 and re.fullmatch(r"sentence-transformers==\d+\.\d+\.\d+", pins[0])
+    lock = (BACKEND / "requirements-local-e5.lock.txt").read_text(encoding="utf-8")
+    assert re.search(r"^torch==[\d.]+\+cpu \\$", lock, re.M) and "--hash=sha256:" in lock
+    assert not re.search(r"^(nvidia|triton)", lock, re.M)  # CPU-only: no CUDA stack
+    assert "--require-hashes" in (BACKEND / "Dockerfile").read_text(encoding="utf-8")
     for core in ("requirements.txt", "requirements-dev.txt", "requirements-llm.txt"):
         assert "sentence-transformers" not in (BACKEND / core).read_text(encoding="utf-8").lower().replace("_", "-")
