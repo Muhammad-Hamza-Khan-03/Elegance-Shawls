@@ -113,6 +113,22 @@ def test_same_key_with_different_params_conflicts_across_workers(pg_engine_facto
     assert first.outcome == "executed" and (other.outcome, other.reason) == ("rejected", "idempotency_conflict") and enquiries == 1
 
 
+def test_failed_claim_cannot_be_reclaimed_with_a_different_fingerprint(pg_engine_factory):
+    async def scenario(sessions):
+        clock = Clock()
+        w = worker_store(pg_engine_factory, clock)
+        try:
+            failed = await go(w[0], enquiry(), writer(w[0], "ES-FAILED", fail=True))
+            conflict = await go(w[0], enquiry(quantity=3), writer(w[0], "ES-NEVERX"))
+        finally:
+            await close(w)
+        return failed, conflict, await count(sessions, "enquiries")
+
+    failed, conflict, enquiries = run_repo(pg_engine_factory, scenario)
+    assert failed.reason == "execution_failed"
+    assert (conflict.outcome, conflict.reason, enquiries) == ("rejected", "idempotency_conflict", 0)
+
+
 def test_a_crash_after_claim_leaves_a_pending_row_and_no_enquiry_then_recovers_after_the_lease(pg_engine_factory):
     async def scenario(sessions):
         clock = Clock()
