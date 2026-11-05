@@ -32,8 +32,8 @@ export const AdminShell = ({ children, account }: { children: ReactNode; account
         <aside className="border-b border-[#e7dac8] bg-white/85 px-6 py-6 backdrop-blur lg:border-b-0 lg:border-r">
           <div className="flex items-start justify-between gap-4 lg:flex-col lg:items-stretch">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#9a6b3f]">Quill Panel</p>
-              <h1 className="font-heading mt-2 text-3xl font-semibold">Admin shell</h1>
+              <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#9a6b3f]">Elegance Admin</p>
+              <h1 className="font-heading mt-2 text-3xl font-semibold">Store admin</h1>
               <p className="mt-3 max-w-sm text-sm leading-6 text-[#6f625a]">
                 Manage the product catalogue and WhatsApp enquiry lookup from one authenticated workspace.
               </p>

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('customer can browse, search and filter the collection', async ({ page }) => {
   await page.goto('/products');
   await expect(page.getByRole('heading', { name: 'Shop the collection' })).toBeVisible();
-  await expect(page.getByText('12 products found')).toBeVisible();
+  await expect(page.getByRole('main').getByText('12 products found')).toBeVisible();
   await page.getByLabel('Search').fill('silk');
   await expect(page.getByRole('link', { name: /Light Silk Stole/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Classic Wool Shawl/ })).toBeHidden();
@@ -14,20 +14,30 @@ test('customer can browse, search and filter the collection', async ({ page }) =
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByText('Page 2 of 2')).toBeVisible();
   await page.getByLabel('Category').selectOption('shawls');
-  await expect(page.getByText('1 product found')).toBeVisible();
+  await expect(page.getByRole('main').getByText('1 product found')).toBeVisible();
 });
 
-test('collection recovers from an API failure and handles an empty feed', async ({ page }) => {
-  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Unavailable' }) }));
+test('header category links filter the collection', async ({ page, isMobile }) => {
   await page.goto('/products');
-  await expect(page.getByRole('heading', { name: 'Collection unavailable' })).toBeVisible();
-  await page.unroute('http://127.0.0.1:4100/products/**');
-  await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByText('12 products found')).toBeVisible();
+  await expect(page.getByRole('main').getByText('12 products found')).toBeVisible();
+  const nav = async (name: string) => {
+    if (isMobile) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+    const navigation = page.getByRole('navigation', { name: isMobile ? 'Mobile navigation' : 'Main navigation' });
+    if (!isMobile && name !== 'All products') await navigation.getByRole('link', { name: 'All products' }).hover();
+    await navigation.getByRole('link', { name, exact: true }).click();
+  };
+  await nav('Shawls');
+  await expect(page.getByRole('main').getByText('1 product found')).toBeVisible();
+  await nav('Stoles');
+  await expect(page.getByRole('main').getByText('11 products found')).toBeVisible();
+  await nav('All products');
+  await expect(page.getByRole('main').getByText('12 products found')).toBeVisible();
+});
 
-  await page.route('http://127.0.0.1:4100/products/**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], next_cursor: null }) }));
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'The collection is being prepared' })).toBeVisible();
+test('collection is server-rendered and does not need the browser to reach the API', async ({ page }) => {
+  await page.route('http://127.0.0.1:4100/**', (route) => route.abort());
+  await page.goto('/products');
+  await expect(page.getByRole('main').getByText('12 products found')).toBeVisible();
 });
 
 test('product selection creates a complete WhatsApp order', async ({ page }) => {

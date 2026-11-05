@@ -6,6 +6,7 @@ test('shared cart supports multiple products, quantity editing and refresh persi
     if (message.type() === 'error' && /hydration failed|hydrated.*didn't match/i.test(message.text())) hydrationErrors.push(message.text());
   });
   await page.goto('/product/classic-wool-shawl');
+  await expect(page.getByRole('heading', { name: 'Classic Wool Shawl' })).toBeVisible(); // streamed page: wait for the real content, not the skeleton
   await page.getByLabel('Increase quantity').click();
   await page.getByRole('button', { name: 'Add to cart' }).click();
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('2');
@@ -13,6 +14,7 @@ test('shared cart supports multiple products, quantity editing and refresh persi
   await page.goto('/product/light-silk-stole');
   // The cart restores from localStorage after hydration; adding before that would be overwritten by the restore.
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('2');
+  await expect(page.getByRole('heading', { name: 'Light Silk Stole' })).toBeVisible();
   await page.getByRole('button', { name: 'Add to cart' }).click();
   await expect(page.getByRole('link', { name: /Cart/ }).last()).toContainText('3');
 

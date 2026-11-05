@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+import { SafeImage } from '@/components/common/SafeImage';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -102,7 +102,7 @@ export const CartPage = () => {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Link href="/products" className="text-sm font-medium text-[#9a6b3f] hover:underline">← Back to collection</Link>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Your cart</h1>
+            <h1 className="font-heading mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Your cart</h1>
             <p className="mt-3 max-w-2xl leading-7 text-[#6f625a]">
               Keep more than one shawl or stole in the same shared cart, then adjust quantities before sending your order enquiry.
             </p>
@@ -141,7 +141,7 @@ export const CartPage = () => {
               {items.map((item) => (
                 <article key={item.lineId} className="grid gap-5 rounded-3xl border border-[#e7dac8] bg-white/80 p-5 shadow-sm sm:grid-cols-[140px_1fr]">
                   <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[#efe5d5]">
-                    <Image src={item.product.images[0]} alt={item.product.name} fill sizes="140px" className="object-cover" />
+                    <SafeImage src={item.product.images[0]} alt={item.product.name} fill sizes="140px" className="object-cover" />
                   </div>
                   <div className="space-y-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
