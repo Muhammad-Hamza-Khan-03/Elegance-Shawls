@@ -2,7 +2,7 @@
 
 import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { SafeImage } from '@/components/common/SafeImage';
 import { Minus, Plus, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types/types';
@@ -121,39 +121,40 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
     ...product.variants.map((variant) => variant.image_url).filter(Boolean),
   ].filter(Boolean) as string[]);
   const teaser = product.description ? firstParagraph(product.description) : '';
+  const hasMore = teaser.trim() !== (product.description || '').trim();
 
   return (
-    <main id="main-content" className="min-h-screen bg-[#fbf7f0] px-6 pb-28 pt-12 text-[#2f241f] md:pb-12">
+    <main id="main-content" className="bg-[#fbf7f0] px-4 pb-28 pt-8 sm:px-6 sm:pt-12 text-[#2f241f] md:pb-12">
       <section className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-4">
-          <Link href="/products" className="text-sm font-medium text-[#9a6b3f] hover:underline">
+          <Link href="/products" className="inline-block py-2 text-sm font-medium text-[#9a6b3f] hover:underline">
             ← Back to collection
           </Link>
           <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-[#e7dac8] bg-[#efe5d5] shadow-sm">
-            <Image src={activeImage} alt={`${product.name}${selected ? ` in ${selected.color}` : ''}`} fill priority sizes="(max-width: 1024px) 100vw, 55vw" className="object-cover" />
+            <SafeImage src={activeImage} alt={`${product.name}${selected ? ` in ${selected.color}` : ''}`} fill priority sizes="(max-width: 1024px) 100vw, 55vw" className="object-cover" />
           </div>
           {gallery.length > 1 && (
             <div className="grid grid-cols-4 gap-3" aria-label="Product images">
               {gallery.slice(0, 8).map((image, index) => (
                 <button key={image} type="button" onClick={() => setActiveImage(image)} aria-label={`View product image ${index + 1}`} aria-pressed={activeImage === image} className={`relative aspect-square overflow-hidden rounded-2xl border bg-[#efe5d5] ${activeImage === image ? 'border-[#2f241f] ring-2 ring-[#2f241f]/20' : 'border-[#e7dac8]'}`}>
-                  <Image src={image} alt="" fill sizes="(max-width: 1024px) 25vw, 12vw" className="object-cover" />
+                  <SafeImage src={image} alt="" fill sizes="(max-width: 1024px) 25vw, 12vw" className="object-cover" />
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <div className="space-y-7 rounded-3xl border border-[#e7dac8] bg-white/80 p-8 shadow-sm lg:sticky lg:top-8 lg:self-start">
+        <div className="space-y-7 rounded-3xl border border-[#e7dac8] bg-white/80 p-5 sm:p-8 shadow-sm lg:sticky lg:top-8 lg:self-start">
           <div className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#9a6b3f]">{product.category}</p>
-            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">{product.name}</h1>
+            <h1 className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{product.name}</h1>
             <p className="text-2xl font-semibold">{formatCurrency(selected?.price ?? product.price, product.currency)}</p>
             <p className={`text-sm font-medium ${selected?.stock ? 'text-emerald-700' : 'text-red-700'}`} aria-live="polite">
               {selected?.stock ? `${selected.stock} available` : 'Out of stock'}
             </p>
           </div>
 
-          {teaser && (
+          {teaser && hasMore && (
             <div className="space-y-2">
               <p className="line-clamp-4 leading-7 text-[#6f625a]">{teaser}</p>
               <a href="#product-details" className="inline-block text-sm font-semibold text-[#9a6b3f] underline underline-offset-4">Read the full description</a>
@@ -215,7 +216,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
         <section id="product-details" aria-labelledby="product-details-heading" className="mx-auto mt-12 max-w-6xl scroll-mt-8">
           <div className="rounded-3xl border border-[#e7dac8] bg-white/80 px-6 py-8 shadow-sm sm:px-10">
             <h2 id="product-details-heading" className="text-xs font-semibold uppercase tracking-[0.3em] text-[#9a6b3f]">About this product</h2>
-            <MarkdownText text={product.description} size="md" className="mx-auto mt-4 max-w-3xl [&_h4:first-child]:pt-0" />
+            <MarkdownText text={product.description} size="md" className="mt-4 max-w-3xl [&_h4:first-child]:pt-0" />
           </div>
         </section>
       )}

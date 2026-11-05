@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import { MainLayout } from "@/components/layout/mainLayout";
 import { getSiteUrl } from "@/lib/site";
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair", display: "swap" });
+
 const siteUrl = getSiteUrl();
+
+export const viewport: Viewport = { themeColor: "#fbf7f0" };
 
 export const metadata: Metadata = {
   metadataBase: siteUrl ? new URL(siteUrl) : undefined,
@@ -27,11 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <body className="antialiased">
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <MainLayout>{children}</MainLayout>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-center" richColors closeButton />
       </body>
     </html>
   );

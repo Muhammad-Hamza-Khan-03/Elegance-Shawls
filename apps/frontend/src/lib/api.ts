@@ -88,6 +88,11 @@ const apiHeaders = (): Record<string, string> => ({
 });
 
 // Helper to handle API responses
+// Never let a slow backend hold a page open: fail fast so callers can degrade.
+const REQUEST_TIMEOUT_MS = 8000;
+const withTimeout = (signal?: AbortSignal) =>
+  signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
@@ -119,10 +124,6 @@ export const mapBackendProduct = (bp: BackendProduct): Product => {
       images.push(variant.image_url);
     }
   });
-
-  if (images.length === 0) {
-    images.push('https://placehold.co/600x800/fbf7f0/2f241f?text=Elegance+Shawls');
-  }
 
   const status = bp.status || (bp.is_active === false ? 'draft' : 'active');
 
@@ -161,7 +162,7 @@ const extractItems = (data: unknown): BackendProduct[] => {
 export const api = {
   // GET /products
   getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
-    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal, headers: apiHeaders() }));
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?limit=100`, { signal: withTimeout(signal), headers: apiHeaders(), next: { revalidate: 30 } }));
     return extractItems(data)
       .map((p) => mapBackendProduct(p))
       .filter((p: Product) => p.status === 'active');
@@ -170,7 +171,7 @@ export const api = {
   // GET /products/slug/:slug
   getProductBySlug: async (slug: string): Promise<Product | undefined> => {
     try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: apiHeaders() }));
+      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { signal: withTimeout(), headers: apiHeaders() }));
       return mapBackendProduct(data);
     } catch (e) {
       console.error(`Failed to fetch product by slug ${slug}:`, e);
@@ -186,7 +187,7 @@ export const api = {
   // Current published state for checkout: null when the product is not
   // published; throws when the catalogue cannot be reached, so callers block handoff.
   getPublishedProduct: async (slug: string): Promise<Product | null> => {
-    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', headers: apiHeaders() });
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { cache: 'no-store', signal: withTimeout(), headers: apiHeaders() });
     if (response.status === 404) return null;
     const product = mapBackendProduct(await handleResponse(response));
     return product.status === 'active' ? product : null;

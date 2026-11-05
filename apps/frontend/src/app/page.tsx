@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import { SafeImage } from '@/components/common/SafeImage';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/whatsapp';
@@ -14,7 +14,7 @@ export default async function Home() {
   return <main id="main-content" className="overflow-hidden bg-[#fbf7f0] text-[#2f241f]">
     <section className="relative border-b border-[#e7dac8]">
       <div aria-hidden="true" className="absolute -right-24 -top-32 h-96 w-96 rounded-full bg-[#c99a67]/20 blur-3xl" />
-      <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
+      <div className="relative mx-auto grid min-h-[calc(100svh-4rem)] max-w-6xl items-center gap-10 px-6 py-12 sm:gap-12 sm:py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
         <div className="max-w-2xl">
           <p className="mb-6 text-xs font-bold uppercase tracking-[0.36em] text-[#9a6b3f]">Elegance, made personal</p>
           <h1 className="font-heading text-5xl font-semibold leading-[1.02] tracking-[-0.04em] sm:text-6xl lg:text-7xl">The finishing layer for every occasion.</h1>
@@ -56,7 +56,7 @@ export default async function Home() {
     {featured.length > 0 && <section className="border-y border-[#e7dac8] bg-white/55">
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
         <div className="mb-10"><p className="text-xs font-bold uppercase tracking-[0.3em] text-[#9a6b3f]">Available now</p><h2 className="font-heading mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Featured pieces</h2></div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{featured.map((product, index) => <Link key={product.id || product.slug} href={`/product/${product.slug}`} className="group"><div className="relative aspect-[3/4] overflow-hidden rounded-[1.6rem] bg-[#efe5d5] shadow-sm"><Image src={product.images[0]} alt={product.name} fill priority={index < 2} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition duration-500 group-hover:scale-105" /></div><p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-[#9a6b3f]">{product.category}</p><h3 className="mt-1 font-heading text-xl font-semibold">{product.name}</h3><p className="mt-1 text-sm font-semibold">{formatCurrency(product.price, product.currency)}</p></Link>)}</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-6 lg:grid-cols-4">{featured.map((product, index) => <Link key={product.id || product.slug} href={`/product/${product.slug}`} className="group"><div className="relative aspect-[3/4] overflow-hidden rounded-[1.6rem] bg-[#efe5d5] shadow-sm"><SafeImage src={product.images[0]} alt={product.name} fill priority={index < 2} sizes="(max-width: 1024px) 50vw, 25vw" className="object-cover transition duration-500 group-hover:scale-105" /></div><p className="mt-3 text-[0.65rem] font-bold uppercase tracking-[0.22em] sm:mt-4 sm:text-xs text-[#9a6b3f]">{product.category}</p><h3 className="mt-1 font-heading text-base font-semibold sm:text-xl">{product.name}</h3><p className="mt-1 text-sm font-semibold">{formatCurrency(product.price, product.currency)}</p></Link>)}</div>
       </div>
     </section>}
 
