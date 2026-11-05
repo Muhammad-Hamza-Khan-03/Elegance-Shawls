@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, getToolName, isToolUIPart } from 'ai';
 import { useCart } from '@/components/cart/CartProvider';
 import { api } from '@/lib/api';
-import { applyAddToCart, buildExecuteBody, CartLine, Proposal, toProposal } from '@/lib/assistant';
+import { applyAddToCart, buildExecuteBody, CartLine, markApplied, Proposal, toProposal, wasApplied } from '@/lib/assistant';
 
 type Status = 'added' | 'handoff' | 'unavailable' | 'rejected' | 'failed';
 const STATUS_TEXT: Record<Status, string> = {
@@ -38,7 +38,7 @@ export const AssistantPanel = () => {
   const { messages, sendMessage, status, error } = useChat({ transport });
 
   const confirm = async (p: Proposal) => {
-    if (results[p.actionId] || inFlight.current.has(p.actionId)) return; // one execution per action id
+    if ((results[p.actionId] && results[p.actionId] !== 'failed') || inFlight.current.has(p.actionId)) return; // one execution per action id
     inFlight.current.add(p.actionId);
     const done = (s: Status) => setResults((r) => ({ ...r, [p.actionId]: s }));
     try {
@@ -49,10 +49,15 @@ export const AssistantPanel = () => {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || data?.status !== 'executed' || data.action_id !== p.actionId) return done('rejected');
-      if (data.replayed) return done(p.name === 'add_to_cart' ? 'added' : 'handoff'); // already applied once; never re-add
       if (p.name === 'start_whatsapp_order') return done('handoff'); // inert: the cart page does the verified WhatsApp send
-      const catalogue = await api.getProducts();
-      done(applyAddToCart(data.intent.items as CartLine[], catalogue, addItem));
+      // The server may have claimed this action before a client-side failure: success only if this browser applied it.
+      if (wasApplied(sessionStorage, p.actionId)) return done('added');
+      const lines = data.intent?.items as CartLine[] | undefined;
+      if (!Array.isArray(lines)) return done('failed');
+      const catalogue = await api.findProducts(lines.map((l) => l.product_id));
+      const applied = applyAddToCart(lines, catalogue, addItem);
+      if (applied === 'added') markApplied(sessionStorage, p.actionId);
+      done(applied);
     } catch {
       done('failed');
     } finally {
@@ -95,7 +100,7 @@ export const AssistantPanel = () => {
                       {' '}<code dir="ltr">{p.reason}</code>
                     </p>
                   )}
-                  {p.needsConfirmation && !result && (
+                  {p.needsConfirmation && (!result || result === 'failed') && (
                     <button type="button" onClick={() => confirm(p)} className="mt-1 rounded bg-stone-900 px-3 py-1 text-white">
                       تصدیق کریں
                     </button>

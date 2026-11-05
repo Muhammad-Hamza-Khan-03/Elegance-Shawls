@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ACTION_NAMES, applyAddToCart, buildExecuteBody, toProposal } from './assistant';
+import { ACTION_NAMES, applyAddToCart, buildExecuteBody, markApplied, toProposal, wasApplied } from './assistant';
 import type { Product } from '@/types/types';
 
 const out = (extra = {}) => ({ outcome: 'needs_confirmation', reason: 'needs_confirmation', action_id: 'act_1234567890123456', fingerprint: 'fp', requires_confirmation: true, executed: false, ...extra });
@@ -56,5 +56,23 @@ describe('applyAddToCart', () => {
     const add = vi.fn();
     expect(applyAddToCart([line, { ...line, variant_id: 'nope' }], [product()], add)).toBe('unavailable');
     expect(add).not.toHaveBeenCalled();
+  });
+});
+
+describe('applied-action-id set', () => {
+  const store = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  };
+  it('is false until the action was applied here, then true', () => {
+    const s = store();
+    expect(wasApplied(s, 'act_1')).toBe(false); // server-claimed but client apply failed: replay must not show success
+    markApplied(s, 'act_1');
+    expect(wasApplied(s, 'act_1')).toBe(true);
+    expect(wasApplied(s, 'act_2')).toBe(false);
+  });
+  it('survives corrupt or blocked storage without throwing', () => {
+    expect(wasApplied({ getItem: () => '{bad' }, 'a')).toBe(false);
+    expect(() => markApplied({ getItem: () => null, setItem: () => { throw new Error('blocked'); } }, 'a')).not.toThrow();
   });
 });

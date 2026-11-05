@@ -81,3 +81,16 @@ export const applyAddToCart = (
   resolved.forEach((r) => addItem(r!.product, r!.variant, r!.quantity));
   return 'added';
 };
+
+// Action ids this browser tab has actually put in the cart. Ids only, no cart or personal data.
+const APPLIED_KEY = 'es_assistant_applied';
+const readApplied = (storage: Pick<Storage, 'getItem'>): string[] => {
+  try {
+    const v = JSON.parse(storage.getItem(APPLIED_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch { return []; }
+};
+export const wasApplied = (storage: Pick<Storage, 'getItem'>, actionId: string) => readApplied(storage).includes(actionId);
+export const markApplied = (storage: Pick<Storage, 'getItem' | 'setItem'>, actionId: string) => {
+  try { storage.setItem(APPLIED_KEY, JSON.stringify([...readApplied(storage), actionId].slice(-200))); } catch { /* storage blocked: replay then re-applies at most once per page load */ }
+};
