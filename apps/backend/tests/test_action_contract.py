@@ -8,6 +8,7 @@ from schemas.action_schema import (
     ShowProductsParams,
     canonical_action_name,
     normalize_action,
+    validate_runtime_params,
 )
 
 
@@ -43,6 +44,32 @@ def test_apply_filters_rejects_unknown_fields_and_invalid_price_range():
         ApplyFiltersParams(stock="in_stock")
     with pytest.raises(ValidationError):
         ApplyFiltersParams(price_min=5000, price_max=1000)
+
+
+def test_runtime_entry_schema_is_strict_for_every_public_action():
+    valid = {
+        "show_products": {"limit": 20},
+        "open_product": {"product_id": "prod-1", "expected_revision": 7},
+        "apply_filters": {"category": "shawl"},
+        "add_to_cart": {"product_id": "p", "variant_id": "v", "quantity": 1, "expected_revision": 7,
+                         "expected_unit_price": 3500, "currency": "PKR"},
+        "start_whatsapp_order": {"items": [{"product_id": "p", "variant_id": "v", "quantity": 1, "expected_revision": 7,
+                                               "expected_unit_price": 3500, "currency": "PKR"}]},
+    }
+    for action, params in valid.items():
+        assert validate_runtime_params(action, params) == params
+        with pytest.raises(ValidationError):
+            validate_runtime_params(action, {**params, "unexpected": True})
+
+
+def test_runtime_schema_rejects_coercion_and_oversized_enquiry():
+    with pytest.raises(ValidationError):
+        validate_runtime_params("add_to_cart", {"product_id": "p", "variant_id": "v", "quantity": "1",
+                                                 "expected_revision": 7, "expected_unit_price": 3500, "currency": "PKR"})
+    item = {"product_id": "p", "variant_id": "v", "quantity": 1, "expected_revision": 7,
+            "expected_unit_price": 3500, "currency": "PKR"}
+    with pytest.raises(ValidationError):
+        validate_runtime_params("start_whatsapp_order", {"items": [item] * 11})
 
 
 def test_kernel_accepts_canonical_aliases_without_changing_fingerprint_or_ledger_value():

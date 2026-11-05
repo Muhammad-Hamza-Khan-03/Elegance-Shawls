@@ -9,7 +9,7 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from actions import executor as x
@@ -19,7 +19,7 @@ from assistant.stream import SERVER_PERMISSIONS  # never taken from the client
 from database.pg import get_pg_session
 from repositories import enquiries as repo
 from repositories.enquiries import Line
-from schemas.action_schema import canonical_action_name
+from schemas.action_schema import canonical_action_name, validate_runtime_params
 
 router = APIRouter(prefix="/v1/assistant/actions", tags=["Assistant"])
 
@@ -32,6 +32,11 @@ class ExecuteRequest(BaseModel):
     action_type: Literal["add_to_cart", "start_whatsapp_order"]
     confirmed: Literal[True]
     params: dict[str, Any]
+
+    @model_validator(mode="after")
+    def validate_action_payload(self):
+        self.params = validate_runtime_params(self.action_type, self.params)
+        return self
 
 
 def _lines(params: dict) -> list[dict]:

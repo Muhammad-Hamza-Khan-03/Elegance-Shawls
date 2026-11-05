@@ -17,12 +17,14 @@ Exit codes: 0 gate passed, 1 a gate failed, 2 refused / unsupported / blocked / 
 import argparse
 import hashlib
 import json
+import logging
 import math
 import os
 import re
 import struct
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -44,6 +46,41 @@ class Stop(Exception):
     def __init__(self, outcome: str, code: str):
         super().__init__(code)
         self.outcome, self.code = outcome, code
+
+
+@contextmanager
+def external_logging_boundary():
+    """Keep provider/httpx logs observable without leaking external URLs or keys."""
+    class RedactExternalRecord(logging.Filter):
+        def filter(self, record):
+            if record.name.startswith(("httpx", "httpcore", "google", "googleapiclient")):
+                message = re.sub(r"https?://[^\s\"]+", "[redacted external URL]", record.getMessage())
+                message = re.sub(r"sk-[A-Za-z0-9_…-]+", "[redacted secret]", message)
+                record.msg, record.args = message, ()
+                record.name = "external_provider"
+                record.pathname = "[external provider]"
+                record.filename = "[external provider]"
+                record.module = "external_provider"
+            return True
+
+    redactor = RedactExternalRecord()
+    loggers = [logging.getLogger(name) for name in ("httpx", "httpcore", "google", "googleapiclient")]
+    isolated = []
+    for logger in loggers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("external provider event: %(message)s"))
+        handler.addFilter(redactor)
+        isolated.append((logger, logger.propagate, handler))
+        logger.addFilter(redactor)
+        logger.addHandler(handler)
+        logger.propagate = False
+    try:
+        yield
+    finally:
+        for logger, propagate, handler in isolated:
+            logger.removeFilter(redactor)
+            logger.removeHandler(handler)
+            logger.propagate = propagate
 
 
 # --- fixture -----------------------------------------------------------------------------------------------------
@@ -419,8 +456,9 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None, tr
             base["candidate"] |= {"model_revision": provider.revision, "timeout_enforcement": TIMEOUT_ENFORCEMENT}
     if outcome is None:
         try:
-            m = run(records, queries, embed, thr, repeats=repeats, batch=batch, dim=dim, caps=caps,
-                    include_stale=include_stale, semantic=a.live, split_kinds=local)
+            with external_logging_boundary():
+                m = run(records, queries, embed, thr, repeats=repeats, batch=batch, dim=dim, caps=caps,
+                        include_stale=include_stale, semantic=a.live, split_kinds=local)
         except Stop as e:
             outcome, codes, m = e.outcome, [e.code], None
         except transport_errs as e:

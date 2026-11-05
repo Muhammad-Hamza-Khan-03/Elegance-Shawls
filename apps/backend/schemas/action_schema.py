@@ -4,7 +4,7 @@ Canonical names are the public/API vocabulary. Persistence continues to use the
 legacy names because migration 0013 and existing replay fingerprints depend on
 those values.
 """
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 
@@ -75,6 +75,7 @@ class ShowProductsParams(_Strict):
 class OpenProductParams(_Strict):
     product_id: StrictStr | None = None
     slug: StrictStr | None = None
+    expected_revision: StrictInt | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def exactly_one_identifier(self):
@@ -85,3 +86,36 @@ class OpenProductParams(_Strict):
 
 class ApplyFiltersParams(ProductFilters):
     cursor: StrictStr | None = None
+
+
+class ActionItemParams(_Strict):
+    product_id: StrictStr
+    variant_id: StrictStr
+    quantity: StrictInt = Field(ge=1, le=1000)
+    expected_revision: StrictInt = Field(ge=1)
+    expected_unit_price: StrictInt = Field(ge=0)
+    currency: Literal["PKR"]
+
+
+class AddToCartParams(ActionItemParams):
+    pass
+
+
+class StartWhatsAppOrderParams(_Strict):
+    items: list[ActionItemParams] = Field(min_length=1, max_length=10)
+
+
+def validate_runtime_params(action: str, params: Any) -> dict:
+    """Validate public action payloads before they reach a runtime entry point."""
+    models = {
+        "show_products": ShowProductsParams,
+        "open_product": OpenProductParams,
+        "apply_filters": ApplyFiltersParams,
+        "add_to_cart": AddToCartParams,
+        "start_whatsapp_order": StartWhatsAppOrderParams,
+    }
+    try:
+        model = models[action]
+    except KeyError as exc:
+        raise ValueError("unknown action") from exc
+    return model.model_validate(params).model_dump(exclude_none=True)

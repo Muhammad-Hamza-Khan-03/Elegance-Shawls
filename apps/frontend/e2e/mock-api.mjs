@@ -64,7 +64,7 @@ http.createServer((request, response) => {
       response.end(sse([
         ['start', { protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context }],
         ['text', { delta: 'Here is a shawl. ' }], ['product', { product_id: AP, name: 'Pashmina Shawl', revision: 1, price: 3500, currency: 'PKR', slug: assistantProduct.slug, image: 'https://placehold.co/600x800/d8c0a8/2f241f?text=Pashmina', color: 'Ivory' }],
-        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_enquiry', { items: [params] }), ['done', { events: 5 }],
+        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_order', { items: [params] }), ['done', { events: 5 }],
       ]));
     });
   }
@@ -84,7 +84,7 @@ http.createServer((request, response) => {
       actionLog.executions += 1;
       entry.executed = true;
       const items = rows.map((r) => ({ product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity, slug: assistantProduct.slug }));
-      const result = req.action_type === 'start_whatsapp_enquiry' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
+      const result = req.action_type === 'start_whatsapp_order' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
       done.set(key, result);
       response.end(JSON.stringify({ status: 'executed', action_type: req.action_type, replayed: false, result }));
     });

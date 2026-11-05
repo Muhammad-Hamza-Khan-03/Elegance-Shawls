@@ -11,7 +11,7 @@ import json
 from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 from actions import kernel as k
-from schemas.action_schema import CANONICAL_ACTIONS
+from schemas.action_schema import CANONICAL_ACTIONS, validate_runtime_params
 
 PROTOCOL_VERSION = 1
 MAX_EVENTS = 40
@@ -123,10 +123,14 @@ async def stream_events(
                     yield out("memory_suggestion", {"key": key, "value": value})   # a question for the customer; nothing is saved here
                 elif kind == "proposal":
                     raw_action = chunk.get("action_type")
-                    if raw_action not in CANONICAL_ACTIONS:
+                    try:
+                        params = validate_runtime_params(raw_action, chunk.get("params")) if raw_action in CANONICAL_ACTIONS else None
+                    except Exception:
+                        params = None
+                    if params is None:
                         proposal = k.ActionProposal("__legacy_or_unknown__", chunk.get("idempotency_key"), chunk.get("params"), ctx)
                     else:
-                        proposal = k.ActionProposal(raw_action, chunk.get("idempotency_key"), chunk.get("params"), ctx)
+                        proposal = k.ActionProposal(raw_action, chunk.get("idempotency_key"), params, ctx)
                     decision = k.validate(proposal, catalogue, ledger)
                     # Only canonical allowlisted names are echoed; rejected legacy/unknown input is fail-closed.
                     public_action = raw_action if raw_action in CANONICAL_ACTIONS else "unknown"
