@@ -16,6 +16,7 @@ Required public configuration:
 - `NEXT_PUBLIC_API_URL` — Elegance FastAPI origin.
 - `NEXT_PUBLIC_SITE_URL` — canonical storefront origin.
 - `NEXT_PUBLIC_WHATSAPP_NUMBER` — international digits only.
+- `NEXT_PUBLIC_ASSISTANT_ENABLED` — `true` mounts the RTL assistant panel (default off; also needs backend `ASSISTANT_STREAM_ENABLED` / `ASSISTANT_ACTIONS_ENABLED`). Build-time value. Offline checks: `python evals/run_m3_evals.py`.
 
 ## Verification
 

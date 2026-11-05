@@ -1,0 +1,8 @@
+# M3 assistant eval manifest. Deterministic checks of the action kernel / stream gate (no model, no network).
+# A missing or empty dataset is NOT_EVALUATED. This manifest never sets or changes release_ready:
+# run_evals.py owns that, and these suites are harness checks, not model evidence.
+suites:
+  behavior: {dataset: datasets/m3_behavior.jsonl}
+  safety: {dataset: datasets/m3_safety.jsonl}
+  grounding: {dataset: datasets/m3_grounding.jsonl}
+  no_silent_relaxation: {dataset: datasets/m3_no_silent_relaxation.jsonl}
