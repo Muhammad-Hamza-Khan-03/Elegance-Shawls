@@ -1,48 +1,29 @@
-"""M3-S2 streaming assistant: framing, ordering, cancel/disconnect, malformed provider output, kernel validation, no external calls."""
+"""M3-S2: UI message stream framing/order/terminal event, malformed output, flag, bounded loop, kernel gate, replay, offline."""
 import asyncio
-import functools
 import json
-import re
 import socket
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from actions.kernel import InMemoryLedger
 from assistant import stream as s
+from assistant.tools import TOOLS
 from routes import assistant_routes as r
 
-KEY = "idem_0123456789abcdef"
-
-
-def sync(fn):
-    @functools.wraps(fn)
-    def run(*a, **kw):
-        return asyncio.run(fn(*a, **kw))
-    return run
+PID, VID = s._PID, s._VID
+AID = "act_0123456789abcdef0123"
 
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
-    def no_net(*a, **k_):
+    def no_net(*a, **k):
         raise AssertionError("network used")
     monkeypatch.setattr(socket, "create_connection", no_net)
     monkeypatch.setattr(socket, "getaddrinfo", no_net)
-
-
-def parse(text):
-    out = []
-    for block in text.strip().split("\n\n"):
-        lines = block.split("\n")
-        assert [l.split(": ", 1)[0] for l in lines] == ["id", "event", "data"]
-        out.append((int(lines[0][4:]), lines[1][7:], json.loads(lines[2][6:])))
-    return out
-
-
-async def collect(provider, **over):
-    kw = dict(session_id="sess-1", context={"page": "p"}, idempotency_key=KEY, catalogue=s.demo_catalogue())
-    kw.update(over)
-    return [f async for f in s.stream_events(provider, **kw)]
+    monkeypatch.setenv("ASSISTANT_STREAM_ENABLED", "true")
+    monkeypatch.setattr(s, "LEDGER", InMemoryLedger())
 
 
 def client(provider=None):
@@ -53,174 +34,142 @@ def client(provider=None):
     return TestClient(app)
 
 
-def body(**over):
-    return {"session_id": "sess-1", "idempotency_key": KEY, "message": "show me a shawl", "context": {"page": "home"}, **over}
+def frames(text):
+    out = [b[len("data: "):] for b in text.strip().split("\n\n")]
+    return [f if f == "[DONE]" else json.loads(f) for f in out]
 
 
-def test_http_stream_framing_order_and_metadata():
-    resp = client().post("/v1/assistant/stream", json=body())
+def post(provider=None, message="show me a shawl", session="sess-1"):
+    resp = client(provider).post("/v1/assistant/stream", json={"session_id": session, "message": message})
+    return resp, frames(resp.text)
+
+
+def types(fr):
+    return [f if isinstance(f, str) else f["type"] for f in fr]
+
+
+def provider_of(*steps):
+    async def p(step, message, results):
+        return steps[min(step, len(steps) - 1)]
+    return p
+
+
+def call(name="show_products", inp=None, **kw):
+    return {"name": name, "action_id": AID, "input": inp or {"product_ids": [PID]}, **kw}
+
+
+def test_framing_order_and_terminal():
+    resp, fr = post()
+    assert resp.headers["x-vercel-ai-ui-message-stream"] == "v1"
     assert resp.headers["content-type"].startswith("text/event-stream")
-    assert resp.headers["cache-control"] == "no-store"
-    ev = parse(resp.text)
-    assert [e[0] for e in ev] == list(range(len(ev)))
-    assert [e[1] for e in ev] == ["start", "text", "product", "proposal", "proposal", "text", "done"]
-    assert ev[0][2] == {"protocol": 1, "session_id": "sess-1", "context": {"page": "home"}, "idempotency_key": KEY}
-    assert ev[-1][2] == {"events": 6}
-    assert all(e[2]["session_id"] == "sess-1" for e in ev if e[1] == "proposal")
+    assert types(fr) == ["start", "start-step", "text-start", "text-delta", "text-end", "tool-input-available",
+                         "tool-output-available", "finish-step", "start-step", "text-start", "text-delta", "text-end",
+                         "finish-step", "finish", "[DONE]"]
+    assert fr[0]["messageId"].startswith("msg_")
 
 
-def test_product_comes_from_catalogue_and_proposals_are_kernel_validated():
-    ev = parse(client().post("/v1/assistant/stream", json=body()).text)
-    product = next(e[2] for e in ev if e[1] == "product")
-    assert product == {"product_id": s.DEMO_PRODUCT, "name": "Pashmina Shawl", "revision": 7, "price": 3500, "currency": "PKR", "in_stock": True}
-    props = [e[2] for e in ev if e[1] == "proposal"]
-    assert [p["decision"]["outcome"] for p in props] == ["validated", "validated"]
-    assert all(p["decision"]["executed"] is False for p in props)
-    assert props[1]["idempotency_key"] == props[1]["decision"]["idempotency_key"] != KEY
+def test_action_id_and_acknowledgement_fields_in_output():
+    _, fr = post(message="add to cart")
+    out = next(f for f in fr if f != "[DONE]" and f["type"] == "tool-output-available")["output"]
+    assert out["action_id"].startswith("act_") and out["outcome"] == "needs_confirmation"
+    assert out["requires_confirmation"] is True and out["relaxation_acknowledged"] is False and out["executed"] is False
+    assert out["fingerprint"] and out["prompt_version"] == s.PROMPT_VERSION
 
 
-def test_stale_proposal_is_streamed_as_rejected():
-    ev = parse(client().post("/v1/assistant/stream", json=body(message="stale please")).text)
-    d = [e[2]["decision"] for e in ev if e[1] == "proposal"][1]
-    assert (d["outcome"], d["reason"], d["executed"]) == ("rejected", "stale_price", False)
-    assert ev[-1][1] == "done"
+def test_registry_is_exactly_the_five_actions():
+    assert set(TOOLS) == {"show_products", "open_product", "apply_filters", "add_to_cart", "start_whatsapp_order"}
 
 
-@pytest.mark.parametrize("bad", [
-    {"session_id": "has space"}, {"idempotency_key": "nope"}, {"message": ""}, {"message": "x" * 501},
-    {"context": {"k": "v" * 201}}, {"context": {f"k{i}": 1 for i in range(11)}},
-])
-def test_bad_request_is_422_before_any_stream(bad):
-    resp = client().post("/v1/assistant/stream", json=body(**bad))
-    assert resp.status_code == 422 and "event-stream" not in resp.headers["content-type"]
+def test_disabled_flag_is_graceful(monkeypatch):
+    monkeypatch.setenv("ASSISTANT_STREAM_ENABLED", "false")
+    resp, _ = client().post("/v1/assistant/stream", json={"session_id": "s", "message": "hi"}), None
+    assert resp.status_code == 503 and resp.json() == {"enabled": False, "error": "assistant_disabled"}
+    assert "x-vercel-ai-ui-message-stream" not in resp.headers
 
 
-def test_client_cannot_grant_permissions():
-    resp = client().post("/v1/assistant/stream", json=body(permissions=["admin"], context={"permissions": "x"}))
-    assert resp.status_code == 200  # extra field ignored; context is only echoed
-    assert s.SERVER_PERMISSIONS == frozenset({"catalogue:read", "cart:propose", "enquiry:initiate"})
+@pytest.mark.parametrize("bad", [None, "text", [], {"text": 5}, {"tool_calls": "x"}, {"extra": 1},
+                                 {"tool_calls": [{"name": 1, "input": {}}]}, {"tool_calls": [{"name": "open_product"}]},
+                                 {"tool_calls": [{"name": "open_product", "input": {}, "evil": 1}]},
+                                 {"tool_calls": [{"name": "show_products", "input": {}}] * 6}])
+def test_malformed_provider_output_ends_with_error_then_done(bad):
+    _, fr = post(provider_of(bad))
+    assert types(fr) == ["start", "error", "[DONE]"] and fr[1]["errorText"] == "invalid_provider_output"
 
 
-def test_provider_exception_becomes_fixed_error_without_detail():
-    resp = client().post("/v1/assistant/stream", json=body(message="boom"))
-    ev = parse(resp.text)
-    assert [e[1] for e in ev] == ["start", "error"]
-    assert ev[-1][2] == {"code": "provider_error"}
-    assert "secret-detail" not in resp.text
+def test_provider_exception_does_not_leak():
+    async def boom(*a):
+        raise RuntimeError("secret-key-123")
+    resp, fr = post(boom)
+    assert fr[-2]["errorText"] == "assistant_failed" and "secret" not in resp.text
 
 
-def test_malformed_chunk_ends_with_error_after_earlier_events():
-    ev = parse(client().post("/v1/assistant/stream", json=body(message="garbage")).text)
-    assert [e[1] for e in ev] == ["start", "text", "error"]
-    assert ev[-1][2] == {"code": "provider_malformed"}
+def test_loop_is_bounded_by_max_steps():
+    calls = []
+
+    async def forever(step, message, results):
+        calls.append(step)
+        return {"tool_calls": [call()]}
+    _, fr = post(forever)
+    assert len(calls) == s.MAX_STEPS
+    assert fr[-2]["errorText"] == "invalid_provider_output" and fr[-1] == "[DONE]"
 
 
-@pytest.mark.parametrize("chunk", [
-    "str", None, {"type": "text"}, {"type": "text", "delta": ""}, {"type": "text", "delta": 5},
-    {"type": "product", "product_id": "99999999-9999-4999-8999-999999999999"}, {"type": "product"},
-])
-@sync
-async def test_malformed_provider_chunks(chunk):
-    async def prov():
-        yield chunk
-    frames = await collect(prov())
-    assert [e[1] for e in parse("".join(frames))] == ["start", "error"]
+def test_timeout_is_bounded(monkeypatch):
+    monkeypatch.setattr(s, "STEP_TIMEOUT", 0.05)
+
+    async def slow(*a):
+        await asyncio.sleep(5)
+    _, fr = post(slow)
+    assert fr[-2]["errorText"] == "assistant_timeout" and fr[-1] == "[DONE]"
 
 
-@sync
-async def test_unknown_and_malformed_proposals_are_rejected_not_raised():
-    async def prov():
-        yield {"type": "proposal", "action_type": "<script>alert(1)</script>", "idempotency_key": 5, "params": []}
-        yield {"type": "proposal", "action_type": "place_order", "params": {}}
-    ev = parse("".join(await collect(prov())))
-    decisions = [e[2] for e in ev if e[1] == "proposal"]
-    assert [d["decision"]["outcome"] for d in decisions] == ["rejected", "rejected"]
-    assert all(d["action_type"] == "unknown" for d in decisions)
-    assert "script" not in "".join(json.dumps(d) for d in decisions)
-    assert ev[-1][1] == "done"
+def outputs(fr):
+    return [f["output"] for f in fr if f != "[DONE]" and f["type"] == "tool-output-available"]
 
 
-@sync
-async def test_idempotency_replay_and_conflict_within_stream():
-    good = {"type": "proposal", "action_type": "show_product", "idempotency_key": KEY,
-            "params": {"product_id": s.DEMO_PRODUCT, "expected_revision": 7}}
-    other = {**good, "params": {"product_id": s.DEMO_PRODUCT, "expected_revision": 8}}
-
-    async def prov():
-        yield good
-        yield good
-        yield other
-    d = [e[2]["decision"] for e in parse("".join(await collect(prov()))) if e[1] == "proposal"]
-    assert [(x["outcome"], x["replayed"], x["reason"]) for x in d] == [
-        ("validated", False, "ok"), ("validated", True, "ok"), ("rejected", False, "idempotency_conflict")]
+def test_kernel_rejects_invalid_and_unknown():
+    _, fr = post(provider_of({"tool_calls": [call(inp={"product_ids": ["nope"]}), call("delete_everything"),
+                                             call("open_product", {"product_id": PID, "x": 1})]}, {}))
+    outs = outputs(fr)
+    assert [(o["outcome"], o["reason"]) for o in outs] == [
+        ("rejected", "invalid_params"), ("rejected", "unknown_tool"), ("rejected", "invalid_params")]
+    assert all(o["executed"] is False for o in outs)
 
 
-@sync
-async def test_event_and_text_bounds():
-    async def many():
-        for _ in range(s.MAX_EVENTS + 1):
-            yield {"type": "text", "delta": "a"}
-
-    async def big():
-        yield {"type": "text", "delta": "a" * (s.MAX_TEXT_CHARS + 1)}
-    assert parse("".join(await collect(many())))[-1][2] == {"code": "provider_overrun"}
-    assert parse("".join(await collect(big())))[-1][2] == {"code": "provider_malformed"}
+def test_silent_relaxation_rejected_then_acknowledged():
+    hard = {"hard": {"colour": "red"}, "relaxed": ["colour"]}
+    _, fr = post(provider_of({"tool_calls": [call("apply_filters", {"filters": {"colour": "blue"}}, constraints=hard)]}, {}))
+    assert outputs(fr)[0]["reason"] == "silent_relaxation"
+    ok = {**hard, "relaxation_acknowledged": True}
+    _, fr = post(provider_of({"tool_calls": [call("apply_filters", {"filters": {"colour": "blue"}}, constraints=ok)]}, {}),
+                 session="sess-2")
+    assert outputs(fr)[0]["outcome"] == "validated" and outputs(fr)[0]["relaxation_acknowledged"] is True
 
 
-@sync
-async def test_cancel_closes_provider_and_emits_nothing_more():
-    closed = []
-
-    async def prov():
-        try:
-            for i in range(100):
-                yield {"type": "text", "delta": f"{i}"}
-        finally:
-            closed.append(True)
-    gen = s.stream_events(prov(), session_id="sess-1", context={}, idempotency_key=KEY, catalogue=s.demo_catalogue())
-    assert "event: start" in await gen.__anext__()
-    assert "event: text" in await gen.__anext__()
-    await gen.aclose()  # what Starlette does when the client cancels
-    assert closed == [True]
-    with pytest.raises(StopAsyncIteration):
-        await gen.__anext__()
+def test_replay_and_conflict_across_requests():
+    _, a = post(provider_of({"tool_calls": [call()]}, {}))
+    _, b = post(provider_of({"tool_calls": [call()]}, {}))
+    assert (outputs(a)[0]["outcome"], outputs(a)[0]["replayed"]) == ("validated", False)
+    assert (outputs(b)[0]["outcome"], outputs(b)[0]["replayed"]) == ("validated", True)
+    _, c = post(provider_of({"tool_calls": [call(inp={"product_ids": [VID]})]}, {}))
+    assert outputs(c)[0]["reason"] == "idempotency_conflict"
+    _, d = post(provider_of({"tool_calls": [call(inp={"product_ids": [VID]})]}, {}), session="sess-other")
+    assert outputs(d)[0]["outcome"] == "validated"  # ledger is per session
 
 
-@sync
-async def test_disconnect_stops_stream_without_terminal_frame():
-    closed = []
-    calls = {"n": 0}
-
-    async def prov():
-        try:
-            for i in range(10):
-                yield {"type": "text", "delta": "x"}
-        finally:
-            closed.append(True)
-
-    async def gone():
-        calls["n"] += 1
-        return calls["n"] > 2
-    ev = parse("".join(await collect(prov(), is_disconnected=gone)))
-    assert [e[1] for e in ev] == ["start", "text", "text"] and closed == [True]
+def test_confirmation_flow_validates_but_never_executes():
+    line = {"product_id": PID, "variant_id": VID, "quantity": 1}
+    _, first = post(provider_of({"tool_calls": [call("add_to_cart", line)]}, {}))
+    fp = outputs(first)[0]["fingerprint"]
+    import time
+    now = time.time()
+    conf = {"action_id": AID, "session_id": "sess-1", "fingerprint": fp, "confirmed_at": now - 1,
+            "expires_at": now + 60, "explicit": True}
+    _, second = post(provider_of({"tool_calls": [call("add_to_cart", line, confirmation=conf)]}, {}))
+    o = outputs(second)[0]
+    assert o["outcome"] == "validated" and o["executed"] is False
 
 
-def test_frames_are_single_line_even_with_newlines_and_unicode():
-    f = s.frame(3, "text", {"delta": "a\nb c\r\n\nd"})
-    assert f.count("\n") == 4 and f.endswith("\n\n")
-    assert json.loads(f.split("data: ")[1])["delta"] == "a\nb c\r\n\nd"
-
-
-def test_modules_import_nothing_that_can_reach_out_or_mutate():
-    allowed = {"hashlib", "json", "typing", "actions", "re", "fastapi", "pydantic"}
-    for mod in (s, r):
-        roots = set(re.findall(r"^(?:from|import) ([\w]+)", open(mod.__file__).read(), re.M))
-        assert roots - allowed - {"assistant"} == set(), (mod.__name__, roots)
-
-
-def test_only_validated_executable_proposals_carry_params_for_the_confirmation_step():
-    props = [e[2] for e in parse(client().post("/v1/assistant/stream", json=body()).text) if e[1] == "proposal"]
-    assert "params" not in props[0]  # show_product is not executable
-    assert props[1]["params"]["quantity"] == 1 and props[1]["params"]["expected_unit_price"] == 3500
-    stale = [e[2] for e in parse(client().post("/v1/assistant/stream", json=body(message="stale")).text) if e[1] == "proposal"]
-    assert "params" not in stale[1]  # rejected: nothing to confirm
+def test_invalid_request_body_rejected():
+    assert client().post("/v1/assistant/stream", json={"session_id": "s", "message": ""}).status_code == 422
+    assert client().post("/v1/assistant/stream", json={"session_id": "s", "message": "x", "k": 1}).status_code == 422
