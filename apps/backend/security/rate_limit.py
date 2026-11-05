@@ -68,7 +68,7 @@ class RateLimitMiddleware:
         # Event batches are anonymous POSTs with their own, tighter limit (never exempted).
         is_events = request.url.path.startswith("/v1/events")
         # anonymous POSTs that never mutate: public limit
-        is_search = request.url.path.rstrip("/") in {"/v1/search", "/v1/assistant/stream"}
+        is_search = request.url.path.rstrip("/") in {"/v1/search", "/v1/assistant/stream", "/v1/assistant/actions/execute"}
         is_admin = not is_events and not is_search and (
             request.url.path.startswith(("/products/admin", "/v1/admin")) or request.method != "GET"
         )

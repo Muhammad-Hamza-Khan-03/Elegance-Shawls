@@ -1,66 +1,60 @@
-"""POST /v1/assistant/actions/execute: the only place an assistant proposal can take effect, and only on explicit user confirmation.
+"""POST /v1/assistant/actions/execute: off unless ASSISTANT_ACTIONS_ENABLED is true. Confirmed proposals only; sends/orders nothing."""
+import os
+from typing import Any
 
-add_to_cart returns the server-verified line for the browser to put in its own cart (the cart is client state); the enquiry action
-creates a reference through the existing enquiry repository. Neither sends a message, orders, charges or reserves stock.
-Idempotency and the audit record are durable in PostgreSQL (actions/store.py), so they hold across workers and restarts; this
-route does not wrap a transaction because the store owns its boundaries (claim, effect + commit, fail).
-"""
-import uuid
-from typing import Any, Literal
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from actions import executor as x
+from actions import execution as x
 from actions import kernel as k
-from actions.store import SqlExecutionStore
-from assistant.stream import SERVER_PERMISSIONS  # never taken from the client
 from database.pg import get_pg_session
-from repositories import enquiries as repo
-from repositories.enquiries import Line
 
 router = APIRouter(prefix="/v1/assistant/actions", tags=["Assistant"])
+NO_STORE = {"cache-control": "no-store"}
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str
+    session_id: str
+    fingerprint: str
+    confirmed_at: float
+    expires_at: float
+    explicit: bool
 
 
 class ExecuteRequest(BaseModel):
-    session_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,128}$")
-    idempotency_key: str = Field(pattern=r"^idem_[A-Za-z0-9_-]{16,64}$")
-    action_type: Literal["add_to_cart", "start_whatsapp_enquiry"]
-    confirmed: Literal[True]
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str
+    name: str
+    session_id: str
     params: dict[str, Any]
+    constraints: dict[str, Any] = Field(default_factory=lambda: {"hard": {}})
+    confirmation: ConfirmationIn | None = None
 
 
-def _lines(params: dict) -> list[dict]:
-    return params["items"] if "items" in params else [params]
+def actions_enabled() -> bool:
+    return os.getenv("ASSISTANT_ACTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @router.post("/execute")
 async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_session)):
-    proposal = k.ActionProposal(body.action_type, body.idempotency_key, body.params, k.ActionContext(body.session_id, SERVER_PERMISSIONS))
-    catalogue: dict = {}
+    if not actions_enabled():
+        return JSONResponse({"enabled": False, "error": "actions_disabled"}, status_code=503, headers=NO_STORE)
+    proposal = k.ActionProposal(body.action_id, body.name, body.session_id, body.params, body.constraints,
+                                k.Confirmation(**body.confirmation.model_dump()) if body.confirmation else None)
 
-    async def load() -> k.InMemoryCatalogue:
-        ids = []
-        for line in _lines(body.params) if isinstance(body.params, dict) else []:
-            try:
-                ids.append(uuid.UUID(str(line.get("product_id"))))
-            except (ValueError, AttributeError):
-                pass  # the kernel rejects malformed params
-        catalogue.update(await repo.catalogue_snapshot(session, ids[:k.MAX_LINES]))
-        return k.InMemoryCatalogue(catalogue)
+    async def available(lines):
+        return await x.lines_available(session, lines)
 
-    async def perform(action: k.ActionType, params: dict) -> dict:
-        lines = _lines(params)
-        items = [{"product_id": l["product_id"], "variant_id": l["variant_id"], "quantity": l["quantity"],
-                  "slug": catalogue[l["product_id"]]["slug"]} for l in lines]
-        if action is k.ActionType.ADD_TO_CART:
-            return {"items": items}
-        enquiry = await repo.create_enquiry(session, [
-            Line(uuid.UUID(l["product_id"]), uuid.UUID(l["variant_id"]), l["quantity"], l["expected_unit_price"], l["currency"]) for l in lines])
-        return {"reference": enquiry.reference, "items": items, "total": enquiry.total, "currency": enquiry.currency}
-
-    out = await x.execute(proposal, confirmed=body.confirmed, load_catalogue=load, perform=perform, store=SqlExecutionStore(session))
-    if out.outcome != "executed":
-        raise HTTPException(status_code=409, detail={"status": "rejected", "reason": out.reason})
-    return {"status": "executed", "action_type": out.action_type, "replayed": out.replayed, "result": out.result}
+    async with session.begin():
+        out = await x.execute(proposal, store=x.PgStore(session), check_lines=available)
+    if out.status != "executed":
+        code = 409 if out.reason == "idempotency_conflict" else 422
+        return JSONResponse({"status": "rejected", "reason": out.reason, "action_id": out.action_id}, status_code=code, headers=NO_STORE)
+    return JSONResponse({"status": "executed", "action": out.action, "action_id": out.action_id, "replayed": out.replayed,
+                         "acknowledged": True, "intent": out.result["intent"]}, headers=NO_STORE)

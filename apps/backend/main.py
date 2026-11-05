@@ -11,6 +11,7 @@ from routes.enrichment_routes import router as enrichment_router
 from routes.event_routes import router as event_router
 from routes.job_routes import router as job_router
 from routes.search_routes import router as search_router
+from routes.action_routes import router as action_router
 from routes.assistant_routes import router as assistant_router
 from routes.llm_routes import router as llm_router, admin_router as llm_admin_router
 from observability.request_log import RequestLogMiddleware
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(event_router)
     app.include_router(search_router)
     app.include_router(assistant_router)
+    app.include_router(action_router)
 
     # Health Check
     @app.get("/health/", tags=["Health"])

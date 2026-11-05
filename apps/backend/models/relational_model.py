@@ -810,3 +810,21 @@ class VariantEmbedding(_EmbeddingColumns, Base):
     )
     variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+
+
+class ActionExecution(Base):
+    """Durable replay record for a confirmed assistant action (written by actions.execution.PgStore)."""
+    __tablename__ = "action_executions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "action_id"),
+        CheckConstraint("action IN ('add_to_cart', 'start_whatsapp_order')", name="action"),
+        Index("ix_action_executions_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    action_id: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
