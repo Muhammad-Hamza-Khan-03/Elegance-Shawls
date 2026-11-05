@@ -109,3 +109,31 @@ def test_enqueue_raises_queue_unavailable_when_unconfigured(monkeypatch):
     monkeypatch.setattr(settings, "redis_url", "")
     with pytest.raises(QueueUnavailable):
         asyncio.run(queues.enqueue("sample_job", "x"))
+
+
+def test_assistant_stream_uses_public_bucket_and_admin_stays_admin(monkeypatch):
+    monkeypatch.setattr(rate_limit, "get_redis", lambda: None)
+    monkeypatch.setattr(settings, "public_rate_limit_per_minute", 1000)
+    monkeypatch.setattr(settings, "admin_rate_limit_per_minute", 1)
+    middleware = RateLimitMiddleware(_ok)
+
+    async def post(path):
+        out = []
+
+        async def send(m):
+            if m["type"] == "http.response.start":
+                out.append(m["status"])
+
+        scope = {"type": "http", "method": "POST", "path": path, "headers": [], "query_string": b"",
+                 "client": ("9.9.9.9", 1), "scheme": "http", "server": ("t", 80)}
+        await middleware(scope, None, send)
+        return out[0]
+
+    async def go():
+        a = [await post("/v1/assistant/stream") for _ in range(3)]
+        b = [await post("/v1/admin/jobs/sample") for _ in range(2)]
+        return a, b
+
+    assistant, admin = asyncio.run(go())
+    assert assistant == [200, 200, 200]  # would 429 on the admin limit of 1
+    assert admin == [200, 429]

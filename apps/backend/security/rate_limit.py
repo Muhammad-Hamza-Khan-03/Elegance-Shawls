@@ -10,7 +10,6 @@ from configuration.config import settings
 from database.redis_client import get_redis
 
 logger = logging.getLogger("elegance.rate_limit")
-_WINDOW_SECONDS = 60.0
 _REDIS_RETRY_AFTER_FAILURE_SECONDS = 10.0
 
 
@@ -32,7 +31,6 @@ class RateLimitMiddleware:
         self.app = app
         self.requests: dict[str, deque[float]] = defaultdict(deque)
         self._redis_down_until = 0.0
-        self._next_sweep = monotonic() + _WINDOW_SECONDS
 
     async def _hit_redis(self, key: str, limit: int) -> bool | None:
         """True = allowed, False = limited, None = Redis unavailable (use the fallback)."""
@@ -50,19 +48,8 @@ class RateLimitMiddleware:
             return None
         return count <= limit
 
-    def _sweep(self, now: float) -> None:
-        """Drop keys with no request in the last window, so distinct clients cannot grow memory without bound."""
-        self._next_sweep = now + _WINDOW_SECONDS
-        for key in [k for k, b in self.requests.items() if not b or b[-1] <= now - _WINDOW_SECONDS]:
-            del self.requests[key]
-
     def _hit_local(self, key: str, limit: int) -> bool:
         now = monotonic()
-        if now >= self._next_sweep:
-            self._sweep(now)
-        if key not in self.requests and len(self.requests) >= settings.local_rate_limit_max_keys:
-            oldest_key = min(self.requests, key=lambda candidate: self.requests[candidate][-1])
-            del self.requests[oldest_key]
         bucket = self.requests[key]
         while bucket and bucket[0] <= now - 60:
             bucket.popleft()
@@ -79,19 +66,14 @@ class RateLimitMiddleware:
         request = Request(scope)
         client = request.client.host if request.client else "unknown"
         # Event batches are anonymous POSTs with their own, tighter limit (never exempted).
-        # /v1/enquiries is the same kind of anonymous write, in its own bucket so tracking cannot starve a handoff.
-        # Customer sign-in/out is anonymous-reachable too and gets its own, tighter bucket (never exempted, never shared with admin).
-        bucket = ("enquiries" if request.url.path.startswith("/v1/enquiries") else "events" if request.url.path.startswith("/v1/events")
-                  else "customer_auth" if request.url.path.startswith("/v1/customer/auth") else None)
-        is_events = bucket is not None
-        is_search = request.url.path.startswith("/v1/search")  # anonymous read-only search (GET, POST, /hybrid): public limit
+        is_events = request.url.path.startswith("/v1/events")
+        # anonymous POSTs that never mutate: public limit
+        is_search = request.url.path.rstrip("/") in {"/v1/search", "/v1/assistant/stream"}
         is_admin = not is_events and not is_search and (
             request.url.path.startswith(("/products/admin", "/v1/admin")) or request.method != "GET"
         )
         limit = (
-            settings.customer_auth_rate_limit_per_minute
-            if bucket == "customer_auth"
-            else settings.events_rate_limit_per_minute
+            settings.events_rate_limit_per_minute
             if is_events
             else settings.admin_rate_limit_per_minute
             if is_admin
@@ -100,7 +82,7 @@ class RateLimitMiddleware:
         if not is_admin and not is_events and _is_internal(request):
             await self.app(scope, receive, send)
             return
-        key = f"{client}:{bucket or ('admin' if is_admin else 'public')}"
+        key = f"{client}:{'events' if is_events else 'admin' if is_admin else 'public'}"
         allowed = await self._hit_redis(key, limit)
         if allowed is None:
             allowed = self._hit_local(key, limit)
