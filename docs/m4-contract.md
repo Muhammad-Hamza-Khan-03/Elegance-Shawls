@@ -1,0 +1,108 @@
+# M4 contract expansion: staged returning-customer experience
+
+**Contract ID:** `t_aba73777` (expanded in place; do not create a second M4 contract)
+**Status:** `planned`, `release_ready=false`
+**Baseline preserved:** M3 canonical action contracts and M4 Batch 1 commit `1823d47a071c713b6ca00348364260a93c8a584f` / task `t_2f755ea0`
+**Scope:** bounded staging-only batches; synthetic identities, provider mocks, and synthetic catalogue/events only
+
+This document is the idempotent M4 contract record. Re-applying this change updates the same task IDs and batch gates; it must not create duplicate tasks, enable production memory, close issues, or change `release_ready`.
+
+## Non-negotiable boundaries
+
+- No `main`, production, VPS, deployment, provider credential, live customer data, production database, or real identity-provider exchange.
+- Supabase, if later selected, is identity-only; PostgreSQL remains the sole application database and FastAPI owns local session issuance, lookup, expiry, and revocation.
+- Anonymous IDs, assistant `session_id`, external identity subjects, and local customer IDs are distinct. Client input never selects the customer principal.
+- Customer memory extraction remains disabled. The existing explicit `MemoryProvider` and consent/tombstone contract is preserved.
+- No issue is closed by this contract. No phase may set `release_ready=true`.
+
+## Sequential batches and exact task IDs
+
+The batches are strictly ordered. A later batch cannot start until the prior batch's implementation tests and independent QA evidence are recorded against its acceptance criteria.
+
+### Batch A — staging-only customer identity/login and conservative anonymous merge
+
+**Parent task:** `t_m4a_customer_identity_login_merge`
+
+**Specialist implementation tasks:**
+
+- `t_m4a_identity_provider_mock`: synthetic Google/phone-OTP provider adapters and deterministic fixtures only; no real credentials or network exchange.
+- `t_m4a_fastapi_sessions`: FastAPI-owned opaque sessions, hash-only persistence, expiry, per-session logout, logout-all, revocation, and fail-closed principal resolution.
+- `t_m4a_conservative_merge`: merge only server-resolved anonymous state into the authenticated customer when ownership, freshness, consent, and conflict rules pass; ambiguous/conflicting records remain separate and are auditable.
+- `t_m4a_canonical_tests`: canonical backend/frontend tests for login, session lifecycle, isolation, replay/idempotency, and merge refusal cases.
+- `t_m4a_independent_qa`: independent QA using synthetic accounts and a staging test database; implementation authors do not self-approve.
+- `t_m4a_push_staging`: after QA PASS, push the exact QA-passed SHA to `origin/staging` and record the SHA; never promote to `main`.
+
+**Acceptance criteria:**
+
+1. With the feature flag/configuration off or incomplete, login is unavailable or fails closed; no provider call and no database identity decision is made on the disabled path.
+2. Mock provider identities are mapped by verified `(issuer, subject)` only. Tokens, provider credentials, and secrets never enter Git, logs, browser responses, or chat.
+3. FastAPI creates an opaque local session; PostgreSQL stores only a token digest plus customer, expiry, and revocation state. Every request rechecks expiry, revocation, and customer status.
+4. Logout revokes exactly one session; logout-all revokes all sessions for that customer. Invalid, expired, revoked, mismatched, oversized, and verifier-error sessions produce the same unauthenticated response class.
+5. Anonymous merge is server-side, one-way, conservative, idempotent, and auditable. It never overwrites explicit authenticated preferences with anonymous values; conflicts are retained separately or refused.
+6. Repeating the same synthetic exchange/merge fixture produces no duplicate customer, identity, session, memory, or audit rows.
+7. Independent QA proves customer isolation, revocation, merge refusal, cleanup of synthetic fixtures, and no live provider/database access.
+
+**Batch A gate:** `QA_PASS` plus recorded staging SHA. Without both, Batch B is blocked.
+
+### Batch B — explainable recommendation read path
+
+**Parent task:** `t_m4b_explainable_recommendation_read_path`
+
+**Specialist implementation tasks:**
+
+- `t_m4b_preference_projection`: read explicit preferences and permitted session constraints only; define deterministic conflict/absence behavior.
+- `t_m4b_reasoned_ranker`: feature-flagged, read-only recommendation projection with hard catalogue constraints and machine-readable reason codes.
+- `t_m4b_impression_logging`: idempotent impression/event records containing recommendation ID, product/variant, position, feature flag, experiment arm, preference snapshot/version, catalogue revision, and timestamp.
+- `t_m4b_canonical_tests`: canonical tests for explainability, constraints, deterministic fallback, duplicate-safe impressions, and disabled-flag behavior.
+- `t_m4b_independent_qa`: independent QA on synthetic preferences, catalogue, impressions, and randomized control/treatment fixtures only.
+- `t_m4b_push_staging`: after QA PASS, push the exact QA-passed SHA to `origin/staging` and record the SHA.
+
+**Acceptance criteria:**
+
+1. The read path is disabled by default and can run only in staging/synthetic mode behind an explicit feature flag.
+2. Recommendations use explicit preferences and allowed session constraints; no inferred sensitive attributes and no production customer memory are read.
+3. Every returned recommendation has a stable reason code and human-readable explanation grounded in the preference/constraint snapshot and catalogue revision used.
+4. Hard catalogue constraints are enforced in application code; unavailable, unpublished, or non-matching variants are never recommended.
+5. Impressions are append-only, idempotent for the same request/arm/position key, and record enough provenance to answer why a customer saw an item. Control/treatment assignment is deterministic for a synthetic subject and does not alter catalogue truth.
+6. If the flag is off or the read path errors, the system falls back to normal catalogue browsing/search without writing memory or mutating customer state.
+7. Independent QA verifies reason fidelity, no silent constraint relaxation, duplicate-safe logging, isolation, and that no live customer/provider data is touched.
+
+**Batch B gate:** `QA_PASS` plus recorded staging SHA. Without both, Batch C is blocked.
+
+### Batch C — privacy-gated production-memory readiness (blocked until approvals)
+
+**Parent task:** `t_m4c_production_memory_privacy_gate`
+
+**Specialist tasks:**
+
+- `t_m4c_provider_decision`: select and verify a paid no-training provider or a self-hosted model, with written data-use/retention/subprocessor evidence and an approved cost/budget boundary.
+- `t_m4c_memory_extraction_evals`: build and run reviewed synthetic memory extraction evals covering save, do-not-save, correction, relevance, sensitive-data refusal, consent, and forgetting; record reproducible results.
+- `t_m4c_tombstone_queue_proof`: prove delete/disable tombstones and `memory_version` prevent queued jobs and retries from recreating deleted memory; include replay, retry, and worker-restart cases.
+- `t_m4c_promotion_packet`: assemble model/provider evidence, eval report, deletion proof, threat/privacy review, rollback plan, and explicit owner approvals. This task cannot enable memory by itself.
+- `t_m4c_independent_qa`: independent QA of the complete gate packet against synthetic data only.
+- `t_m4c_push_staging`: only after QA PASS, push the QA-passed gate/evidence changes to `origin/staging`; this does not enable production memory.
+
+**Acceptance criteria:**
+
+1. Production-memory extraction remains disabled until a named paid no-training or self-hosted model is selected and independently verified. Free-tier or unverified providers are rejected.
+2. Verification includes contractual no-training/data-use terms, retention/deletion behavior, region/subprocessor review, access controls, bounded budget, and a tested fail-closed configuration. No credential is committed or shared in chat.
+3. Memory extraction evals are non-empty, reproducible, human-reviewed, and pass agreed thresholds for save/do-not-save, correction, relevance, sensitive-data refusal, consent, and forgetting. Missing or `NOT_EVALUATED` evidence blocks the gate.
+4. Delete, disable, tombstone, version, retry, replay, and worker-restart tests prove queued jobs cannot recreate deleted or disabled memory.
+5. View/correct/delete/turn-off, audit, ownership isolation, retention, and rollback evidence is complete for the explicit `MemoryProvider` contract.
+6. Independent QA signs the packet, and named product, privacy/security, and engineering owners explicitly approve promotion. QA alone cannot promote or set `release_ready=true`.
+
+**Current state:** `BLOCKED_PROVIDER_PRIVACY_DECISION` — no paid no-training/self-hosted model has been selected and verified in the supplied context, and no memory extraction eval or queued-job deletion proof is available. Do not guess a provider, enable extraction, or treat Batch C as complete.
+
+## Current next action
+
+Start **Batch A** with `t_m4a_identity_provider_mock`, then `t_m4a_fastapi_sessions`, then `t_m4a_conservative_merge`; run `t_m4a_canonical_tests`, obtain independent `t_m4a_independent_qa` approval, and only then execute `t_m4a_push_staging`. Batch B waits for the Batch A gate. Batch C remains blocked pending its provider/privacy decision and evidence.
+
+## Approvals required
+
+- **Batch A:** engineering owner approves scope; independent QA approves synthetic login/session/merge evidence; staging owner approves push to `origin/staging`.
+- **Batch B:** product/engineering owner approves reason vocabulary and experiment flag; independent QA approves explainability/impression evidence; staging owner approves push to `origin/staging`.
+- **Batch C:** provider/privacy decision owner approves the paid no-training/self-hosted model and terms; privacy/security approves data handling; engineering approves extraction/tombstone implementation; independent QA approves eval and queued-job proof; product owner explicitly approves any later promotion. No approval is implied by this document.
+
+## Explicit non-claims
+
+This contract does not claim that customer login is enabled, that recommendations are active, that a provider is selected, that production memory is available, that any deployment occurred, or that any customer data was accessed. It records work order and gates only.
