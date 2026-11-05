@@ -19,7 +19,7 @@ describe('confirmAction', () => {
     expect(JSON.parse(init.body)).toEqual({ ...req, confirmed: true });
   });
   it('returns the enquiry reference', async () => {
-    const r = await confirmAction({ ...req, action_type: 'start_whatsapp_enquiry' }, reply(200, { status: 'executed', replayed: true, result: { items, reference: 'ES-ABC234' } }));
+    const r = await confirmAction({ ...req, action_type: 'start_whatsapp_order' }, reply(200, { status: 'executed', replayed: true, result: { items, reference: 'ES-ABC234' } }));
     expect(r).toMatchObject({ ok: true, replayed: true, reference: 'ES-ABC234' });
   });
   it('turns a server rejection into a fixed friendly message, never the server text', async () => {
@@ -37,7 +37,7 @@ describe('confirmAction', () => {
     ['malformed success', reply(200, { status: 'executed', result: { items: [{ product_id: 5 }] } })],
     ['enquiry without reference', reply(200, { status: 'executed', replayed: false, result: { items } })],
   ])('fails closed on %s', async (_n, f) => {
-    const r = await confirmAction({ ...req, action_type: 'start_whatsapp_enquiry' }, f);
+    const r = await confirmAction({ ...req, action_type: 'start_whatsapp_order' }, f);
     expect(r.ok).toBe(false);
   });
 });
