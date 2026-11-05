@@ -1,126 +1,81 @@
-"""Validated action kernel: decides whether an assistant-proposed action is acceptable. Never performs one.
+"""Pure action kernel: decides whether a proposed storefront action is acceptable. Never performs one.
 
-A proposal (typed, allowlisted) is checked against the caller's context and permissions, the *current* catalogue state
-(revision, price, currency, stock, visibility) and an idempotency ledger. The result is an immutable `Decision`
-(`validated` or `rejected` with a fixed reason code) plus an audit-safe record. `validated` only means "this exact request
-is currently acceptable"; carting, WhatsApp, orders and payments stay in their existing, separately confirmed paths, and
-this module has no I/O, network, DB or clock. Bump KERNEL_VERSION on any change to the rules below.
-(shortcut: in-memory ledger and catalogue; a durable ledger needs its own reviewed change and migration.)
+No I/O, network, DB, cart, WhatsApp or clock: callers pass `now` (epoch seconds) and an in-memory ledger.
+Outcomes: `validated` (acceptable now), `needs_confirmation` (add_to_cart / start_whatsapp_order without a valid
+explicit confirmation) or `rejected` with a fixed reason code. `executed` is always False.
+(shortcut: in-memory ledger; a durable one needs its own reviewed change.)
 """
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Mapping, Protocol
+from dataclasses import dataclass
+from typing import Any, Mapping
 
-KERNEL_VERSION = 2  # 2: non-proposal and malformed state reject (invalid_proposal, invalid_state) instead of raising
-SUPPORTED_CURRENCIES = frozenset({"PKR"})
+KERNEL_VERSION = 1
+ACTIONS = frozenset({"show_products", "open_product", "apply_filters", "add_to_cart", "start_whatsapp_order"})
+CONFIRMATION_REQUIRED = frozenset({"add_to_cart", "start_whatsapp_order"})
 MAX_QUANTITY = 1000  # same bound as POST /v1/enquiries
 MAX_LINES = 10
-_KEY = re.compile(r"^idem_[A-Za-z0-9_-]{16,64}$")
+MAX_PRODUCTS = 24
+MAX_CONFIRMATION_TTL = 300  # seconds
+_ID = re.compile(r"^act_[A-Za-z0-9_-]{16,64}$")
 _REF = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_ITEM_FIELDS = frozenset({"product_id", "variant_id", "quantity", "expected_revision", "expected_unit_price", "currency"})
-
-
-class ActionType(str, Enum):
-    SHOW_PRODUCT = "show_product"
-    ADD_TO_CART = "add_to_cart"
-    START_WHATSAPP_ENQUIRY = "start_whatsapp_enquiry"
-
-
-PERMISSION = {
-    ActionType.SHOW_PRODUCT: "catalogue:read",
-    ActionType.ADD_TO_CART: "cart:propose",
-    ActionType.START_WHATSAPP_ENQUIRY: "enquiry:initiate",
-}
 
 
 @dataclass(frozen=True)
-class ActionContext:
+class Confirmation:
+    """Explicit user confirmation bound to one action id, session and params fingerprint."""
+    action_id: Any
     session_id: Any
-    permissions: Any
-    user_id: Any = None  # None = anonymous visitor
+    fingerprint: Any
+    confirmed_at: Any
+    expires_at: Any
+    explicit: Any = False
 
 
 @dataclass(frozen=True)
 class ActionProposal:
-    action_type: Any
-    idempotency_key: Any
+    action_id: Any
+    name: Any
+    session_id: Any
     params: Any
-    context: Any
-
-
-class CatalogueState(Protocol):
-    def get(self, product_id: str) -> Mapping[str, Any] | None: ...
-
-
-@dataclass
-class InMemoryCatalogue:
-    """Fake current state: {product_id: {status, is_active, revision, variants: [{id, is_active, price, currency, stock}]}}."""
-    products: dict = field(default_factory=dict)
-
-    def get(self, product_id: str):
-        return self.products.get(product_id)
+    constraints: Any  # {"hard": {key: value}, "relaxed": [key, ...], "relaxation_acknowledged": bool}
+    confirmation: Any = None
 
 
 @dataclass(frozen=True)
 class Decision:
-    outcome: str  # validated | rejected
-    reason: str  # "ok" or a fixed reason code
-    action_type: str  # allowlisted name, else "unknown"
+    outcome: str  # validated | needs_confirmation | rejected
+    reason: str
+    action: str  # allowlisted name, else "unknown"
+    action_id: str | None = None
     fingerprint: str | None = None
-    idempotency_key: str | None = None
     replayed: bool = False
-    session_ref: str | None = None
-    has_user: bool = False
-    product_ids: tuple = ()
-    variant_ids: tuple = ()
-    quantity_total: int = 0
     executed: bool = False  # always False: the kernel has no execution path
 
-    def audit(self) -> dict:
-        """Fixed-shape record: opaque ids and codes only; never raw session/user ids, params or caller text."""
-        return {
-            "version": KERNEL_VERSION, "action_type": self.action_type, "outcome": self.outcome, "reason": self.reason,
-            "executed": False, "replayed": self.replayed, "fingerprint": self.fingerprint,
-            "idempotency_key": self.idempotency_key, "session_ref": self.session_ref, "has_user": self.has_user,
-            "product_ids": list(self.product_ids), "variant_ids": list(self.variant_ids),
-            "quantity_total": self.quantity_total,
-        }
 
-
-class IdempotencyLedger:
-    """Remembers *validated* decisions per (session, key). Rejections are not stored so a corrected retry can reuse the key."""
+class InMemoryLedger:
+    """Remembers validated decisions per (session, action id). Rejections are not stored."""
 
     def __init__(self):
         self._seen: dict[tuple[str, str], Decision] = {}
 
-    def get(self, session_id: str, key: str) -> Decision | None:
-        return self._seen.get((session_id, key))
+    def get(self, session_id: str, action_id: str) -> Decision | None:
+        return self._seen.get((session_id, action_id))
 
-    def put(self, session_id: str, key: str, decision: Decision) -> None:
-        self._seen[(session_id, key)] = decision
+    def put(self, session_id: str, action_id: str, decision: Decision) -> None:
+        self._seen[(session_id, action_id)] = decision
 
 
 class _Reject(Exception):
     pass
 
 
-def _is_int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
-
-
-def _check_context(ctx) -> None:
-    perms = getattr(ctx, "permissions", None)
-    uid = getattr(ctx, "user_id", None)
-    if not isinstance(ctx, ActionContext) or not (isinstance(ctx.session_id, str) and _REF.match(ctx.session_id)):
-        raise _Reject("missing_context")
-    if not isinstance(perms, (set, frozenset, tuple, list)) or not all(isinstance(p, str) for p in perms):
-        raise _Reject("missing_context")
-    if uid is not None and not (isinstance(uid, str) and _REF.match(uid)):
-        raise _Reject("missing_context")
+def _int(v, lo, hi) -> int:
+    if not (isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi):
+        raise _Reject("invalid_params")
+    return v
 
 
 def _uuid(v) -> str:
@@ -129,119 +84,133 @@ def _uuid(v) -> str:
     return v
 
 
-def _item(raw) -> dict:
-    if not isinstance(raw, Mapping) or set(raw) != _ITEM_FIELDS:
-        raise _Reject("invalid_params")
-    q = raw["quantity"]
-    if not _is_int(q) or not 1 <= q <= MAX_QUANTITY:
-        raise _Reject("invalid_quantity")
-    c = raw["currency"]
-    if not isinstance(c, str) or c not in SUPPORTED_CURRENCIES:
-        raise _Reject("invalid_currency")
-    rev, price = raw["expected_revision"], raw["expected_unit_price"]
-    if not (_is_int(rev) and rev >= 1 and _is_int(price) and price >= 0):
-        raise _Reject("invalid_params")
-    return {"product_id": _uuid(raw["product_id"]), "variant_id": _uuid(raw["variant_id"]), "quantity": q,
-            "expected_revision": rev, "expected_unit_price": price, "currency": c}
+def _scalar(v) -> bool:
+    return (isinstance(v, str) and 0 < len(v) <= 64) or (isinstance(v, int) and not isinstance(v, bool))
 
 
-def _normalise(action: ActionType, params) -> dict:
-    if not isinstance(params, Mapping):
+def _filters(f) -> dict:
+    if not isinstance(f, Mapping) or not f or len(f) > 20:
         raise _Reject("invalid_params")
-    if action is ActionType.ADD_TO_CART:
-        return {"items": [_item(params)]}
-    if action is ActionType.START_WHATSAPP_ENQUIRY:
-        items = params.get("items")
-        if set(params) != {"items"} or not isinstance(items, list) or not 1 <= len(items) <= MAX_LINES:
+    for k, v in f.items():
+        ok = _scalar(v) or (isinstance(v, (list, tuple)) and 0 < len(v) <= 20 and all(_scalar(x) for x in v))
+        if not (isinstance(k, str) and _REF.match(k) and ok):
             raise _Reject("invalid_params")
-        return {"items": [_item(i) for i in items]}
-    if not set(params) <= {"product_id", "variant_id", "expected_revision"} or not {"product_id", "expected_revision"} <= set(params):
+    return {k: list(v) if isinstance(v, (list, tuple)) else v for k, v in f.items()}
+
+
+def _line(raw) -> dict:
+    if not isinstance(raw, Mapping) or set(raw) != {"product_id", "variant_id", "quantity"}:
         raise _Reject("invalid_params")
-    rev = params["expected_revision"]
-    if not (_is_int(rev) and rev >= 1):
+    return {"product_id": _uuid(raw["product_id"]), "variant_id": _uuid(raw["variant_id"]),
+            "quantity": _int(raw["quantity"], 1, MAX_QUANTITY)}
+
+
+def _normalise(name: str, p) -> dict:
+    if not isinstance(p, Mapping):
         raise _Reject("invalid_params")
-    out = {"product_id": _uuid(params["product_id"]), "expected_revision": rev}
-    if "variant_id" in params:
-        out["variant_id"] = _uuid(params["variant_id"])
-    return out
+    keys = set(p)
+    if name == "show_products":
+        ids = p.get("product_ids")
+        if keys - {"product_ids", "filters"} or not isinstance(ids, (list, tuple)) or not 1 <= len(ids) <= MAX_PRODUCTS:
+            raise _Reject("invalid_params")
+        out = {"product_ids": [_uuid(i) for i in ids]}
+        if "filters" in p:
+            out["filters"] = _filters(p["filters"])
+        return out
+    if name == "open_product":
+        if "product_id" not in keys or keys - {"product_id", "variant_id"}:
+            raise _Reject("invalid_params")
+        out = {"product_id": _uuid(p["product_id"])}
+        if "variant_id" in p:
+            out["variant_id"] = _uuid(p["variant_id"])
+        return out
+    if name == "apply_filters":
+        if keys != {"filters"}:
+            raise _Reject("invalid_params")
+        return {"filters": _filters(p["filters"])}
+    if name == "add_to_cart":
+        return _line(p)
+    items = p.get("items")  # start_whatsapp_order
+    if keys != {"items"} or not isinstance(items, (list, tuple)) or not 1 <= len(items) <= MAX_LINES:
+        raise _Reject("invalid_params")
+    return {"items": [_line(i) for i in items]}
 
 
-def _check_state(state: CatalogueState, line: Mapping, priced: bool) -> None:
-    product = state.get(line["product_id"])
-    if product is None:
-        raise _Reject("product_not_found")
-    if product.get("status") != "active" or product.get("is_active") is not True:  # public visibility rule
-        raise _Reject("product_unavailable")
-    if product.get("revision") != line["expected_revision"]:
-        raise _Reject("stale_revision")
-    if "variant_id" not in line:
-        return
-    variant = next((v for v in product.get("variants", ()) if v.get("id") == line["variant_id"]), None)
-    if variant is None:
-        raise _Reject("variant_not_found")
-    if variant.get("is_active") is not True:
-        raise _Reject("variant_unavailable")
-    if not priced:
-        return
-    if variant.get("currency") != line["currency"]:
-        raise _Reject("currency_mismatch")
-    if variant.get("price") != line["expected_unit_price"]:
-        raise _Reject("stale_price")
-    stock = variant.get("stock")
-    if not _is_int(stock) or stock < 1:
-        raise _Reject("out_of_stock")
-    if line["quantity"] > stock:
-        raise _Reject("insufficient_stock")
+def _check_constraints(name: str, c, params: dict) -> None:
+    """Hard constraints must reach the action unchanged; relaxing one needs an explicit acknowledgement."""
+    if not isinstance(c, Mapping) or set(c) - {"hard", "relaxed", "relaxation_acknowledged"}:
+        raise _Reject("invalid_constraints")
+    hard, relaxed, ack = c.get("hard"), c.get("relaxed", ()), c.get("relaxation_acknowledged", False)
+    if not isinstance(hard, Mapping) or not isinstance(ack, bool) or not isinstance(relaxed, (list, tuple)):
+        raise _Reject("invalid_constraints")
+    if not all(isinstance(r, str) and r in hard for r in relaxed):
+        raise _Reject("invalid_constraints")
+    if relaxed and not ack:
+        raise _Reject("silent_relaxation")
+    if name in ("show_products", "apply_filters"):
+        filters = params.get("filters", {})
+        if any(k not in relaxed and filters.get(k) != _filters({k: v})[k] for k, v in hard.items()):
+            raise _Reject("constraint_dropped")
 
 
-def _fingerprint(action: ActionType, session_id: str, params: dict) -> str:
-    blob = json.dumps({"a": action.value, "s": session_id, "p": params}, sort_keys=True, separators=(",", ":"))
+def _fingerprint(name: str, session_id: str, params: dict) -> str:
+    blob = json.dumps({"a": name, "s": session_id, "p": params}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
-def validate(proposal: ActionProposal, state: CatalogueState, ledger: IdempotencyLedger) -> Decision:
-    """Deterministic: same proposal + same state + same ledger => same Decision. Only records validated decisions."""
-    base: dict[str, Any] = {"action_type": "unknown"}
+def _check_confirmation(c, action_id: str, session_id: str, fp: str, now) -> None:
+    if c is None:
+        raise _Reject("needs_confirmation")
+    if not isinstance(c, Confirmation) or c.explicit is not True:
+        raise _Reject("confirmation_invalid")
+    nums = (c.confirmed_at, c.expires_at)
+    if not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in nums):
+        raise _Reject("confirmation_invalid")
+    if c.session_id != session_id:
+        raise _Reject("session_mismatch")
+    if c.action_id != action_id or c.fingerprint != fp:
+        raise _Reject("confirmation_mismatch")
+    if not (c.confirmed_at <= now and 0 < c.expires_at - c.confirmed_at <= MAX_CONFIRMATION_TTL):
+        raise _Reject("confirmation_invalid")
+    if now >= c.expires_at:
+        raise _Reject("confirmation_expired")
 
-    def reject(reason: str) -> Decision:
-        return Decision("rejected", reason, **base)
 
+def validate(proposal: ActionProposal, ledger: InMemoryLedger, now: float) -> Decision:
+    """Deterministic for the same proposal, ledger state and `now`. Only validated decisions are recorded."""
+    base: dict[str, Any] = {"action": "unknown"}
     try:
-        if not isinstance(proposal, ActionProposal):
+        if not isinstance(proposal, ActionProposal) or isinstance(now, bool) or not isinstance(now, (int, float)):
             raise _Reject("invalid_proposal")
-        _check_context(proposal.context)
-        ctx = proposal.context
-        base.update(session_ref=hashlib.sha256(ctx.session_id.encode()).hexdigest()[:16], has_user=ctx.user_id is not None)
-        try:
-            action = ActionType(proposal.action_type) if isinstance(proposal.action_type, str) else None
-        except ValueError:
-            action = None
-        if action is None:
+        name = proposal.name
+        if not (isinstance(name, str) and name in ACTIONS):
             raise _Reject("unknown_action")
-        base["action_type"] = action.value
-        if PERMISSION[action] not in ctx.permissions:
-            raise _Reject("permission_denied")
-        key = proposal.idempotency_key
-        if not (isinstance(key, str) and _KEY.match(key)):
-            raise _Reject("invalid_idempotency_key")
-        base["idempotency_key"] = key
-        params = _normalise(action, proposal.params)
-        lines = params.get("items", [params])
-        base.update(product_ids=tuple(dict.fromkeys(l["product_id"] for l in lines)),
-                    variant_ids=tuple(dict.fromkeys(l["variant_id"] for l in lines if "variant_id" in l)),
-                    quantity_total=sum(l.get("quantity", 0) for l in lines))
-        base["fingerprint"] = fp = _fingerprint(action, ctx.session_id, params)
-        prior = ledger.get(ctx.session_id, key)
+        base["action"] = name
+        aid, sid = proposal.action_id, proposal.session_id
+        if not (isinstance(aid, str) and _ID.match(aid)):
+            raise _Reject("invalid_action_id")
+        base["action_id"] = aid
+        if not (isinstance(sid, str) and _REF.match(sid)):
+            raise _Reject("invalid_session")
+        params = _normalise(name, proposal.params)
+        _check_constraints(name, proposal.constraints, params)
+        base["fingerprint"] = fp = _fingerprint(name, sid, params)
+        prior = ledger.get(sid, aid)
         if prior is not None:
             if prior.fingerprint != fp:
                 raise _Reject("idempotency_conflict")
             return Decision(**{**prior.__dict__, "replayed": True})
-        for line in lines:
-            _check_state(state, line, priced=action is not ActionType.SHOW_PRODUCT)
+        if name in CONFIRMATION_REQUIRED:
+            try:
+                _check_confirmation(proposal.confirmation, aid, sid, fp, now)
+            except _Reject as r:
+                if str(r) == "needs_confirmation":
+                    return Decision("needs_confirmation", "confirmation_required", **base)
+                raise
         decision = Decision("validated", "ok", **base)
-        ledger.put(ctx.session_id, key, decision)
+        ledger.put(sid, aid, decision)
+        return decision
     except _Reject as r:
-        return reject(str(r))
-    except Exception:  # fail closed on malformed catalogue/ledger; never echo the error text
-        return reject("invalid_state")
-    return decision
+        return Decision("rejected", str(r), **base)
+    except Exception:  # fail closed on malformed input/ledger; never echo error text
+        return Decision("rejected", "invalid_state", **base)
