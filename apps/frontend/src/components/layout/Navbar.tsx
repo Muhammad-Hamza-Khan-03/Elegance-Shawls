@@ -26,11 +26,11 @@ function ProductsMenu() {
           <ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       </div>
-      {open && <ul id="products-menu" className="absolute left-0 top-full z-50 min-w-44 pt-2">
+      <ul id="products-menu" className={`absolute left-0 top-full z-50 min-w-44 pt-2 ${open ? '' : 'hidden'}`}>
         <li className="list-none overflow-hidden rounded-2xl border border-border bg-background p-1.5 shadow-lg">
           <ul>{categoryLinks.map((link) => <li key={link.href}><Link href={link.href} onClick={() => setOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{link.label}</Link></li>)}</ul>
         </li>
-      </ul>}
+      </ul>
     </div>
   );
 }
