@@ -38,20 +38,19 @@ async def claim(session: AsyncSession, *, session_hash: str, key: str, action_ty
             .on_conflict_do_update(
                 index_elements=[A.session_hash, A.idempotency_key],
                 set_={**values, "attempt": A.attempt + 1, "result": null(), "reason": null()},
-                where=or_(A.status == "failed", and_(A.status == "pending", A.lease_expires_at <= now)))
+                where=and_(A.fingerprint == fingerprint,
+                           or_(A.status == "failed", and_(A.status == "pending", A.lease_expires_at <= now))))
             .returning(A.id, A.attempt))).first()
         if owned:
             return Claim("claimed", id=owned.id, attempt=owned.attempt)
     prior = (await session.execute(select(A).where(A.session_hash == session_hash, A.idempotency_key == key))).scalar_one_or_none()
     if prior is None:
         return Claim("absent")
+    if prior.fingerprint != fingerprint:
+        return Claim("conflict")
     if prior.status == "committed":
-        if prior.fingerprint != fingerprint:
-            return Claim("conflict")
         await session.execute(update(A).where(A.id == prior.id).values(replay_count=A.replay_count + 1))
         return Claim("replay", result=prior.result)
-    if prior.status == "pending" and prior.fingerprint != fingerprint:
-        return Claim("conflict")
     live = prior.status == "pending" and prior.lease_expires_at > now
     return Claim("in_progress") if create or live else Claim("absent")  # create: lost a race to a newer claim, retry shortly
 
