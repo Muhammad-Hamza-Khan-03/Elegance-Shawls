@@ -9,7 +9,7 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from actions import executor as x
@@ -19,14 +19,17 @@ from assistant.stream import SERVER_PERMISSIONS  # never taken from the client
 from database.pg import get_pg_session
 from repositories import enquiries as repo
 from repositories.enquiries import Line
+from schemas.action_schema import canonical_action_name
 
 router = APIRouter(prefix="/v1/assistant/actions", tags=["Assistant"])
 
 
 class ExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     session_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,128}$")
     idempotency_key: str = Field(pattern=r"^idem_[A-Za-z0-9_-]{16,64}$")
-    action_type: Literal["add_to_cart", "start_whatsapp_enquiry"]
+    action_type: Literal["add_to_cart", "start_whatsapp_order"]
     confirmed: Literal[True]
     params: dict[str, Any]
 
@@ -37,7 +40,7 @@ def _lines(params: dict) -> list[dict]:
 
 @router.post("/execute")
 async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_session)):
-    proposal = k.ActionProposal(body.action_type, body.idempotency_key, body.params, k.ActionContext(body.session_id, SERVER_PERMISSIONS))
+    proposal = k.ActionProposal(k.normalize_action(body.action_type), body.idempotency_key, body.params, k.ActionContext(body.session_id, SERVER_PERMISSIONS))
     catalogue: dict = {}
 
     async def load() -> k.InMemoryCatalogue:
@@ -63,4 +66,4 @@ async def execute(body: ExecuteRequest, session: AsyncSession = Depends(get_pg_s
     out = await x.execute(proposal, confirmed=body.confirmed, load_catalogue=load, perform=perform, store=SqlExecutionStore(session))
     if out.outcome != "executed":
         raise HTTPException(status_code=409, detail={"status": "rejected", "reason": out.reason})
-    return {"status": "executed", "action_type": out.action_type, "replayed": out.replayed, "result": out.result}
+    return {"status": "executed", "action_type": canonical_action_name(out.action_type), "replayed": out.replayed, "result": out.result}

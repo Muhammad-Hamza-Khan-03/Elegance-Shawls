@@ -11,11 +11,12 @@ import json
 from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 from actions import kernel as k
+from schemas.action_schema import CANONICAL_ACTIONS
 
 PROTOCOL_VERSION = 1
 MAX_EVENTS = 40
 MAX_TEXT_CHARS = 4000
-EXECUTABLE = frozenset({"add_to_cart", "start_whatsapp_enquiry"})
+EXECUTABLE = frozenset({"add_to_cart", "start_whatsapp_order"})
 SERVER_PERMISSIONS = frozenset({"catalogue:read", "cart:propose", "enquiry:initiate"})  # never taken from the client
 
 MEMORY_KEYS = frozenset({"favourite_colour", "budget_max_pkr", "preferred_category"})  # mirrors assistant/personal.py (this module imports nothing of the app)
@@ -46,7 +47,7 @@ async def fake_provider(message: str, idempotency_key: str) -> AsyncIterator[dic
         yield {"type": "banana"}
         return
     yield {"type": "product", "product_id": DEMO_PRODUCT}
-    yield {"type": "proposal", "action_type": "show_product", "idempotency_key": _key(idempotency_key, 1),
+    yield {"type": "proposal", "action_type": "open_product", "idempotency_key": _key(idempotency_key, 1),
            "params": {"product_id": DEMO_PRODUCT, "expected_revision": 7}}
     price = 3400 if "stale" in text else 3500
     yield {"type": "proposal", "action_type": "add_to_cart", "idempotency_key": _key(idempotency_key, 2),
@@ -121,12 +122,17 @@ async def stream_events(
                         break
                     yield out("memory_suggestion", {"key": key, "value": value})   # a question for the customer; nothing is saved here
                 elif kind == "proposal":
-                    proposal = k.ActionProposal(chunk.get("action_type"), chunk.get("idempotency_key"), chunk.get("params"), ctx)
+                    raw_action = chunk.get("action_type")
+                    if raw_action not in CANONICAL_ACTIONS:
+                        proposal = k.ActionProposal("__legacy_or_unknown__", chunk.get("idempotency_key"), chunk.get("params"), ctx)
+                    else:
+                        proposal = k.ActionProposal(raw_action, chunk.get("idempotency_key"), chunk.get("params"), ctx)
                     decision = k.validate(proposal, catalogue, ledger)
-                    # Only allowlisted names are echoed; everything else about a rejected proposal stays out of the stream.
-                    data = {"action_type": decision.action_type, "idempotency_key": decision.idempotency_key,
+                    # Only canonical allowlisted names are echoed; rejected legacy/unknown input is fail-closed.
+                    public_action = raw_action if raw_action in CANONICAL_ACTIONS else "unknown"
+                    data = {"action_type": public_action, "idempotency_key": decision.idempotency_key,
                             "session_id": session_id, "decision": decision.audit()}
-                    if decision.outcome == "validated" and decision.action_type in EXECUTABLE:
+                    if decision.outcome == "validated" and public_action in EXECUTABLE:
                         data["params"] = proposal.params  # kernel-checked; lets the UI ask the user to confirm. Executes nothing.
                     yield out("proposal", data)
                 else:
