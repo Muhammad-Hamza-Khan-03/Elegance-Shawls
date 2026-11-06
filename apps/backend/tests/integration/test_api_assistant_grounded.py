@@ -104,7 +104,7 @@ def test_llm_writes_the_wording_but_cards_and_proposals_stay_database_driven(cli
     assert [d["name"] for e, d in events if e == "product"] == ["Ruby Shawl"]  # the invented product is only words
     assert next(d for e, d in events if e == "text")["delta"].startswith("Ye raha")
     prompt = gateway.prompts[0][1]["content"]
-    assert "Ruby Shawl (shawls): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt and "looking for, in English: shawl" in prompt
+    assert "Ruby Shawl (shawls, colour Red): PKR 1500" in prompt and "colour red" in prompt and "at most PKR 2000" in prompt and "in stock" in prompt and "looking for, in English: shawl" in prompt
     assert "add the first one" not in " ".join(d["delta"] for e, d in events if e == "text")  # the model speaks; no canned line
     assert "red shawl" in gateway.prompts[0][1]["content"] and gateway.prompts[0][0]["role"] == "system"
 

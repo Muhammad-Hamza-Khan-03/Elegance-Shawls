@@ -224,3 +224,18 @@ def test_only_validated_executable_proposals_carry_params_for_the_confirmation_s
     assert props[1]["params"]["quantity"] == 1 and props[1]["params"]["expected_unit_price"] == 3500
     stale = [e[2] for e in parse(client().post("/v1/assistant/stream", json=body(message="stale")).text) if e[1] == "proposal"]
     assert "params" not in stale[1]  # rejected: nothing to confirm
+
+
+@pytest.mark.asyncio
+async def test_facts_name_the_matching_variant_colour_not_only_the_product_name(monkeypatch):
+    from assistant import grounded
+    seen = {}
+
+    async def wording(message, facts, fallback, personal=False):
+        seen["facts"] = facts
+        return "ok", False
+    monkeypatch.setattr(grounded, "_wording", wording)
+    product = {"id": "p1", "revision": 1, "name": "Fringed Red Stole", "category": "stoles",
+               "variants": [{"id": "v1", "color": "Blue", "price": 4800, "currency": "PKR", "stock": 9, "is_active": True}]}
+    [c async for c in grounded._cards("blue stoles", [product], "idem_" + "a" * 16, "colour blue", "stole")]
+    assert "colour Blue" in seen["facts"] and "PKR 4800" in seen["facts"]
