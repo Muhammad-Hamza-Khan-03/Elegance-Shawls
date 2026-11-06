@@ -100,6 +100,7 @@ class CustomerSession(Base):
     __tablename__ = "customer_sessions"
     __table_args__ = (
         CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_format"),
+        CheckConstraint("exchange_hash IS NULL OR exchange_hash ~ '^[0-9a-f]{64}$'", name="exchange_hash_format"),
         CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
         UniqueConstraint("token_hash"),
         Index("ix_customer_sessions_customer_id_live", "customer_id", postgresql_where=text("revoked_at IS NULL")),
@@ -108,10 +109,26 @@ class CustomerSession(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
     token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    exchange_hash: Mapped[str | None] = mapped_column(CHAR(64), unique=True)
     created_at: Mapped[datetime] = _created_at()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class AnonymousMerge(Base):
+    """One terminal, consented attribution per signed anonymous event session."""
+    __tablename__ = "anonymous_merges"
+    __table_args__ = (
+        CheckConstraint("session_hash ~ '^[0-9a-f]{64}$'", name="session_hash_format"),
+        CheckConstraint("merged_count BETWEEN 1 AND 100", name="merged_count_bounds"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False, unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    merged_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
 
 
 class Conversation(Base):

@@ -44,6 +44,8 @@ class settings(BaseSettings):
     customer_session_ttl_seconds: int = 7 * 86400
     customer_session_max_active: int = 5
     customer_auth_rate_limit_per_minute: int = 10
+    # Batch A only: explicit event attribution is off by default and limited to isolated staging.
+    customer_anonymous_merge_enabled: bool = False
 
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.
