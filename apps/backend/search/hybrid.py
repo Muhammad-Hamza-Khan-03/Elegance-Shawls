@@ -32,7 +32,7 @@ from catalog.search import BATCH, MAX_LIMIT, Fetch, Hit, evaluate, key, product_
 from models.relational_model import ProductEmbedding, VariantEmbedding
 from repositories import embeddings as emb_repo
 from search import embedding_service as svc
-from search import local_e5
+from search import local_e5, local_gemma
 from search.providers import EmbeddingError, EmbeddingProvider, embed_checked, provider_for
 from search.representations import REPRESENTATION_VERSION
 
@@ -178,8 +178,9 @@ async def query_vector(text: str, *, enabled: bool, name: str, dimensions: int) 
     if not enabled or not text.strip():
         return None, None
     try:
-        if name == "local_e5":
-            provider = await asyncio.to_thread(local_e5.local_provider, "query")   # first call loads the model
+        if name in ("local_e5", "local_embeddinggemma2"):
+            local = local_e5 if name == "local_e5" else local_gemma
+            provider = await asyncio.to_thread(local.local_provider, "query")   # first call loads the model
             if dimensions != provider.dimensions:
                 return None, None
         else:

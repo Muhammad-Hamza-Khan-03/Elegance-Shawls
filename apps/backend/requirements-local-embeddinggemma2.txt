@@ -1,0 +1,6 @@
+# Optional, local evaluation only (search/local_gemma.py, google/embeddinggemma-2). Never install in production: it pulls in torch.
+# The model's config_sentence_transformers.json records sentence_transformers 6.1.0, so require at least that.
+# Transitive deps are not pinned or covered by CI pip-audit: lock and audit on the evaluation machine.
+# Weights are never downloaded by the provider; fetch revision f9972ac22e696a105c482202646979e33e4b5a1e yourself.
+-r requirements.txt
+sentence-transformers>=6.1.0

@@ -130,6 +130,8 @@ class settings(BaseSettings):
     local_semantic_search_enabled: bool = False
     local_e5_model_path: str = ""
     local_e5_model_revision: str = ""
+    local_gemma_model_path: str = ""      # EmbeddingGemma 2 (local_embeddinggemma2); see search/local_gemma.py
+    local_gemma_model_revision: str = ""
     embedding_max_jobs: int = 2
     embedding_job_timeout_seconds: int = 60
     embedding_max_attempts: int = 3

@@ -85,10 +85,14 @@ async def main() -> int:
     if not postgres_configured():
         print("DATABASE_URL is not set", file=sys.stderr)
         return 2
-    if settings.embedding_provider == "local_e5":   # local-only; refuses unless flagged in a local environment
-        from search.local_e5 import local_provider
+    if settings.embedding_provider in {"local_e5", "local_embeddinggemma2"}:   # local-only; refuses unless flagged in a local environment
+        # Both local adapters enforce the same opt-in, offline, revision/digest and
+        # lexical-fallback/error semantics used by the query path. Keep provider
+        # selection explicit so existing fake/other providers remain unchanged.
+        from search import local_e5, local_gemma
 
-        provider = local_provider("passage")
+        local = local_e5 if settings.embedding_provider == "local_e5" else local_gemma
+        provider = local.local_provider("passage")
     else:
         provider = provider_for(settings.embedding_provider, settings.embedding_dimensions)
     engine = make_engine()
