@@ -152,7 +152,8 @@ async def _cards(message: str, products: list[dict], idempotency_key: str, appli
                  memory: tuple[list[str], bool] = ([], False), kept: list[str] | None = None,
                  close: list[str] | None = None) -> AsyncIterator[dict]:
     """memory = (labels of saved preferences applied, whether a cleared no-training chain may see them)."""
-    lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
+    # the colour is the matching variant's, not the product name's ("Fringed Red Stole" can be sold in blue): without it the model denies a match
+    lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}, colour {_buyable(p).get('color') or 'n/a'}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
                       else f"- {p['name']} ({p.get('category', 'item')}): out of stock" for p in products)
     facts = (f"Filters the customer asked for (every product below already satisfies them): {applied}.\n"
              f"What the customer is looking for, in English: {terms or 'not specified'}.\nMatching products:\n{lines}")
