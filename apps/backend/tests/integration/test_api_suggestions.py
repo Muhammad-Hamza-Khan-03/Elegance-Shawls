@@ -66,6 +66,105 @@ def test_suggestions_fail_closed_when_consent_is_revoked(env):
 
 
 @pytest.mark.integration
+def test_impression_requires_previously_issued_result_set(env):
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    item = response.json()["items"][0]
+    evidence = item["reason"]["product_evidence"]
+    impression = {
+        "recommendation_id": item["id"],
+        "product_id": item["product_id"],
+        "variant_id": evidence["variant_id"],
+        "request_id": "recomputed-but-unissued",
+        "position": 0,
+        "context": "recommendation_grid",
+        "experiment_arm": response.json()["experiment_arm"],
+        "preference_version": 1,
+        "catalogue_revision": evidence["product_revision"],
+        "source_memory_ids": item["reason"]["source_memory_ids"],
+    }
+    rejected = env.client.post("/v1/me/suggestions/impressions", json=impression,
+                               headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert rejected.status_code == 422
+    assert "not server-issued" in rejected.json()["detail"]
+
+    impression["request_id"] = response.json()["request_id"]
+    accepted = env.client.post("/v1/me/suggestions/impressions", json=impression,
+                               headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert accepted.status_code == 204
+
+    issued_after = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"}).json()
+    env.sql("update memory_items set status = 'deleted', key = null, value = null, reason = null, source_ref = null, fingerprint = null, deleted_at = now() where customer_id = :id", id=env.customer)
+    stale = dict(impression, request_id=issued_after["request_id"])
+    deleted = env.client.post("/v1/me/suggestions/impressions", json=stale,
+                              headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert deleted.status_code == 422
+    assert "no longer current" in deleted.json()["detail"]
+
+
+@pytest.mark.integration
+def test_impression_position_must_match_issued_result_order(env):
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    payload = response.json()
+    item = payload["items"][0]
+    evidence = item["reason"]["product_evidence"]
+    impression = {
+        "recommendation_id": item["id"],
+        "product_id": item["product_id"],
+        "variant_id": evidence["variant_id"],
+        "request_id": payload["request_id"],
+        "position": 1,
+        "context": "recommendation_grid",
+        "experiment_arm": payload["experiment_arm"],
+        "preference_version": 1,
+        "catalogue_revision": evidence["product_revision"],
+        "source_memory_ids": item["reason"]["source_memory_ids"],
+    }
+    rejected = env.client.post("/v1/me/suggestions/impressions", json=impression,
+                               headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert rejected.status_code == 422
+    assert "position" in rejected.json()["detail"]
+
+    impression["position"] = 0
+    accepted = env.client.post("/v1/me/suggestions/impressions", json=impression,
+                               headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert accepted.status_code == 204
+
+
+@pytest.mark.integration
+def test_regrant_invalidates_an_old_issued_result_set(env):
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    payload = response.json()
+    item = payload["items"][0]
+    evidence = item["reason"]["product_evidence"]
+    impression = {
+        "recommendation_id": item["id"],
+        "product_id": item["product_id"],
+        "variant_id": evidence["variant_id"],
+        "request_id": payload["request_id"],
+        "position": 0,
+        "context": "recommendation_grid",
+        "experiment_arm": payload["experiment_arm"],
+        "preference_version": 1,
+        "catalogue_revision": evidence["product_revision"],
+        "source_memory_ids": item["reason"]["source_memory_ids"],
+    }
+    env.sql("update memory_consents set granted = false, changed_at = now() where customer_id = :id", id=env.customer)
+    env.sql("update memory_consents set granted = true, changed_at = now() + interval '1 second' where customer_id = :id", id=env.customer)
+    rejected = env.client.post("/v1/me/suggestions/impressions", json=impression,
+                               headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
+    assert rejected.status_code == 422
+    assert "consent" in rejected.json()["detail"]
+
+
+@pytest.mark.integration
+def test_synthetic_subject_is_required_when_synthetic_only_even_without_experiment(env, monkeypatch):
+    monkeypatch.setattr(settings, "recommendations_experiment_enabled", False)
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": "synthetic:wrong-customer"})
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+@pytest.mark.integration
 def test_suggestions_fail_closed_for_stale_catalogue(env):
     env.sql("update products set updated_at = now() - interval '25 hours' where slug = 'blue-shawl'")
     response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})

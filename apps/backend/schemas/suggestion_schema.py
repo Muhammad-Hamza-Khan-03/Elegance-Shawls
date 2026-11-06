@@ -49,6 +49,7 @@ class SuggestionList(BaseModel):
     engine_version: str
     feature_flag: str = "m4b_explainable_recommendations"
     experiment_arm: str = "control"
+    request_id: str = ""
 
 
 class SuggestionImpressionIn(BaseModel):
