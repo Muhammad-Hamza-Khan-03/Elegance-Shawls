@@ -4,7 +4,7 @@ Short rules plus a repeatable audit for humans and agents. The release flow itse
 
 ## Rules
 
-1. **One purpose and one owner per branch.** A task branch is cut from the latest `origin/staging-integration`, named by its purpose, and owned by one person or Kanban task (put the task id or issue number in the PR).
+1. **One purpose and one owner per branch.** A task branch is cut from the latest `origin/integration`, named by its purpose, and owned by one person or Kanban task (put the task id or issue number in the PR).
 2. **Short-lived.** Open the PR early. A branch with no PR and no commits for 7 days is a cleanup candidate, not a parking spot.
 3. **Worktrees only when justified**: parallel work, or a dirty main checkout. Reuse an existing worktree for the same purpose before adding another. Disposable QA checkouts are `git worktree add --detach` and are removed when the verdict is recorded.
 4. **Clean up after merge.** Once a PR is squash-merged and its checks are green, delete the remote branch (GitHub does this when "automatically delete head branches" is on; `gh pr merge --delete-branch` also does it), remove its worktree, delete the local branch.
@@ -12,7 +12,7 @@ Short rules plus a repeatable audit for humans and agents. The release flow itse
 6. **Archive before retiring unmerged work.** Tag the tip `archive/<date>/<branch>`, push the tag, verify `git ls-remote` returns the same SHA, and only then delete the branch. Pushing a tag changes nothing else.
 7. **Squash merges hide ancestry.** `git branch --merged` misses squash-merged branches. Prove "merged" by comparing the branch tip to the merged PR's `headRefOid` (`gh pr view <n> --json headRefOid`) or by tree equality (`git merge-tree --write-tree <base> <branch>` equals `<base>^{tree}`). A branch whose tip differs from its PR head has commits that were never reviewed: archive it.
 8. **Deleting an ignored file is deleting data.** `git worktree remove` also deletes ignored files (`.env`, models, datasets, evidence). Before removing any worktree list `git status --porcelain --ignored -uall` and keep or move anything that is not a reproducible build artifact (`node_modules`, `.venv`, `__pycache__`, `.next`, test output, `*.tsbuildinfo`, `next-env.d.ts`).
-9. **Permanent branches are `main`, `staging`, `staging-integration`.** Never delete, reset or force-push them.
+9. **Permanent branches are `main`, `staging`, `integration`.** Never delete, reset or force-push them.
 10. **Keep Kanban, issues and PRs in sync.** A Kanban task that is `done` or `archived` no longer protects its workspace; one that is `blocked` or `todo` still does. When you retire a branch, comment on the issue or task with the archive tag.
 
 ## Audit procedure (about five minutes)
@@ -43,4 +43,4 @@ Then, per candidate:
 
 ## Branch names
 
-The development branch is currently `staging-integration` because an `integration/...` ref used to occupy the `integration` namespace (git cannot hold `integration` and `integration/x` together). No `integration/*` ref exists any more, so renaming is possible, but it is a coordinated change (CI triggers in `.github/workflows/ci.yml`, branch protection and required checks, `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, this folder's docs, open PR bases, and every agent or Kanban task that names the branch). It needs explicit approval and is not done by routine cleanup.
+The development branch is `integration`. It was called `staging-integration` until 2026-11-06 because an `integration/...` ref occupied the namespace (git cannot hold `integration` and `integration/x` together). That ref was fully merged and retired, the branch was recreated at the same commit as `integration` (no history rewritten), and CI triggers, branch protection, open PR bases, docs and agent instructions were moved before the old name was retired. Never create an `integration/...` branch; use `integration-<topic>` or a type prefix (`feature/`, `fix/`, `ai/`, ...).

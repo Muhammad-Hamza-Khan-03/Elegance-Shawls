@@ -84,42 +84,42 @@ Mandatory for every session. Full detail: `docs/RELEASE_WORKFLOW.md`.
 
 ```text
 feature/* fix/* ai/* docs/* refactor/* test/* infra/*
-        -> staging-integration  (development source of truth)
+        -> integration          (development source of truth)
         -> staging              (release-candidate source of truth)
         -> main                 (production source of truth)
 ```
 
-**Never assume `main` is the base for new feature development.** Exactly three permanent branches exist: `staging-integration`, `staging`, `main`. Never delete them, never force-push them, never reset or recreate `staging-integration` from `main`.
+**Never assume `main` is the base for new feature development.** Exactly three permanent branches exist: `integration`, `staging`, `main`. Never delete them, never force-push them, never reset or recreate `integration` from `main`.
 
 ### When asked to implement a feature or fix
 1. `git fetch --prune`; identify the current branch and worktree (use a worktree if the main checkout has uncommitted work; never bare `git stash`).
-2. Base on the latest `origin/staging-integration` and create a short-lived, meaningfully named branch (`feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`).
+2. Base on the latest `origin/integration` and create a short-lived, meaningfully named branch (`feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`).
 3. Implement, run the relevant tests (frontend lint/typecheck/test, backend `pytest`, `-m integration` when the DB layer or migrations change).
 4. Commit with conventional prefixes (no Co-Authored-By or attribution trailers), push the branch.
-5. Open a PR targeting `staging-integration`; squash merge is the only merge method the repo allows. Never target `main` unless the user explicitly requests a production promotion.
+5. Open a PR targeting `integration`; squash merge is the only merge method the repo allows. Never target `main` unless the user explicitly requests a production promotion.
 6. Do not bypass staging for normal releases. Do not deploy to production, modify production databases, or run migrations against shared environments without explicit approval.
-7. Do not force-push shared branches. Do not delete active development branches or unique unfinished work; delete completed branches only after their commits are reachable from `staging-integration` and nothing depends on them.
+7. Do not force-push shared branches. Do not delete active development branches or unique unfinished work; delete completed branches only after their commits are reachable from `integration` and nothing depends on them.
 8. Keep documentation in sync with architectural changes.
 
 ### When asked to promote to staging
-Compare `staging-integration` with `staging` (`git log origin/staging..origin/staging-integration`), pick a green release-candidate SHA, check CI, open a PR targeting `staging`, and record the candidate SHA in the PR. Do not involve `main`. Fixes found in staging are made on `staging-integration` first.
+Compare `integration` with `staging` (`git log origin/staging..origin/integration`), pick a green release-candidate SHA, check CI, open a PR targeting `staging`, and record the candidate SHA in the PR. Do not involve `main`. Fixes found in staging are made on `integration` first.
 
 ### When asked to promote to production
 Use only a verified `staging` SHA. Verify CI and QA evidence, review migrations and the rollback procedure, ask for explicit production approval, then promote through a PR to `main`. Never deploy silently.
 
 ### Hotfixes
-`hotfix/<name>` from the latest `main`; explicit approval before merging; then carry the same fix into `staging-integration` and `staging` (cherry-pick; do not promote unrelated unfinished work).
+`hotfix/<name>` from the latest `main`; explicit approval before merging; then carry the same fix into `integration` and `staging` (cherry-pick; do not promote unrelated unfinished work).
 
 ### Branch cleanup and reconciliation safety
 **Hygiene rules (details and the audit procedure: `docs/REPO_HYGIENE.md`, read-only audit: `scripts/repo_audit.sh`).** One purpose and owner per task branch, kept short-lived; create a worktree only when justified and reuse existing ones; after a squash-merge and green checks delete the remote branch, remove the worktree, delete the local branch. Never remove a dirty, in-use, Kanban-owned or open-PR worktree and never force-remove. Prove "merged" by the PR head SHA or tree equality, not branch names. Archive unmerged work as a pushed `archive/<date>/<branch>` tag before retiring it. Keep Kanban tasks, GitHub issues and PRs in sync.
 
-Audit every local/remote ref and every worktree by SHA, ancestry, tree/patch equivalence, dirty state, open PR/issue/CI references, and QA evidence; branch names alone are not evidence. Preserve `main`, `staging`, and `staging-integration` permanently. Never force-push, reset, rename, or delete a ref or worktree that is active, dirty, uniquely valuable, ambiguous, or referenced by a worker.
+Audit every local/remote ref and every worktree by SHA, ancestry, tree/patch equivalence, dirty state, open PR/issue/CI references, and QA evidence; branch names alone are not evidence. Preserve `main`, `staging`, and `integration` permanently. Never force-push, reset, rename, or delete a ref or worktree that is active, dirty, uniquely valuable, ambiguous, or referenced by a worker.
 
 For a branch proven merged, superseded, or obsolete, create a durable `archive/reconciliation/<date>-<source>` ref first, verify that the archive SHA equals the source SHA and is reachable from the remote where possible, then remove only a clean inactive worktree and its source branch non-forcibly. Keep detached QA worktrees and untracked evidence until their owner confirms they are disposable. Record every archive/removal decision in a durable reconciliation artifact. Prune only stale worktree metadata; never use broad `git clean`.
 
-`staging-integration` is the canonical integration/development source of truth. If an exact `integration` ref cannot be created without colliding with an existing namespace or active ref, do not rename or delete that ref; use `staging-integration` as the integration tier and document the exception. The release hierarchy is always `feature/fix/ai -> integration (`staging-integration`) -> staging -> main`.
+`integration` is the canonical integration/development source of truth (it was named `staging-integration` until 2026-11-06; the old name was retired after the owner-approved migration, so any remaining mention is historical). The release hierarchy is always `feature/fix/ai -> integration -> staging -> main`.
 
-`staging-integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
+`integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
 
 ## Conventions
 

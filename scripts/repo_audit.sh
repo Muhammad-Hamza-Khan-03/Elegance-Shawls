@@ -4,7 +4,7 @@
 # Needs `git`; open PR heads are marked when `gh` is installed and logged in.
 set -euo pipefail
 git fetch origin --prune -q
-CANON=(origin/main origin/staging origin/staging-integration)
+CANON=(origin/main origin/staging origin/integration)
 open_heads=""; command -v gh >/dev/null && open_heads=$(gh pr list --state open --json headRefName -q '.[].headRefName' 2>/dev/null || true)
 is_open() { grep -qxF -- "$1" <<<"$open_heads"; }
 held() { git for-each-ref --contains "$1" --count=1 --format=x refs/heads refs/remotes refs/tags | grep -q x; }
@@ -22,6 +22,6 @@ while IFS=$'\t' read -r path head br; do
 done
 printf '\n== local branches already merged into a canonical branch (candidates, verify before deleting)\n'
 for c in "${CANON[@]}"; do git branch --format='%(refname:short)' --merged "$c"; done | sort -u |
-  grep -vxE 'main|staging|staging-integration' || true
+  grep -vxE 'main|staging|integration' || true
 printf '\n== remote branches (excluding canonical)\n'
-git branch -r --format='%(refname:short)' | grep -vE '^origin/(HEAD|main|staging|staging-integration)$' || true
+git branch -r --format='%(refname:short)' | grep -vE '^origin/(HEAD|main|staging|integration)$' || true
