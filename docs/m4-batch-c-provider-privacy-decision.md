@@ -1,34 +1,74 @@
-# M4 Batch C provider privacy decision packet
+# M4 Batch C provider decision record (idempotent, privacy gate only)
 
-**Task:** `t_m4c_provider_decision`
-**Mode:** privacy-readiness only; no provider selected, no spend, no credentials, no live calls.
-**Decision:** `BLOCKED_PROVIDER_PRIVACY_DECISION`
+**Task ID:** `t_m4c_provider_decision`
+**Parent:** `t_m4c_production_memory_privacy_gate`
+**Idempotency key:** `m4c-production-memory-privacy-gate/provider-decision/v1`
+**Packet revision:** `2026-11-06-origin-staging-1544271`
+**Decision state:** `BLOCKED_PROVIDER_PRIVACY_DECISION`
+**Selection:** none. No provider has been selected, purchased, credentialed, called, or activated.
 
-## Scope and non-negotiables
+Re-applying this record updates this same task and idempotency key. It must not create a second provider-decision task, alter `release_ready`, enable production memory, send a provider request, or incur spend.
 
-This packet compares only options with a verifiable no-training or self-hosted boundary. It does not recommend or activate a paid provider. Free-tier and opt-out-only claims are rejected. Customer memory remains disabled (`MEMORY_EXTRACTION_ENABLED=false` by default); PostgreSQL remains the sole application database.
+## Scope and hard boundaries
 
-## Candidate evidence matrix
+This is a production-memory privacy decision gate, not a provider rollout. The only acceptable future choices are:
 
-| Option | Privacy boundary that can be verified | Retention/deletion evidence still required | Spend/approval status |
+1. an exact paid API account/contract with written no-training/data-use terms for the exact account, endpoint, and model; or
+2. an exact self-hosted/local model snapshot with license, provenance, pinned digests, host isolation, and deletion/retention controls.
+
+Free tiers, consumer plans, informal opt-out claims, unverified reseller/cloud terms, and “API data is usually not used for training” are not sufficient evidence. Customer memory extraction remains disabled by default (`MEMORY_EXTRACTION_ENABLED=false`); PostgreSQL remains the sole application database. No real customer data, credentials, live provider calls, production/VPS/main changes, deployment, spend, issue closure, or `release_ready=true` is allowed by this record.
+
+## Current implementation boundary (verified against origin/staging)
+
+- `MemoryProvider` is a provider-neutral PostgreSQL CRUD/consent contract; it does not install or call an extraction model (`apps/backend/memory/provider.py`).
+- The current PostgreSQL provider receives only a server-verified customer principal and returns a public item shape without owner/fingerprint fields; it is not evidence that a model provider has been approved.
+- `memory/queue_guard.py` is a fail-closed pre-write guard. It rejects disabled extraction, mismatched `memory_version`, pre-tombstone source time, and future-dated work.
+- M2 local EmbeddingGemma2, promoted separately at `15442712fa4799cfc9e3bfb889f77b1769beaffa`, is a search/embedding path. It is **not** a memory-extraction model and must not be treated as model-backed memory evidence.
+- The M4 synthetic runner is a deterministic rule/fixture contract check. It makes no provider calls and no database writes; it is not a model-quality or production approval.
+
+## Option comparison — no option selected
+
+| Criterion | Paid no-training API | Self-hosted/local model |
+|---|---|---|
+| Training/data-use boundary | Must attach the exact commercial/API terms plus account/endpoint eligibility proving no training or model improvement for submitted memory content. “Default” language is not enough without account-level verification. | No third-party prompt recipient when runtime is offline and outbound sockets are blocked. Must still review model license, weight provenance, telemetry, host operators, and supply-chain risk. |
+| Retention/deletion | Must obtain exact request/log/abuse-monitoring retention, deletion SLA, backup deletion, legal-hold, and account termination behavior; prove the configured retention setting and deletion request path. | Define local request, cache, application log, worker queue, backup/snapshot, and crash-dump retention. Prove deletion from each applicable store and document backup expiry/crypto-erasure behavior. |
+| Residency/subprocessors | Must name processing regions, subprocessors, transfer mechanism, support access, incident notice, and customer-controlled region/endpoint. Verify the exact purchased service, not a generic provider page. | Choose the host/region and operators; document ingress/egress, disks/backups, admin access, patching, key management, isolation, and incident response. No network egress is required for inference. |
+| Operational burden | Lower model operations burden; recurring usage cost and provider-policy/availability dependency. Budget, rate limits, abuse controls, and provider outage behavior require approval. | Higher responsibility for capacity, patching, model integrity, observability, deletion, failover, and rollback; avoids per-request provider spend but may require infrastructure spend. |
+| Extraction/model separation | Contract and runtime configuration must prove the approved extraction model is distinct from search embeddings and cannot silently fall back to a non-cleared model. | Pin a separate extraction artifact and runtime; outbound network must be blocked; search model and extraction model use separate config names, caches, eval reports, and rollback switches. |
+| Current status | **Candidate only; not selected.** No account, contract, setting, credential, or spend approved. | **Candidate only; not selected.** No snapshot/license/digest has been approved for memory extraction. |
+
+### Evidence references (pointers, not approvals)
+
+- OpenAI API data-use/privacy overview: <https://openai.com/enterprise-privacy/> and <https://platform.openai.com/docs/models/how-we-use-your-data>.
+- Anthropic commercial/legal materials: <https://www.anthropic.com/legal> and <https://www.anthropic.com/legal/supported-regions>.
+- Transformers local/offline operation: <https://huggingface.co/docs/transformers/>.
+
+Provider terms and settings can change. The named owner must re-check the exact account/contract or model artifact immediately before any activation. No web reference alone clears this gate.
+
+## Verifiable decision criteria
+
+A future candidate is `CLEARED_FOR_REVIEW` only when every applicable item below has a dated artifact, owner, and reproducible verification. Until then the status is `BLOCKED_PROVIDER_PRIVACY_DECISION`.
+
+| ID | Criterion | Required proof | Current evidence/status |
 |---|---|---|---|
-| OpenAI API business/API terms + eligible Zero Data Retention controls | Official API/business privacy materials state API inputs/outputs are not used to train by default; ZDR is endpoint/account eligibility, not assumed | Written account-level ZDR approval, abuse-monitoring retention, subprocessors/region, deletion and incident terms | **Not selected.** Paid account and any spend require Hamza approval |
-| Anthropic commercial API | Official commercial/API terms and privacy documentation must be attached for the exact account and product; no inference from consumer plans | Written retention, training-use, subprocessors/region, deletion and security terms for the exact plan | **Not selected.** Paid account and any spend require Hamza approval |
-| Self-hosted local model (for example a pinned Transformers snapshot) | No provider receives prompts; runtime can be offline with local files only and outbound sockets blocked | Model license, weight provenance, host access controls, disk/log retention, patching, deletion proof and resource budget | **Preferred evaluation path, not a selection.** No hosted spend |
+| PD-01 | No-training or self-hosted isolation | Signed/dated exact contract and account setting, or pinned local model snapshot/license plus offline socket-blocked runtime proof | **BLOCKED** — no candidate selected |
+| PD-02 | Retention/deletion | Retention schedule for prompts, outputs, logs, queue, caches, backups; deletion/tombstone procedure and observed proof; legal-hold/incident exceptions | **PARTIAL** — application memory retention/tombstone controls exist; provider/model retention is unverified |
+| PD-03 | Residency/security | Processing region, subprocessors/operators, access roles, encryption, key ownership, network controls, incident notice, audit/log policy | **BLOCKED** — exact boundary not selected/reviewed |
+| PD-04 | Extraction model separation | Distinct extraction model/config/cache/eval artifact; explicit prohibition on using M2 search embeddings as extraction evidence; no-cleared-model fail-closed test | **PASS for boundary, not model approval** — code has provider gate; no extraction model selected |
+| PD-05 | Eval evidence | Non-empty synthetic, reproducible, human-reviewed model-backed eval covering save, do-not-save, correction, relevance, sensitive refusal, consent, and forgetting; agreed thresholds | **NOT EVALUATED for model quality** — deterministic fixture is 12/12 only and explicitly `release_ready=false` |
+| PD-06 | Tombstone/version proof | Migration head, delete/disable/correction epoch bump, replay/retry/worker-restart rejection immediately before write | **PASS for readiness artifact** — 109 focused tests, 51 disposable PostgreSQL integration tests, migration `0018` |
+| PD-07 | Rollback/disable | Default-off flag, provider gate, kill switch, queue drain/reject behavior, prior safe PostgreSQL path, runbook and recovery owner | **PASS for disable boundary; rollback rehearsal pending** — default false and stale-work rejection verified |
+| PD-08 | Approval checkpoints | Named provider/privacy, security, engineering, independent QA, and Hamza/product approvals recorded before credentials, spend, or activation | **BLOCKED** — no approvals recorded |
 
-### Verifiable references
+## Required approval checkpoints (must be explicit)
 
-- OpenAI API data/privacy overview: <https://openai.com/enterprise-privacy/> and <https://platform.openai.com/docs/models/how-we-use-your-data>.
-- Anthropic commercial/API privacy: <https://www.anthropic.com/legal/commercial-terms> and <https://www.anthropic.com/legal/privacy>.
-- Hugging Face Transformers offline/local-files operation: <https://huggingface.co/docs/transformers/v4.49.0/en/installation>.
+1. **Candidate decision:** Hamza chooses either one exact paid no-training account/contract or one exact self-hosted/local model snapshot/license. This is a choice for evaluation, not permission to activate production memory.
+2. **Privacy/security review:** named reviewer signs PD-01 through PD-03, including retention/deletion, residency/subprocessors/operators, access, incident handling, and budget boundary.
+3. **Model-backed synthetic eval:** engineering records the pinned artifact, offline/network isolation, thresholds, raw report, and human review. `NOT_EVALUATED` or fixture-only evidence blocks promotion.
+4. **Operational readiness:** engineering signs PD-04, PD-06, and PD-07, including a bounded rollback/disable drill using synthetic data only.
+5. **Independent QA:** exactly one independent `qa-engineer` reviews the immutable packet and reruns the applicable checks. QA cannot approve production activation or set `release_ready`.
+6. **Production-memory activation:** Hamza gives a separate, explicit written approval naming the exact environment, model/provider, flag change, rollback owner, and monitoring window. Without this checkpoint, extraction remains disabled even if all prior evidence passes.
 
-References are evidence pointers, not approval. Provider terms change; an owner must re-check the exact account/contract immediately before any activation.
-
-## Required decision record before promotion
-
-1. Name one exact paid no-training account/contract **or** one self-hosted model snapshot and license.
-2. Attach dated terms, retention/deletion behavior, region/subprocessor review, access controls, incident handling, and budget boundary.
-3. Run the fail-closed configuration test: unknown/free/opt-out provider is refused; only explicit `no_training` or `self_hosted` passes.
-4. Obtain named provider/privacy owner approval and Hamza's explicit approval before any paid account, spend, credential, or live request.
-
-**Current owner approval:** absent. **Production activation:** blocked.
+**Current owner approval:** absent.
+**Current production activation approval:** absent.
+**Current decision:** remain blocked; do not select, purchase, credential, call, deploy, or activate.
