@@ -70,7 +70,10 @@ def _created_at() -> Mapped[datetime]:
 
 class Customer(Base):
     __tablename__ = "customers"
-    __table_args__ = (CheckConstraint(_in("status", CUSTOMER_STATUSES), name="status"),)
+    __table_args__ = (
+        CheckConstraint(_in("status", CUSTOMER_STATUSES), name="status"),
+        CheckConstraint("memory_version >= 0", name="memory_version_nonnegative"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="anonymous")
