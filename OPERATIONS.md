@@ -28,7 +28,7 @@ Logs: Caddy writes JSON access logs with the `X-Admin-Key`, `X-Admin-Session`, `
 
 ## Backup and restore
 
-**Status: code foundation built (M1-S5, issue #105); nothing is activated.** Proven so far: a historical local, isolated MongoDB backup and restore drill (`docs/qa/2026-10-28-local-acceptance.md`, #70; 34 products / 51 variants restored; pre-PostgreSQL, so it does not cover the current database), and the PostgreSQL tooling below, which is built and tested only against disposable containers. Not done: no PostgreSQL backup has ever run against a shared or production database, no off-server destination exists, nothing is scheduled, and operational activation is pending. Treat the "encrypted backup", "pre-launch backup" and "isolated restore drill" launch items as **still open** until the owner steps below are done and evidence is recorded.
+**Status: code foundation built (M1-S5, issue #105); nothing is activated.** No backup has ever run against a shared or production database, no off-server destination exists, nothing is scheduled, and no restore has been drilled outside disposable test containers. Treat the "encrypted backup", "pre-launch backup" and "isolated restore drill" launch items as **still open** until the owner steps below are done and evidence is recorded.
 
 ### What the repository provides
 

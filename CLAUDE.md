@@ -110,8 +110,12 @@ Use only a verified `staging` SHA. Verify CI and QA evidence, review migrations 
 ### Hotfixes
 `hotfix/<name>` from the latest `main`; explicit approval before merging; then carry the same fix into `staging-integration` and `staging` (cherry-pick; do not promote unrelated unfinished work).
 
-### Branch cleanup
-Audit merged branches periodically (`git branch -r --merged origin/staging-integration`). Delete obsolete temporary branches non-forcibly when they have no unique commits, open PRs, worktrees or deployment references. Preserve unmerged unique work. Never rewrite history. Never delete tags.
+### Branch cleanup and reconciliation safety
+Audit every local/remote ref and every worktree by SHA, ancestry, tree/patch equivalence, dirty state, open PR/issue/CI references, and QA evidence; branch names alone are not evidence. Preserve `main`, `staging`, and `staging-integration` permanently. Never force-push, reset, rename, or delete a ref or worktree that is active, dirty, uniquely valuable, ambiguous, or referenced by a worker.
+
+For a branch proven merged, superseded, or obsolete, create a durable `archive/reconciliation/<date>-<source>` ref first, verify that the archive SHA equals the source SHA and is reachable from the remote where possible, then remove only a clean inactive worktree and its source branch non-forcibly. Keep detached QA worktrees and untracked evidence until their owner confirms they are disposable. Record every archive/removal decision in a durable reconciliation artifact. Prune only stale worktree metadata; never use broad `git clean`.
+
+If an exact `integration` ref cannot be created without colliding with an existing namespace or active ref, do not rename or delete that ref; use `staging-integration` as the integration tier and document the exception.
 
 `staging-integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
 
