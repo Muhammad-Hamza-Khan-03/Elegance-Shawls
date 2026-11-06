@@ -70,10 +70,15 @@ def _created_at() -> Mapped[datetime]:
 
 class Customer(Base):
     __tablename__ = "customers"
-    __table_args__ = (CheckConstraint(_in("status", CUSTOMER_STATUSES), name="status"),)
+    __table_args__ = (
+        CheckConstraint(_in("status", CUSTOMER_STATUSES), name="status"),
+        CheckConstraint("memory_version >= 0", name="memory_version_nonnegative"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="anonymous")
+    # Monotonic privacy epoch. Queued extraction captures it and must reject stale work after delete/disable.
+    memory_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -100,6 +105,7 @@ class CustomerSession(Base):
     __tablename__ = "customer_sessions"
     __table_args__ = (
         CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_format"),
+        CheckConstraint("exchange_hash IS NULL OR exchange_hash ~ '^[0-9a-f]{64}$'", name="exchange_hash_format"),
         CheckConstraint("expires_at > created_at", name="expiry_after_creation"),
         UniqueConstraint("token_hash"),
         Index("ix_customer_sessions_customer_id_live", "customer_id", postgresql_where=text("revoked_at IS NULL")),
@@ -108,10 +114,26 @@ class CustomerSession(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
     token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    exchange_hash: Mapped[str | None] = mapped_column(CHAR(64), unique=True)
     created_at: Mapped[datetime] = _created_at()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class AnonymousMerge(Base):
+    """One terminal, consented attribution per signed anonymous event session."""
+    __tablename__ = "anonymous_merges"
+    __table_args__ = (
+        CheckConstraint("session_hash ~ '^[0-9a-f]{64}$'", name="session_hash_format"),
+        CheckConstraint("merged_count BETWEEN 1 AND 100", name="merged_count_bounds"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False, unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    merged_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
 
 
 class Conversation(Base):
@@ -632,6 +654,36 @@ class MemoryItem(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _created_at()
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RecommendationImpression(Base):
+    """Append-only provenance for a synthetic staging recommendation impression."""
+    __tablename__ = "recommendation_impressions"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "request_id", "experiment_arm", "position", name="uq_recommendation_impressions_request_position"),
+        CheckConstraint("position >= 0", name="ck_recommendation_impressions_position_nonnegative"),
+        CheckConstraint("request_id ~ '^[A-Za-z0-9_-]{16,128}$'", name="ck_recommendation_impressions_request_id_format"),
+        CheckConstraint("experiment_arm IN ('control', 'treatment')", name="ck_recommendation_impressions_experiment_arm"),
+        CheckConstraint("char_length(context) BETWEEN 1 AND 64", name="ck_recommendation_impressions_context_length"),
+        CheckConstraint("char_length(feature_flag) BETWEEN 1 AND 64", name="ck_recommendation_impressions_feature_flag_length"),
+        CheckConstraint("preference_version >= 0 AND catalogue_revision >= 1", name="ck_recommendation_impressions_versions_nonnegative"),
+        Index("ix_recommendation_impressions_customer_created", "customer_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id", ondelete="SET NULL"))
+    recommendation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    context: Mapped[str] = mapped_column(Text, nullable=False)
+    feature_flag: Mapped[str] = mapped_column(Text, nullable=False)
+    experiment_arm: Mapped[str] = mapped_column(Text, nullable=False)
+    preference_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    catalogue_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_memory_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = _created_at()
 
 
 class SemanticEmbedding(Base):
