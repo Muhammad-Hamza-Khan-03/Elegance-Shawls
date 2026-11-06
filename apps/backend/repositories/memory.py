@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.relational_model import MemoryConsent as C, MemoryItem as M, RecommendationImpression
+from models.relational_model import Customer, MemoryConsent as C, MemoryItem as M, RecommendationImpression
 
 
 async def record_recommendation_impression(session: AsyncSession, *, customer_id: uuid.UUID, recommendation_id: uuid.UUID,
@@ -45,6 +45,21 @@ def fingerprint(*, category: str, key: str, value: str, source: str, source_ref:
 async def get_consent(session: AsyncSession, customer_id: uuid.UUID, *, lock: bool = False) -> C | None:
     stmt = select(C).where(C.customer_id == customer_id)
     return (await session.execute(stmt.with_for_update() if lock else stmt)).scalar_one_or_none()
+
+
+async def bump_memory_version(session: AsyncSession, customer_id: uuid.UUID) -> int:
+    """Advance the customer privacy epoch; stale queued work must not write across this boundary."""
+    stmt = (update(Customer)
+            .where(Customer.id == customer_id)
+            .values(memory_version=Customer.memory_version + 1)
+            .returning(Customer.memory_version))
+    value = (await session.execute(stmt)).scalar_one()
+    return int(value)
+
+
+async def memory_version(session: AsyncSession, customer_id: uuid.UUID, *, lock: bool = False) -> int:
+    stmt = select(Customer.memory_version).where(Customer.id == customer_id)
+    return int((await session.execute(stmt.with_for_update() if lock else stmt)).scalar_one())
 
 
 async def set_consent(session: AsyncSession, customer_id: uuid.UUID, granted: bool, policy_version: str, now: datetime) -> bool:

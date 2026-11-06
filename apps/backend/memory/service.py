@@ -109,6 +109,7 @@ async def delete(session: AsyncSession, customer_id: uuid.UUID, item_id: uuid.UU
     """Idempotent and consent-free. True only when something was actually deleted; a repeat, or someone else's id, is a silent no-op."""
     category = await repo.scrub_item(session, customer_id, item_id, now)
     if category is not None:
+        await repo.bump_memory_version(session, customer_id)
         await _audit(session, customer_id, "delete", f"memory:{item_id}", category=category)
     return category is not None
 
@@ -116,6 +117,7 @@ async def delete(session: AsyncSession, customer_id: uuid.UUID, item_id: uuid.UU
 async def delete_all(session: AsyncSession, customer_id: uuid.UUID, now: datetime) -> int:
     count = await repo.scrub_all(session, customer_id, now)
     if count:
+        await repo.bump_memory_version(session, customer_id)
         await _audit(session, customer_id, "delete_all", f"customer:{customer_id}", count=count)
     return count
 

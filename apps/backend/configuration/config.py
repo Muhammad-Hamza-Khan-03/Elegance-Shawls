@@ -107,6 +107,8 @@ class settings(BaseSettings):
     # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
     # Empty = every provider unknown = no model may touch customer memory.
     llm_provider_training_policies: str = ""
+    # Privacy readiness only: extraction is permanently off until the M4-C promotion packet is approved.
+    memory_extraction_enabled: bool = False
     llm_daily_budget_usd: float = 1.0
     llm_environment_budget_usd: float = 10.0
     llm_budget_warn_ratio: float = 0.8

@@ -74,6 +74,8 @@ class Customer(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="anonymous")
+    # Monotonic privacy epoch. Queued extraction captures it and must reject stale work after delete/disable.
+    memory_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

@@ -95,7 +95,7 @@ The batches are strictly ordered. A later batch cannot start until the prior bat
 
 ## Current next action
 
-Start **Batch A** with `t_m4a_identity_provider_mock`, then `t_m4a_fastapi_sessions`, then `t_m4a_conservative_merge`; run `t_m4a_canonical_tests`, obtain independent `t_m4a_independent_qa` approval, and only then execute `t_m4a_push_staging`. Batch B waits for the Batch A gate. Batch C remains blocked pending its provider/privacy decision and evidence.
+Batch A and Batch B gates are satisfied on the supplied staging SHAs. Batch C is now in **privacy-readiness only**: activate the idempotent task records `t_m4c_provider_decision`, `t_m4c_memory_extraction_evals`, `t_m4c_tombstone_queue_proof`, `t_m4c_promotion_packet`, `t_m4c_independent_qa`, and `t_m4c_push_staging`. Implement synthetic/local proof only; production memory remains disabled and `release_ready` remains false.
 
 ## Approvals required
 
