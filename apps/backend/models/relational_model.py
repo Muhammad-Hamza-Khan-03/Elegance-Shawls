@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
+    ARRAY, LargeBinary, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
     UniqueConstraint, func, text,
 )
 from pgvector.sqlalchemy import Vector
@@ -614,6 +614,19 @@ class WhatsAppMessage(Base):
     enquiry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("enquiries.id", ondelete="SET NULL"))
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class WhatsAppAuthEntry(Base):
+    """Baileys auth state for the bridge (WHATSAPP_AUTH_STORE=postgres). Read and written only by the bridge, through its own role;
+    `value` is AES-256-GCM ciphertext under a key this database never holds. The backend never touches this table."""
+    __tablename__ = "whatsapp_auth_entries"
+    __table_args__ = (UniqueConstraint("session", "kind", "key_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    key_id: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class ActionExecution(Base):

@@ -24,9 +24,24 @@ const Timeline = ({ reference }: { reference: string }) => {
     else setNotice(result.disabled ? DISABLED_NOTICE : result.message);
   };
 
+  // A person presses these; the automatic replies never say an order is confirmed. Sent only inside a chat the customer opened.
+  const sendStatus = async (template: 'confirmed' | 'dispatched') => {
+    if (!window.confirm(`Send the "${template}" message to this customer on WhatsApp?`)) return;
+    const result = await adminFetch(`/api/admin/enquiries/${encodeURIComponent(reference)}/whatsapp/message`, {
+      method: 'POST', body: JSON.stringify({ template, idempotency_key: crypto.randomUUID().replace(/-/g, '') }),
+    });
+    if (!result.ok) { setNotice(result.status === 409 && !result.disabled ? 'The customer has not written in the last 24 hours, so no message can be sent.' : result.disabled ? DISABLED_NOTICE : result.message); return; }
+    await load();
+    setNotice(`Sent: ${template}.`);
+  };
+
   return (
     <div className="mt-4 border-t border-[#e7dac8] pt-4">
-      <Button type="button" variant="outline" className="rounded-full" onClick={() => void load()}>Show WhatsApp chat</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" className="rounded-full" onClick={() => void load()}>Show WhatsApp chat</Button>
+        {messages && <Button type="button" variant="outline" className="rounded-full" onClick={() => void sendStatus('confirmed')}>{'Send "order confirmed"'}</Button>}
+        {messages && <Button type="button" variant="outline" className="rounded-full" onClick={() => void sendStatus('dispatched')}>{'Send "dispatched"'}</Button>}
+      </div>
       {notice && <p className="mt-3 text-sm text-[#6f625a]">{notice}</p>}
       {messages?.length === 0 && <p className="mt-3 text-sm text-[#6f625a]">No messages linked to this enquiry yet.</p>}
       <ul className="mt-3 space-y-2">

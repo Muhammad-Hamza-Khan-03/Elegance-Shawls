@@ -15,6 +15,7 @@ from configuration.config import settings
 from whatsapp import config as wa_config
 from whatsapp.ingest import ingest
 from whatsapp.matching import InboundEvent
+from whatsapp.voice_service import transcribe_event
 from whatsapp.reply_service import BridgeSender, SendRefused, maybe_reply
 
 logger = logging.getLogger("whatsapp.consumer")
@@ -25,6 +26,8 @@ MAX_ATTEMPTS = 5
 async def handle_entry(sessions, redis, entry_id, fields, attempts: dict, sender=None) -> None:
     try:
         event = InboundEvent.model_validate_json(fields[b"event"] if b"event" in fields else fields["event"])
+        if sender is not None:
+            event = await transcribe_event(event, sender)
         async with sessions() as session, session.begin():
             await ingest(session, event)
         if sender is not None:

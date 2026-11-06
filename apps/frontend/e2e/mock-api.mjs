@@ -96,7 +96,7 @@ http.createServer((request, response) => {
     if (globalThis.waDisabled) { response.statusCode = 503; return response.end(JSON.stringify({ detail: { code: 'whatsapp_disabled' } })); }
     const wa = (globalThis.wa ??= { paired: false, pairing: null, linked: false });
     const path = request.url.split('?')[0];
-    if (path === '/v1/admin/whatsapp/status') return response.end(JSON.stringify({ state: wa.paired ? 'connected' : 'needs_pairing', number: wa.paired ? '923001234567' : null, last_event_at: '2026-11-06T14:05:00Z', stream_lag: 0 }));
+    if (path === '/v1/admin/whatsapp/status') return response.end(JSON.stringify({ state: wa.paired ? 'connected' : 'needs_pairing', number: wa.paired ? '923001234567' : null, last_event_at: '2026-11-06T14:05:00Z', stream_lag: 0, dead_letters: 1, alerts: ['dead_letters: 1 entries in wa:dead'], ingested_last_hour: 4, linked_by_reference: 3, linked_by_staff: 1, median_contact_seconds: 600 }));
     if (path === '/v1/admin/whatsapp/pairing') {
       if (request.method === 'POST') wa.pairing = { qr: 'mock-qr-payload', code: null, expires_at: '2026-11-06T14:07:00Z' };
       if (request.method === 'DELETE') { wa.paired = false; wa.pairing = null; }
@@ -105,6 +105,7 @@ http.createServer((request, response) => {
     }
     if (path === '/v1/admin/whatsapp/unlinked') return response.end(JSON.stringify({ items: wa.linked ? [] : [{ id: 'c1', phone: '+923009999999', display_name: 'Sana', last_seen_at: '2026-11-06T14:00:00Z' }], next_cursor: null }));
     if (path === '/v1/admin/whatsapp/link' && request.method === 'POST') { wa.linked = true; return response.end(JSON.stringify({ reference: 'ES-MOCK42', link_source: 'staff' })); }
+    if (path.endsWith('/whatsapp/message') && request.method === 'POST') { globalThis.lastStatusMessage = true; return response.end(JSON.stringify({ sent: true })); }
     if (path.endsWith('/whatsapp')) return response.end(JSON.stringify({ reference: 'ES-MOCK42', status: 'contacted', items: [
       { id: 'm1', sent_by: 'customer', type: 'text', text: 'Ref: ES-MOCK42', sent_at: '2026-11-06T14:05:00Z' },
       { id: 'm2', sent_by: 'bot', type: 'text', text: 'Thank you for your enquiry ES-MOCK42.', sent_at: '2026-11-06T14:05:10Z' }] }));

@@ -76,3 +76,28 @@ def test_urdu_customers_get_urdu_templates():
 def test_templates_have_the_same_keys_in_both_languages():
     t = replies._templates()
     assert t["en"].keys() == t["ur"].keys()
+
+
+def test_assistant_answers_free_text_when_enabled_with_or_without_an_enquiry():
+    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=True)) == Decision("assistant")
+    assert decide(facts(summary_sent=True, text="red shawls", assistant_enabled=True, is_text=True, bot_recent=True)) == Decision("assistant")
+    assert decide(facts(assistant_enabled=True, is_text=True)) == Decision("assistant")       # linked, no summary yet, no reference
+    # structured flows keep precedence over the assistant
+    assert decide(facts(reference_in_message=True, assistant_enabled=True, is_text=True)).kind == "summary"
+    assert decide(facts(summary_sent=True, text="Name: Ali", assistant_enabled=True, is_text=True)).kind == "ask_missing"
+    # an unknown reference is still asked to use the Order button, and non-text still gets the holding reply
+    assert decide(facts(has_enquiry=False, unknown_reference=True, assistant_enabled=True, is_text=True)).kind == "need_reference"
+    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=False)).kind == "need_reference"
+    assert decide(facts(summary_sent=True, text=None, assistant_enabled=True, is_text=False)).kind == "holding"
+
+
+def test_assistant_stays_behind_the_same_guards():
+    for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
+        assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=True, **over)) is None
+
+
+def test_status_templates_exist_in_both_languages_and_mention_the_reference():
+    t = replies._templates()
+    for lang in ("en", "ur"):
+        for key in ("status_confirmed", "status_dispatched"):
+            assert "{reference}" in t[lang][key]

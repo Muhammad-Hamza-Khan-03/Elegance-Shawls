@@ -23,7 +23,7 @@ export function toEvent(msg) {
     type,
     text: text === null ? null : String(text).slice(0, 8192),
     quoted_id: m.extendedTextMessage?.contextInfo?.stanzaId ?? null,
-    media: null, // media is not downloaded before Phase 3
+    media: null, // set by the bridge to "voice:<wa_id>" only when it is holding the audio (WHATSAPP_VOICE_ENABLED)
     push_name: msg.key.fromMe ? null : (msg.pushName ?? null),
     ts: new Date(seconds * 1000).toISOString(),
   };

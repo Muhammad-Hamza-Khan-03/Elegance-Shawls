@@ -15,6 +15,8 @@ test('owner pairs the number, links an unlinked chat and reads the enquiry timel
   await signIn(page);
   await page.getByRole('link', { name: 'WhatsApp', exact: true }).click();
   await expect(page.getByTestId('status-card')).toContainText('Needs reconnect');
+  await expect(page.getByTestId('whatsapp-alerts')).toContainText('dead_letters');
+  await expect(page.getByTestId('whatsapp-metrics')).toContainText('linked by reference 3, by staff 1');
 
   await page.getByRole('button', { name: 'Connect WhatsApp' }).click();
   await expect(page.getByRole('img', { name: 'WhatsApp pairing QR code' })).toBeVisible();
@@ -28,6 +30,9 @@ test('owner pairs the number, links an unlinked chat and reads the enquiry timel
   await page.getByRole('link', { name: 'Enquiries' }).click();
   await page.getByRole('button', { name: 'Show WhatsApp chat' }).click();
   await expect(page.getByText('Thank you for your enquiry ES-MOCK42.')).toBeVisible();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Send "order confirmed"' }).click();
+  await expect(page.getByText('Sent: confirmed.')).toBeVisible();
 });
 
 test('shows a one-line notice instead of an error while automation is off', async ({ page, request }) => {

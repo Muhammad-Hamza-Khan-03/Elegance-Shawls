@@ -32,11 +32,14 @@ class Facts:
     summary_sent: bool
     details: dict = field(default_factory=dict)
     issues: tuple = ()                # live-catalogue problems for the enquiry's items (see repositories.whatsapp.verify_items)
+    unknown_reference: bool = False   # the message carries a reference that matches no open enquiry of this chat
+    assistant_enabled: bool = False   # WHATSAPP_ASSISTANT_ENABLED: free text goes to the catalogue assistant, not a holding reply
+    is_text: bool = False             # there is text to answer (typed, or a transcribed voice note)
 
 
 @dataclass(frozen=True)
 class Decision:
-    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding
+    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding | assistant
     save_details: dict | None = None
     flag: str | None = None           # staff-visible marker written to enquiries.customer_details["staff_flag"]
     missing: tuple = ()
@@ -58,8 +61,10 @@ def missing_fields(details: dict) -> tuple:
 def decide(f: Facts) -> Decision | None:
     if not f.allowlisted or f.paused or f.now - f.event_ts > f.max_age:
         return None
-    holding = None if f.bot_recent else Decision("holding")
+    holding = Decision("assistant") if f.assistant_enabled and f.is_text else None if f.bot_recent else Decision("holding")
     if not f.has_enquiry:
+        if f.assistant_enabled and f.is_text and not f.unknown_reference:
+            return Decision("assistant")
         return None if f.bot_recent else Decision("need_reference")
     if not f.summary_sent:
         if not f.reference_in_message:

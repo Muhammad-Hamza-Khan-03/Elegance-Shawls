@@ -1,6 +1,6 @@
 """WhatsApp bridge admin API. Every admin route answers 503 `whatsapp_disabled` unless WHATSAPP_BRIDGE_ENABLED=true."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,7 +13,7 @@ from database.redis_client import get_redis
 from repositories import RepositoryError, enquiries as enquiry_repo, whatsapp as repo
 from security.admin_auth import PLATFORM_OPERATE, require_admin, require_permission
 from utils.pagination import decode_cursor, encode_cursor
-from whatsapp import config as wa_config
+from whatsapp import config as wa_config, monitoring
 
 
 def require_enabled() -> None:
@@ -80,10 +80,10 @@ class LinkRequest(BaseModel):
 
 
 @admin_router.get("/whatsapp/status")
-async def status():
+async def status(session: AsyncSession = Depends(get_pg_session)):
     problem = wa_config.misconfiguration()
     if problem:
-        return {"state": "misconfigured", "detail": problem}
+        return {"state": "misconfigured", "detail": problem, "alerts": []}
     bridge: dict = {"state": "unreachable"}
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
@@ -92,15 +92,10 @@ async def status():
             bridge = reply.json()
     except (httpx.HTTPError, ValueError):
         pass
-    lag = None
-    redis = get_redis()
-    if redis is not None:
-        try:
-            groups = {g["name"]: g for g in await redis.xinfo_groups("wa:inbound")}
-            lag = groups.get("backend", {}).get("lag")
-        except Exception:
-            pass
-    return {**bridge, "stream_lag": lag}
+    snap = await monitoring.collect(session, get_redis())
+    return {**bridge, "state": snap.state, "stream_lag": snap.lag, "dead_letters": snap.dead, "alerts": snap.alerts,
+            "ingested_last_hour": snap.ingested_last_hour, "linked_by_reference": snap.linked_by_reference,
+            "linked_by_staff": snap.linked_by_staff, "median_contact_seconds": snap.median_contact_seconds}
 
 
 def _contact(c) -> dict:
@@ -140,3 +135,40 @@ async def enquiry_timeline(reference: str, limit: int = Query(default=200, ge=1,
     messages = await repo.timeline(session, enquiry.id, limit)
     return {"reference": enquiry.reference, "status": enquiry.status, "items": [
         {"id": str(m.id), "sent_by": m.sent_by, "type": m.type, "text": m.text, "sent_at": m.sent_at} for m in messages]}
+
+
+class StatusMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    template: str = Field(pattern=r"^(confirmed|dispatched)$")
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
+@admin_router.post("/enquiries/{reference}/whatsapp/message")
+async def send_status_message(reference: str, payload: StatusMessage, session: AsyncSession = Depends(get_pg_session)):
+    """Staff-triggered fixed status text, sent only inside a chat the customer opened (the bridge enforces the 24-hour rule).
+    This is how an order is ever called confirmed: a person presses the button; the automatic replies never say it."""
+    from whatsapp import replies
+    from whatsapp.reply_service import BridgeSender, SendRefused
+
+    async with session.begin():
+        enquiry = await enquiry_repo.get_by_reference(session, reference)
+        if not enquiry or enquiry.whatsapp_contact_id is None:
+            raise HTTPException(status_code=404, detail="Enquiry is not linked to a WhatsApp chat")
+        contact_id = enquiry.whatsapp_contact_id
+        chat = (await repo.contact_chat(session, contact_id))
+        last_text = await repo.recent_customer_texts(session, contact_id, "", datetime(2000, 1, 1, tzinfo=timezone.utc), limit=1)
+        text = replies._templates()[replies.language(last_text[-1] if last_text else None)][f"status_{payload.template}"].format(reference=enquiry.reference)
+        ref = enquiry.reference
+    try:
+        wa_id = await BridgeSender().send(chat, text, f"status-{ref}-{payload.template}-{payload.idempotency_key}")
+    except SendRefused as exc:
+        raise HTTPException(status_code=409, detail="The customer has not written in the last 24 hours, so no message can be sent") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail="The WhatsApp bridge is unreachable") from exc
+    async with session.begin():
+        now = datetime.now(timezone.utc)
+        enquiry = await enquiry_repo.get_by_reference(session, ref)
+        await repo.insert_message(session, wa_message_id=wa_id, contact_id=contact_id, direction="out", from_me=True, type="text", text=text,
+                                  sent_by="staff", enquiry_id=enquiry.id, sent_at=now)
+        await repo.mark_contacted(session, enquiry, now + timedelta(hours=settings.whatsapp_bot_pause_hours))   # a person is handling this chat
+    return {"sent": True, "template": payload.template}

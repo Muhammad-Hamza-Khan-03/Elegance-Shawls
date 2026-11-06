@@ -168,6 +168,17 @@ export const WhatsAppAdmin = () => {
               {status.last_event_at ? `Last message ${new Date(status.last_event_at).toLocaleString()}` : 'No messages yet'}
               {typeof status.stream_lag === 'number' ? ` · ${status.stream_lag} waiting to be processed` : ''}
             </p>
+            {status.alerts && status.alerts.length > 0 && (
+              <ul data-testid="whatsapp-alerts" className="mt-4 space-y-2">
+                {status.alerts.map((alert) => <li key={alert} className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{alert}</li>)}
+              </ul>
+            )}
+            {typeof status.linked_by_reference === 'number' && (
+              <p data-testid="whatsapp-metrics" className="mt-3 text-sm text-[#6f625a]">
+                {status.ingested_last_hour ?? 0} messages in the last hour · linked by reference {status.linked_by_reference}, by staff {status.linked_by_staff ?? 0}
+                {typeof status.median_contact_seconds === 'number' ? ` · median time to first staff reply ${Math.round(status.median_contact_seconds / 60)} min` : ''}
+              </p>
+            )}
             {status.state !== 'misconfigured' && <PairingPanel connected={status.state === 'connected'} number={status.number} onChange={() => void refresh()} />}
           </div>
         )}

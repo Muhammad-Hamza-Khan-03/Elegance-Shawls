@@ -130,3 +130,16 @@ async def verify_items(session: AsyncSession, items: list[dict]) -> list[dict]:
         elif item["unit_price"] != found[0].price:
             issues.append({**base, "reason": "price_changed", "current_price": found[0].price, "current_currency": found[0].currency})
     return issues
+
+
+async def recent_customer_texts(session: AsyncSession, contact_id: uuid.UUID, exclude_wa_id: str, since: datetime, limit: int = 3) -> list[str]:
+    """Oldest-first earlier customer texts, for the assistant's follow-up memory ("under 3000" after "grey shawls")."""
+    rows = (await session.execute(
+        select(WhatsAppMessage.text).where(WhatsAppMessage.contact_id == contact_id, WhatsAppMessage.sent_by == "customer", WhatsAppMessage.text.is_not(None),
+                                           WhatsAppMessage.wa_message_id != exclude_wa_id, WhatsAppMessage.sent_at > since)
+        .order_by(WhatsAppMessage.sent_at.desc()).limit(limit))).scalars()
+    return list(reversed(list(rows)))
+
+
+async def contact_chat(session: AsyncSession, contact_id: uuid.UUID) -> str:
+    return (await session.execute(select(WhatsAppContact.chat_jid).where(WhatsAppContact.id == contact_id))).scalar_one()

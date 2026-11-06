@@ -8,6 +8,7 @@ assistant proposes saving a value only on an explicit "remember ..." and never s
 """
 import hashlib
 import logging
+from contextvars import ContextVar
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,8 @@ from semantic.query_parser import handoff, parse_query
 from utils.colour_vocabulary import normalize
 from voice.bridge import bridge_voice_transcript
 
+# Set by channels whose customers have not passed the privacy gate (WhatsApp): wording stays deterministic, nothing reaches a model.
+llm_blocked: ContextVar[bool] = ContextVar("assistant_llm_blocked", default=False)
 MAX_CARDS = 3
 MAX_REPLY_CHARS = 600
 log = logging.getLogger(__name__)
@@ -125,7 +128,7 @@ async def _no_match(message: str, applied: str = "none", terms: str = "", kept: 
 
 async def _wording(message: str, facts: str, fallback: str, personal: bool = False) -> tuple[str, bool]:
     """(text, written_by_llm). LLM wording when ASSISTANT_LLM is on and a model answers; the fixed sentence otherwise (never an error)."""
-    if not settings.assistant_llm:
+    if not settings.assistant_llm or llm_blocked.get():
         return fallback, False
     # Customer text may hold personal details. Outside development it only goes to a no-training provider (LLM_PRODUCTION_CHAIN;
     # the gateway refuses free tiers and raises when none is configured, which lands in the fallback below), after scrubbing
@@ -222,7 +225,7 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
 
 def _may_share() -> bool:
     """Saved memory may enter an LLM prompt only if every model in the personal-data chain is declared no-training or self-hosted."""
-    if not settings.assistant_llm:
+    if not settings.assistant_llm or llm_blocked.get():
         return False
     try:
         return personal.llm_allowed(get_gateway().chain("default", personal=True))

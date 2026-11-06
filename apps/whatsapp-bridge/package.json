@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "scripts": { "start": "node src/main.mjs", "pair": "node src/main.mjs pair", "test": "node --test" },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "pair": "node src/main.mjs pair",
+    "test": "node --test"
+  },
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc13",
     "ioredis": "5.4.1",
+    "pg": "8.13.1",
     "pino": "9.5.0"
   }
 }

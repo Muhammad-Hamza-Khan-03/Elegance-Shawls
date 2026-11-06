@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from configuration.config import settings
 from repositories import admin as admin_repo, whatsapp as repo
-from whatsapp import replies
+from whatsapp import assistant, replies
 from whatsapp.matching import InboundEvent, extract_reference, phone_from_jid
 
 logger = logging.getLogger("whatsapp.replies")
@@ -22,7 +22,25 @@ class SendRefused(Exception):
     """The bridge declined permanently (4xx): do not retry."""
 
 
-class BridgeSender:
+class BridgeClient:
+    """Calls the bridge's internal HTTP API (token on every call)."""
+
+    @staticmethod
+    def _headers() -> dict:
+        return {"Authorization": f"Bearer {settings.whatsapp_bridge_token}"}
+
+    async def fetch_media(self, media_id: str) -> tuple[bytes, str]:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            reply = await client.get(f"{settings.whatsapp_bridge_url}/media/{media_id}", headers=self._headers())
+        reply.raise_for_status()
+        return reply.content, reply.headers.get("content-type", "audio/ogg")
+
+    async def delete_media(self, media_id: str) -> None:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.delete(f"{settings.whatsapp_bridge_url}/media/{media_id}", headers=self._headers())
+
+
+class BridgeSender(BridgeClient):
     async def send(self, chat: str, text: str, key: str) -> str:
         """Returns the WhatsApp message id of the sent message."""
         try:
@@ -61,6 +79,8 @@ async def _prepare(session: AsyncSession, event: InboundEvent, now: datetime):
         allowlisted=allowlisted(event.chat), paused=paused, bot_recent=bool(bot_at and now - bot_at < window),
         reference_in_message=bool(reference and enquiry and reference == enquiry.reference), has_enquiry=enquiry is not None,
         summary_sent=summary_sent, details={k: v for k, v in details.items() if k in replies.FIELDS},
+        unknown_reference=bool(reference) and not (enquiry and reference == enquiry.reference),
+        assistant_enabled=settings.whatsapp_assistant_enabled, is_text=bool((event.text or "").strip()),
         issues=tuple(await repo.verify_items(session, enquiry.items)) if enquiry and not summary_sent else ())
     return contact, enquiry, facts
 
@@ -78,6 +98,16 @@ async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | Non
         if decision is None:
             return None
         contact, enquiry, facts = prepared
+        assistant_text = None
+        if decision.kind == "assistant":
+            try:
+                assistant_text = await assistant.answer(session, event, contact.id, now)
+            except Exception as exc:          # the assistant must never block the safe fallback
+                logger.warning("assistant failed: %s", type(exc).__name__)
+            if assistant_text is None:
+                decision = None if facts.bot_recent else replies.Decision("holding")
+                if decision is None:
+                    return None
         if enquiry is not None:
             details = dict(enquiry.customer_details or {})
             details.update(decision.save_details or {})
@@ -85,7 +115,7 @@ async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | Non
                 details["staff_flag"] = decision.flag
             if details != (enquiry.customer_details or {}):
                 enquiry.customer_details = details
-        text = replies.render(decision, lang=replies.language(event.text), reference=enquiry.reference if enquiry else "",
+        text = assistant_text or replies.render(decision, lang=replies.language(event.text), reference=enquiry.reference if enquiry else "",
                               items=enquiry.items if enquiry else [], total=enquiry.total if enquiry else 0,
                               currency=enquiry.currency if enquiry else "PKR", issues=facts.issues)
         target = enquiry.reference if enquiry else event.chat

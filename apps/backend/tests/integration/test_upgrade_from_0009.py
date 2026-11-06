@@ -25,7 +25,7 @@ INDEX = "idx-upgrade"
 FAKE = FakeEmbeddingProvider(EMBEDDING_DIMENSIONS)
 MAIN_TABLES_0009 = {"product_embeddings", "variant_embeddings", "catalog_attributes", "enrichment_suggestions", "products", "variants",
                     "audit_log", "staged_products", "ingestion_jobs"}
-NEW_TABLES = {"admin_accounts", "admin_sessions", "enquiries", "whatsapp_contacts", "whatsapp_messages", "semantic_embeddings", "semantic_embedding_jobs", "action_executions",
+NEW_TABLES = {"admin_accounts", "admin_sessions", "enquiries", "whatsapp_contacts", "whatsapp_messages", "whatsapp_auth_entries", "semantic_embeddings", "semantic_embedding_jobs", "action_executions",
               "memory_consents", "memory_items", "customer_sessions", "anonymous_merges", "recommendation_impressions"}
 
 
@@ -45,11 +45,11 @@ def at_0009(pg_url, migrated_url, pg_engine_factory, monkeypatch):
 
 def test_graph_has_one_head_and_a_linear_chain(pg_url):
     script = ScriptDirectory.from_config(alembic_config(pg_url))
-    assert script.get_heads() == ["0019"]
+    assert script.get_heads() == ["0020"]
     revisions = list(script.walk_revisions("base", "heads"))[::-1]
-    assert [r.revision for r in revisions] == [f"{i:04d}" for i in range(1, 20)]
+    assert [r.revision for r in revisions] == [f"{i:04d}" for i in range(1, 21)]
     assert all(r.down_revision == f"{i:04d}" for i, r in enumerate(revisions[1:], 1))     # nothing branches or skips
-    assert len({r.revision for r in revisions}) == 19                                    # no duplicated revision ids
+    assert len({r.revision for r in revisions}) == 20                                    # no duplicated revision ids
 
 
 def test_downgrade_to_0009_leaves_exactly_mains_schema(at_0009):
@@ -118,7 +118,7 @@ def test_legacy_numbering_is_detected_read_only(pg_url, migrated_url, monkeypatc
     spec.loader.exec_module(check)
     env = ApiEnv(pg_url, monkeypatch)
     import asyncio
-    assert asyncio.run(check.inspect(pg_url)) == ("0019", None)
+    assert asyncio.run(check.inspect(pg_url)) == ("0020", None)
     env.sql("update alembic_version set version_num = '0009'")
     try:
         version, why = asyncio.run(check.inspect(pg_url))

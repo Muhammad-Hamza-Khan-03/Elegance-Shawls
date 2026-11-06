@@ -2,14 +2,14 @@
 // No business logic, no SQL. Internal only: never published on a port, never behind the proxy, token on every call.
 import http from 'node:http';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import pino from 'pino';
 import { loadConfig } from './config.mjs';
 import { toEvent, isValidEvent } from './events.mjs';
 import { backoffMs } from './backoff.mjs';
 import { createSender, SendError } from './sender.mjs';
 import { createPairing } from './pairing.mjs';
+import { createCipher, fileStore, postgresStore } from './auth-store.mjs';
+import { createMediaStore } from './media.mjs';
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 const config = loadConfig();
@@ -23,20 +23,30 @@ if (config.problems.length) {
   process.exit(1);
 }
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = await import('@whiskeysockets/baileys');
+const baileys = await import('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } = baileys;
 const { default: Redis } = await import('ioredis');
 const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
-const status = { state: 'needs_pairing', lastEventAt: null, attempt: 0, number: null };
+const status = { state: 'needs_pairing', lastEventAt: null, attempt: 0, number: null, since: new Date().toISOString() };
+const media = createMediaStore();
+let store = null; // the auth store: file volume or encrypted PostgreSQL
 const pairing = createPairing();
 const pairOnly = process.argv[2] === 'pair';
 let sock = null;
 let generation = 0; // handlers of a replaced socket are ignored
 const sender = createSender({ getSock: () => (status.state === 'connected' ? sock : null), ratePerMin: config.sendRatePerMin });
 
-const isPaired = () => {
-  try { return Boolean(JSON.parse(fs.readFileSync(path.join(config.sessionDir, 'creds.json'), 'utf8')).me); } catch { return false; }
-};
-const wipeSession = () => fs.rmSync(config.sessionDir, { recursive: true, force: true });
+const isPaired = () => (store ? store.isPaired() : false);
+const wipeSession = async () => { await store?.wipe(); store = null; }; // reopened on the next connect, so stale keys are never reused
+const setState = (next) => { if (status.state !== next) { status.state = next; status.since = new Date().toISOString(); } };
+async function openStore() {
+  if (config.authStore === 'postgres') {
+    const { default: pg } = await import('pg');
+    const pool = new pg.Pool({ connectionString: config.authDatabaseUrl, max: 3 });
+    return postgresStore({ db: pool, cipher: createCipher(config.authKey), baileys });
+  }
+  return fileStore({ dir: config.sessionDir, baileys });
+}
 const stopSocket = () => { generation++; try { sock?.end(undefined); } catch { /* already closed */ } sock = null; };
 
 async function publish(event) {
@@ -55,20 +65,20 @@ async function publish(event) {
 
 async function connect() {
   const mine = ++generation;
-  const { state: auth, saveCreds } = await useMultiFileAuthState(config.sessionDir);
-  fs.chmodSync(config.sessionDir, 0o700);
+  store ??= await openStore();
+  const { state: auth, saveCreds } = store;
   const { version } = await fetchLatestBaileysVersion();
   sock = makeWASocket({ version, auth, logger: log.child({ c: 'baileys' }, { level: 'warn' }), markOnlineOnConnect: false, syncFullHistory: false });
   const current = sock;
   current.ev.on('creds.update', saveCreds);
-  current.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  current.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (mine !== generation) return;
     if (qr) {
       pairing.setQr(qr);
       if (pairOnly) process.stdout.write(`\nScan with WhatsApp > Linked devices:\n${qr}\n`); // terminal fallback only
     }
     if (connection === 'open') {
-      status.state = 'connected'; status.attempt = 0; status.number = current.user?.id?.split(':')[0] ?? null;
+      setState('connected'); status.attempt = 0; status.number = current.user?.id?.split(':')[0] ?? null;
       pairing.end();
       log.info('connected');
       if (pairOnly) { log.info('paired; exiting'); process.exit(0); }
@@ -76,9 +86,9 @@ async function connect() {
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
       status.number = null;
-      if (code === DisconnectReason.loggedOut) { status.state = 'needs_pairing'; wipeSession(); stopSocket(); log.error('logged out; pair again'); return; }
-      if (!isPaired() && !pairing.active()) { status.state = 'needs_pairing'; stopSocket(); return; }
-      status.state = pairing.active() ? 'pairing' : 'connecting';
+      if (code === DisconnectReason.loggedOut) { setState('needs_pairing'); await wipeSession(); stopSocket(); log.error('logged out; pair again'); return; }
+      if (!isPaired() && !pairing.active()) { setState('needs_pairing'); stopSocket(); return; }
+      setState(pairing.active() ? 'pairing' : 'connecting');
       const wait = backoffMs(status.attempt++);
       log.warn({ code, wait }, 'disconnected; reconnecting');
       setTimeout(() => { if (mine === generation) connect().catch((e) => log.error(e)); }, wait);
@@ -90,6 +100,12 @@ async function connect() {
       const event = toEvent(msg);
       if (!event) continue;
       if (!event.from_me) sender.noteInbound(event.chat, msg.key, Date.parse(event.ts));
+      if (config.voiceEnabled && event.type === 'audio' && !event.from_me) {
+        try {
+          const audio = await downloadMediaMessage(msg, 'buffer', {});
+          if (media.put(event.wa_id, audio, msg.message.audioMessage?.mimetype ?? 'audio/ogg')) event.media = `voice:${event.wa_id}`;
+        } catch (err) { log.warn({ err: err.message }, 'voice download failed'); }
+      }
       else if (sender.isBotId(event.wa_id)) event.via_bot = true;
       await publish(event);
     }
@@ -102,11 +118,11 @@ function startPairing() {
   pairing.start();
   if (fresh) {
     stopSocket();
-    status.state = 'pairing';
+    setState('pairing');
     status.attempt = 0;
     connect().catch((e) => log.error(e));
     setTimeout(() => {
-      if (status.state === 'pairing' && !pairing.active()) { stopSocket(); status.state = isPaired() ? 'connecting' : 'needs_pairing'; }
+      if (status.state === 'pairing' && !pairing.active()) { stopSocket(); setState(isPaired() ? 'connecting' : 'needs_pairing'); }
     }, 2 * 60 * 1000 + 500);
   }
 }
@@ -127,7 +143,7 @@ http.createServer(async (req, res) => {
   if (!tokenOk(req.headers.authorization)) { res.writeHead(401).end(); return; }
   try {
     const route = `${req.method} ${req.url}`;
-    if (route === 'GET /health') return reply(200, { state: status.state, last_event_at: status.lastEventAt, number: status.number, baileys: '7.0.0-rc13' });
+    if (route === 'GET /health') return reply(200, { state: status.state, state_since: status.since, last_event_at: status.lastEventAt, number: status.number, baileys: '7.0.0-rc13', auth_store: config.authStore });
     if (route === 'GET /pairing/status') return reply(200, { state: status.state, number: status.number, pairing: pairing.view() });
     if (route === 'POST /pairing/start') { startPairing(); return reply(200, { state: status.state, pairing: pairing.view() }); }
     if (route === 'POST /pairing/code') {
@@ -141,9 +157,16 @@ http.createServer(async (req, res) => {
       const old = sock;
       pairing.end(); stopSocket();
       try { await old?.logout(); } catch { /* already unlinked on the phone */ }
-      wipeSession(); status.state = 'needs_pairing'; status.number = null;
+      wipeSession(); setState('needs_pairing'); status.number = null;
       return reply(200, { state: status.state });
     }
+    const voice = req.url?.match(/^\/media\/([A-Za-z0-9_-]{1,128})$/);
+    if (voice && req.method === 'GET') {
+      const item = media.get(voice[1]);
+      if (!item) return reply(404, { error: 'not_found' });
+      res.writeHead(200, { 'content-type': item.mimetype }); return res.end(item.buffer);
+    }
+    if (voice && req.method === 'DELETE') { media.delete(voice[1]); return reply(200, { deleted: true }); }
     if (route === 'POST /send') return reply(200, await sender.send(await readJson(req)));
     res.writeHead(404).end();
   } catch (err) {
@@ -153,6 +176,7 @@ http.createServer(async (req, res) => {
   }
 }).listen(config.port, '0.0.0.0');
 
+store = await openStore();
 if (isPaired()) connect().catch((err) => { log.error(err); process.exit(1); });
 else if (pairOnly) startPairing();
 else log.warn('no linked device; pair from Admin > WhatsApp or run the pair command');

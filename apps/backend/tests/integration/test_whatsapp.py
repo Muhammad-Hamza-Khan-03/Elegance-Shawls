@@ -199,3 +199,88 @@ def test_bot_echo_is_not_treated_as_staff(env):
     feed(env, echo2)
     assert row(env, "select status from enquiries")[0] == "handed_off"
     assert row(env, "select sent_by from whatsapp_messages where wa_message_id = 'BOTX'")[0] == "bot"
+
+
+# ---- monitoring and retention -------------------------------------------------------------------------------------
+def test_metrics_count_links_and_median_time_to_contact(env, monkeypatch):
+    from whatsapp import monitoring
+    monkeypatch.setattr(monitoring, "_bridge", lambda: _async(("connected", T0)))
+    enquiry(env, "ES-ABCDEF")
+    feed(env, event("k1", "Ref: ES-ABCDEF"), event("k2", "ok", from_me=True, minutes=30))
+    env.sql("update enquiries set created_at = :t", t=T0 - timedelta(minutes=30))
+
+    async def work(sessions):
+        async with sessions() as session:
+            return await monitoring.collect(session, None, now=T0 + timedelta(hours=1))
+    snap = env.run(work)
+    assert snap.linked_by_reference == 1 and snap.linked_by_staff == 0 and snap.median_contact_seconds == 3600
+    assert snap.lag is None and snap.alerts == []
+
+
+async def _async(value):
+    return value
+
+
+def test_retention_purges_old_messages_and_keeps_linked_chats(env):
+    enquiry(env, "ES-ABCDEF")
+    feed(env, event("o1", "Ref: ES-ABCDEF"), event("o2", "old chat", chat="923007777777@s.whatsapp.net"))
+    env.sql("update whatsapp_messages set sent_at = now() - interval '13 months'")
+    from scripts import whatsapp_retention as retention
+    import argparse
+    assert env.run(lambda s: _retain(retention, s)) is None
+    assert row(env, "select count(*) from whatsapp_messages")[0] == 0
+    assert row(env, "select count(*) from whatsapp_contacts")[0] == 1         # the chat with an enquiry stays; the empty unlinked one goes
+
+
+async def _retain(retention, sessions):
+    from sqlalchemy import text
+    async with sessions() as session, session.begin():
+        for statement in retention.PURGE:
+            await session.execute(text(statement), {"months": 12})
+
+
+# ---- catalogue assistant, voice, status messages ------------------------------------------------------------------
+def seed_catalogue(env):
+    real_enquiry(env, "ES-ZZZZZ2")
+
+
+def test_assistant_answers_from_the_catalogue_and_never_calls_a_model(env, monkeypatch):
+    seed_catalogue(env)
+    monkeypatch.setattr(settings, "whatsapp_assistant_enabled", True)
+    monkeypatch.setattr(settings, "whatsapp_site_url", "https://shop.example")
+    monkeypatch.setattr(settings, "assistant_llm", True)            # even with the web assistant's LLM on, WhatsApp must not use it
+    import llm.gateway as gateway
+    monkeypatch.setattr(gateway, "get_gateway", lambda: (_ for _ in ()).throw(AssertionError("an LLM was called for a WhatsApp chat")))
+    bot = FakeSender()
+    out = converse(env, bot, event("a1", "red shawl"))
+    assert out == ["assistant"]
+    reply = bot.sent[0][1]
+    assert "Shawl (Red): PKR 100" in reply and "https://shop.example/product/wool" in reply and "Order on WhatsApp" in reply
+
+
+def test_assistant_falls_back_to_the_holding_reply_when_it_has_nothing(env, monkeypatch):
+    monkeypatch.setattr(settings, "whatsapp_assistant_enabled", True)
+    bot = FakeSender()
+    assert converse(env, bot, event("a2", "remember I like brown")) == ["holding"]      # memory is web-only
+    assert "team member" in bot.sent[0][1]
+
+
+def test_status_message_sends_inside_an_open_chat_and_marks_contacted(env, monkeypatch):
+    real_enquiry(env)
+    settings.whatsapp_bridge_enabled = True
+    sent = []
+
+    async def fake_send(self, chat, text, key):
+        sent.append((chat, text, key))
+        return "STATUS1"
+    monkeypatch.setattr("whatsapp.reply_service.BridgeSender.send", fake_send)
+    try:
+        feed(env, event("s0", "Ref: ES-ABCDEF"))
+        ok = env.client.post("/v1/admin/enquiries/ES-ABCDEF/whatsapp/message", json={"template": "confirmed", "idempotency_key": "click-0001"}, headers=H)
+        assert ok.status_code == 200 and "confirmed by our team" in sent[0][1] and sent[0][0] == CHAT
+        assert row(env, "select status from enquiries")[0] == "contacted"
+        assert row(env, "select sent_by from whatsapp_messages where wa_message_id = 'STATUS1'")[0] == "staff"
+        assert env.client.post("/v1/admin/enquiries/ES-ABCDEF/whatsapp/message", json={"template": "refunded", "idempotency_key": "click-0002"}, headers=H).status_code == 422
+        assert env.client.post("/v1/admin/enquiries/ES-NOPE22/whatsapp/message", json={"template": "dispatched", "idempotency_key": "click-0003"}, headers=H).status_code == 404
+    finally:
+        settings.whatsapp_bridge_enabled = False
