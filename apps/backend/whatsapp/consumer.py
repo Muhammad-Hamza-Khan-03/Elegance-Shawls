@@ -15,17 +15,22 @@ from configuration.config import settings
 from whatsapp import config as wa_config
 from whatsapp.ingest import ingest
 from whatsapp.matching import InboundEvent
+from whatsapp.reply_service import BridgeSender, SendRefused, maybe_reply
 
 logger = logging.getLogger("whatsapp.consumer")
 STREAM, GROUP, DEAD = "wa:inbound", "backend", "wa:dead"
 MAX_ATTEMPTS = 5
 
 
-async def handle_entry(sessions, redis, entry_id, fields, attempts: dict) -> None:
+async def handle_entry(sessions, redis, entry_id, fields, attempts: dict, sender=None) -> None:
     try:
         event = InboundEvent.model_validate_json(fields[b"event"] if b"event" in fields else fields["event"])
         async with sessions() as session, session.begin():
             await ingest(session, event)
+        if sender is not None:
+            await maybe_reply(sessions, event, sender)
+    except SendRefused as exc:
+        logger.warning("bridge refused reply for %s: %s", entry_id, exc)     # permanent: record nothing more, ack below
     except Exception as exc:
         attempts[entry_id] = attempts.get(entry_id, 0) + 1
         permanent = isinstance(exc, (ValidationError, KeyError))
@@ -50,7 +55,7 @@ async def run(stop: asyncio.Event) -> None:
     except ResponseError as exc:
         if "BUSYGROUP" not in str(exc):
             raise
-    sessions, attempts, pending = session_factory(), {}, True
+    sessions, attempts, pending, sender = session_factory(), {}, True, BridgeSender()
     try:
         while not stop.is_set():
             # "0" re-reads this consumer's unacked entries (retries after a crash); ">" reads new ones.
@@ -60,7 +65,7 @@ async def run(stop: asyncio.Event) -> None:
                 pending = False
                 continue
             for entry_id, fields in entries:
-                await handle_entry(sessions, redis, entry_id, fields, attempts)
+                await handle_entry(sessions, redis, entry_id, fields, attempts, sender)
             if attempts:
                 pending = True                       # a failed entry stays unacked: go back and retry it
                 await asyncio.sleep(1)               # ...without hot-looping

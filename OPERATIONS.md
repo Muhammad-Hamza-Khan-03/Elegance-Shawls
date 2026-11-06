@@ -154,14 +154,19 @@ or, using the helper (which also keeps its own lock and output directory):
 
 Review: open `/admin/staging`, check each `pending_review` product, set the PKR price and stock, approve (creates an inactive draft), then publish separately.
 
-## WhatsApp bridge (optional, Phases 1-2: record, link, mark contacted)
+## WhatsApp bridge (optional)
 
-`WHATSAPP_BRIDGE_ENABLED=false` (default) is link mode: the `wa.me` handoff and manual replies, nothing else runs, `/v1/admin/whatsapp/*` answers 503 `whatsapp_disabled`. `true` links the shop phone as a device and records every 1:1 chat. This phase never sends a message: there is no `/send`, no automated reply and no pairing page yet.
+`WHATSAPP_BRIDGE_ENABLED=false` (default) is link mode: the `wa.me` handoff and manual replies, nothing else runs, `/v1/admin/whatsapp/*` answers 503 `whatsapp_disabled`, and Admin > WhatsApp shows a one-line "automation is off" notice. `true` links the shop phone as a device, records every 1:1 chat, links chats to enquiries by `Ref`, sets `contacted` when staff reply from the phone, and (Phase 3) answers with fixed templates.
 
-- **Enable:** set `WHATSAPP_BRIDGE_ENABLED=true`, `WHATSAPP_BRIDGE_TOKEN` and `REDIS_PASSWORD`; run the migration (0019) after a backup; `docker compose --profile whatsapp run --rm whatsapp-bridge node src/main.mjs pair` and scan the QR under WhatsApp > Linked devices; then `docker compose --profile whatsapp up -d`. Use a throwaway number first.
-- **Disable:** set `WHATSAPP_BRIDGE_ENABLED=false`, `docker compose --profile whatsapp up -d`. Both services exit 0; stored messages and the session volume are kept, so re-enabling needs no new QR while the phone is still linked.
-- **Re-pair:** after `needs_pairing` (`GET /v1/admin/whatsapp/status`), remove the device on the phone and run the pair command again.
-- **Upgrade Baileys:** bump the exact pin in `apps/whatsapp-bridge/package.json`, pair a test number on staging, run `npm test`, deploy.
-- **Dead letters:** a non-empty `wa:dead` stream means events failed five times or were malformed; inspect with `redis-cli XRANGE wa:dead - +`.
-- **Privacy:** chats are personal data. The session volume holds long-lived private keys: keep it out of backups and git. Update the privacy policy before going live; messages follow the 12-month conversation retention rule (no purge job yet).
-- Not published on any port, never on `web`. Rollback of the migration refuses while messages exist unless `ALEMBIC_ALLOW_WHATSAPP_DATA_LOSS=1`.
+**What the bot does** (`whatsapp/replies.py`, templates in `whatsapp/templates/replies.yaml`, English and Urdu; the Urdu wording needs native review before launch): first message with a valid reference gets an order summary from the stored cart snapshot, re-checked against the live catalogue, asking only for missing Name / City / Address (customers answer as `Name: ...` lines; saved to `enquiries.customer_details`). If a price or stock changed it says so, confirms nothing and sets `customer_details.staff_flag`. No reference: asked once to use the Order button. Anything else: one holding reply per pause window. It never says an order is confirmed. Every bot message is stored (`sent_by=bot`) and audited (`whatsapp.bot_reply`).
+
+**Safety rails:** the bridge `/send` refuses any chat without a customer message in the last 24 h (so the bot cannot start conversations), ignores repeated idempotency keys, and caps sends at `WHATSAPP_SEND_RATE_PER_MIN` (20). Staff typing in a chat silences the bot there for `WHATSAPP_BOT_PAUSE_HOURS` (12). Messages older than `WHATSAPP_REPLY_MAX_AGE_SECONDS` (900) are never answered, so a backlog after downtime cannot trigger replies. `WHATSAPP_REPLY_ALLOWLIST` (comma-separated numbers, e.g. `923001234567`) restricts replies to those numbers while everything is still recorded; `@lid`-only chats are not on any allowlist.
+
+- **Roll out:** enable with `WHATSAPP_REPLY_ALLOWLIST` = staff test numbers for a week on a throwaway number, then the shop number with the allowlist, then clear the allowlist.
+- **Enable:** set `WHATSAPP_BRIDGE_ENABLED=true`, `WHATSAPP_BRIDGE_TOKEN`, `REDIS_PASSWORD`; run migration 0019 after a backup; `docker compose --profile whatsapp up -d`; an owner opens Admin > WhatsApp > Connect WhatsApp and scans the QR (WhatsApp > Linked devices) or uses "Use a code instead". The terminal fallback is `docker compose --profile whatsapp run --rm whatsapp-bridge node src/main.mjs pair`.
+- **Disable:** `WHATSAPP_BRIDGE_ENABLED=false`, `docker compose --profile whatsapp up -d`. Services exit 0; messages and the session volume are kept. Emergency: also remove the device under Linked Devices on the phone.
+- **Re-pair:** after `needs_pairing`, use Connect WhatsApp (owner / `platform:operate` only; QR is drawn in the browser, never logged or stored; one session at a time, 2-minute expiry; connect and disconnect are audited).
+- **Upgrade Baileys:** bump the exact pin, pair a test number on staging, run `npm test`, deploy.
+- **Dead letters:** non-empty `wa:dead` means an event failed five times; `redis-cli XRANGE wa:dead - +`.
+- **Privacy:** chats and customer details are personal data. The session volume holds long-lived private keys: out of backups and git. Update the privacy policy before going live; retention is 12 months (no purge job yet). No chat text goes to any LLM.
+- Not published on any port, never on `web`. Migration 0019 downgrade refuses while messages exist unless `ALEMBIC_ALLOW_WHATSAPP_DATA_LOSS=1`.

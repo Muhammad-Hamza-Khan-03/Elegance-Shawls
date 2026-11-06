@@ -31,7 +31,7 @@ export function toEvent(msg) {
 
 // Dependency-free check against the shared schema's required shape; fixtures keep it in step with Python's pydantic model.
 export function isValidEvent(e) {
-  const allowed = ['v', 'wa_id', 'chat', 'lid', 'from_me', 'type', 'text', 'quoted_id', 'media', 'push_name', 'ts'];
+  const allowed = ['v', 'wa_id', 'chat', 'lid', 'from_me', 'type', 'text', 'quoted_id', 'media', 'push_name', 'via_bot', 'ts'];
   return Boolean(e) && typeof e === 'object' && Object.keys(e).every((k) => allowed.includes(k)) && e.v === 1 &&
     typeof e.wa_id === 'string' && e.wa_id.length > 0 && typeof e.chat === 'string' && e.chat.length > 0 &&
     typeof e.from_me === 'boolean' && ['text', 'image', 'audio', 'video', 'document', 'other'].includes(e.type) &&

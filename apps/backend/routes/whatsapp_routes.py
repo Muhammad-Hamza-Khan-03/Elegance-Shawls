@@ -11,7 +11,7 @@ from configuration.config import settings
 from database.pg import get_pg_session
 from database.redis_client import get_redis
 from repositories import RepositoryError, enquiries as enquiry_repo, whatsapp as repo
-from security.admin_auth import require_admin
+from security.admin_auth import PLATFORM_OPERATE, require_admin, require_permission
 from utils.pagination import decode_cursor, encode_cursor
 from whatsapp import config as wa_config
 
@@ -19,6 +19,18 @@ from whatsapp import config as wa_config
 def require_enabled() -> None:
     if not wa_config.is_enabled():
         raise HTTPException(status_code=503, detail={"code": "whatsapp_disabled"})
+
+
+async def _bridge(method: str, path: str, body: dict | None = None) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            reply = await client.request(method, f"{settings.whatsapp_bridge_url}{path}", json=body,
+                                         headers={"Authorization": f"Bearer {settings.whatsapp_bridge_token}"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="The WhatsApp bridge is unreachable") from exc
+    if reply.status_code >= 400:
+        raise HTTPException(status_code=409 if reply.status_code < 500 else 502, detail=reply.json().get("error", "Bridge error") if reply.content else "Bridge error")
+    return reply.json()
 
 
 public_router = APIRouter(prefix="/v1/whatsapp", tags=["WhatsApp"])
@@ -29,6 +41,36 @@ admin_router = APIRouter(prefix="/v1/admin", tags=["WhatsApp"], dependencies=[De
 async def mode():
     """Lets the storefront vary copy at runtime; deliberately not a NEXT_PUBLIC_ build-time variable."""
     return {"mode": "automated" if wa_config.is_enabled() else "link"}
+
+
+# Pairing hands out a login credential (the QR): owner/operate permission only, audited by the guard on every mutation.
+pairing_router = APIRouter(prefix="/v1/admin/whatsapp/pairing", tags=["WhatsApp"],
+                           dependencies=[Depends(require_permission(PLATFORM_OPERATE)), Depends(require_enabled)])
+
+
+class PairingCode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phone: str = Field(pattern=r"^[0-9]{8,15}$")
+
+
+@pairing_router.get("")
+async def pairing_status():
+    return await _bridge("GET", "/pairing/status")
+
+
+@pairing_router.post("")
+async def pairing_start():
+    return await _bridge("POST", "/pairing/start")
+
+
+@pairing_router.post("/code")
+async def pairing_code(payload: PairingCode):
+    return await _bridge("POST", "/pairing/code", {"phone": payload.phone})
+
+
+@pairing_router.delete("")
+async def pairing_disconnect():
+    return await _bridge("POST", "/pairing/disconnect")
 
 
 class LinkRequest(BaseModel):

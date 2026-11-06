@@ -27,9 +27,9 @@ async def ingest(session: AsyncSession, event: InboundEvent) -> bool:
 
     stored = await repo.insert_message(
         session, wa_message_id=event.wa_id, contact_id=contact.id, direction="out" if event.from_me else "in", from_me=event.from_me,
-        type=event.type, text=event.text, sent_by="staff" if event.from_me else "customer", quoted_wa_id=event.quoted_id,
+        type=event.type, text=event.text, sent_by="bot" if event.via_bot else "staff" if event.from_me else "customer", quoted_wa_id=event.quoted_id,
         media_ref=event.media, enquiry_id=enquiry.id if enquiry else None, sent_at=sent_at)
-    if stored and event.from_me and enquiry is not None:
+    if stored and event.from_me and not event.via_bot and enquiry is not None:   # the bot's own echo is not staff
         paused_until = sent_at + timedelta(hours=settings.whatsapp_bot_pause_hours)
         if await repo.mark_contacted(session, enquiry, paused_until):
             await admin_repo.add_audit(session, actor_type="system", actor_id="system:whatsapp", action="enquiry.contacted",

@@ -2,11 +2,11 @@
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.relational_model import Enquiry, WhatsAppContact, WhatsAppMessage
+from models.relational_model import Enquiry, Product, Variant, WhatsAppContact, WhatsAppMessage
 from repositories import RepositoryError
 from whatsapp.matching import OPEN_STATUSES
 
@@ -91,3 +91,42 @@ async def timeline(session: AsyncSession, enquiry_id: uuid.UUID, limit: int) -> 
 
 async def contact_exists(session: AsyncSession, contact_id: uuid.UUID) -> bool:
     return (await session.execute(select(exists().where(WhatsAppContact.id == contact_id)))).scalar_one()
+
+
+async def contact_by_chat(session: AsyncSession, chat: str) -> WhatsAppContact | None:
+    return (await session.execute(select(WhatsAppContact).where(WhatsAppContact.chat_jid == chat))).scalar_one_or_none()
+
+
+async def _latest_at(session: AsyncSession, contact_id: uuid.UUID, sent_by: str) -> datetime | None:
+    return (await session.execute(select(func.max(WhatsAppMessage.sent_at)).where(WhatsAppMessage.contact_id == contact_id, WhatsAppMessage.sent_by == sent_by))).scalar_one()
+
+
+async def last_staff_at(session: AsyncSession, contact_id: uuid.UUID) -> datetime | None:
+    return await _latest_at(session, contact_id, "staff")
+
+
+async def last_bot_at(session: AsyncSession, contact_id: uuid.UUID) -> datetime | None:
+    return await _latest_at(session, contact_id, "bot")
+
+
+async def bot_wrote_for_enquiry(session: AsyncSession, enquiry_id: uuid.UUID) -> bool:
+    return (await session.execute(select(exists().where(WhatsAppMessage.enquiry_id == enquiry_id, WhatsAppMessage.sent_by == "bot")))).scalar_one()
+
+
+async def verify_items(session: AsyncSession, items: list[dict]) -> list[dict]:
+    """Re-check a stored enquiry snapshot against the live catalogue (same rules as create_enquiry). Empty = unchanged."""
+    ids = [uuid.UUID(i["variant_id"]) for i in items]
+    live = {v.id: (v, p) for v, p in (await session.execute(select(Variant, Product).join(Product, Product.id == Variant.product_id).where(Variant.id.in_(ids)))).all()}
+    issues = []
+    for item in items:
+        found = live.get(uuid.UUID(item["variant_id"]))
+        base = {"variant_id": item["variant_id"]}
+        if not found or found[1].status != "active" or not found[1].is_active or not found[0].is_active:
+            issues.append({**base, "reason": "unavailable"})
+        elif found[0].stock < 1:
+            issues.append({**base, "reason": "out_of_stock"})
+        elif item["quantity"] > found[0].stock:
+            issues.append({**base, "reason": "insufficient_stock", "available": found[0].stock})
+        elif item["unit_price"] != found[0].price:
+            issues.append({**base, "reason": "price_changed", "current_price": found[0].price, "current_currency": found[0].currency})
+    return issues

@@ -1,0 +1,54 @@
+# Reviewed reply templates (English and Urdu), filled by whatsapp/replies.py. Placeholders in {braces}.
+# The bot never says an order is confirmed: that stays a staff action. Urdu wording needs native review before launch.
+en:
+  summary: |
+    Assalam o Alaikum! Thank you for your enquiry {reference}.
+
+    {lines}
+    Total: {total}
+
+    {ask}Our team will confirm availability and delivery shortly.
+  ask_details: "To arrange delivery, please reply with:\n{fields}\n\n"
+  ask_missing: "Thank you. We still need:\n{fields}\n\nOur team will confirm availability and delivery shortly."
+  details_done: "Thank you, we have your details. Our team will confirm availability and delivery shortly."
+  changed: |
+    Assalam o Alaikum! Since your enquiry {reference} was created, some details have changed:
+
+    {changes}
+
+    Nothing is confirmed yet. A team member will contact you shortly to go through the current availability and prices.
+  need_reference: "Assalam o Alaikum! To help with an order, please use the Order on WhatsApp button on our website, or send us the link of the product you like."
+  holding: "Thank you for your message. A team member will reply soon."
+  field_name: "Name: your full name"
+  field_city: "City: your city"
+  field_address: "Address: your delivery address"
+  change_unavailable: "- {item}: no longer available"
+  change_out_of_stock: "- {item}: now out of stock"
+  change_insufficient_stock: "- {item}: only {available} left"
+  change_price_changed: "- {item}: price is now {price}"
+ur:
+  summary: |
+    السلام علیکم! آپ کی انکوائری {reference} کا شکریہ۔
+
+    {lines}
+    کل: {total}
+
+    {ask}ہماری ٹیم جلد دستیابی اور ڈیلیوری کی تصدیق کرے گی۔
+  ask_details: "ڈیلیوری کے لیے براہ کرم یہ معلومات بھیجیں:\n{fields}\n\n"
+  ask_missing: "شکریہ۔ ہمیں ابھی یہ معلومات درکار ہیں:\n{fields}\n\nہماری ٹیم جلد دستیابی اور ڈیلیوری کی تصدیق کرے گی۔"
+  details_done: "شکریہ، آپ کی معلومات مل گئیں۔ ہماری ٹیم جلد دستیابی اور ڈیلیوری کی تصدیق کرے گی۔"
+  changed: |
+    السلام علیکم! آپ کی انکوائری {reference} بننے کے بعد کچھ تفصیلات تبدیل ہو گئی ہیں:
+
+    {changes}
+
+    ابھی کوئی چیز کنفرم نہیں ہے۔ ہماری ٹیم کا ایک رکن جلد آپ سے رابطہ کرے گا۔
+  need_reference: "السلام علیکم! آرڈر کے لیے براہ کرم ہماری ویب سائٹ پر Order on WhatsApp بٹن استعمال کریں، یا پسندیدہ پروڈکٹ کا لنک بھیج دیں۔"
+  holding: "آپ کے پیغام کا شکریہ۔ ہماری ٹیم کا ایک رکن جلد جواب دے گا۔"
+  field_name: "Name: آپ کا پورا نام"
+  field_city: "City: آپ کا شہر"
+  field_address: "Address: ڈیلیوری کا پتہ"
+  change_unavailable: "- {item}: اب دستیاب نہیں"
+  change_out_of_stock: "- {item}: اب اسٹاک میں نہیں"
+  change_insufficient_stock: "- {item}: صرف {available} باقی ہیں"
+  change_price_changed: "- {item}: قیمت اب {price} ہے"

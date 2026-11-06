@@ -15,6 +15,7 @@
     "quoted_id": {"type": ["string", "null"], "maxLength": 128},
     "media": {"type": ["string", "null"], "maxLength": 512},
     "push_name": {"type": ["string", "null"], "maxLength": 256},
+    "via_bot": {"type": "boolean"},
     "ts": {"type": "string", "format": "date-time"}
   }
 }

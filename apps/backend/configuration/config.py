@@ -91,6 +91,10 @@ class settings(BaseSettings):
     whatsapp_bridge_token: str = ""
     whatsapp_bridge_url: str = "http://whatsapp-bridge:3000"
     whatsapp_bot_pause_hours: int = 12
+    # Rollout guard: comma-separated numbers. When set the bot replies only to them (it still records everywhere).
+    whatsapp_reply_allowlist: str = ""
+    # A backlog replayed after downtime must never trigger replies to old messages.
+    whatsapp_reply_max_age_seconds: int = 900
 
     # Anonymous interaction events. The signing key is required to accept events.
     session_signing_key: str = ""

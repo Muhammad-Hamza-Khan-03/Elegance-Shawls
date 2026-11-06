@@ -11,7 +11,7 @@ from routes.enrichment_routes import router as enrichment_router
 from routes.event_routes import router as event_router
 from routes.enquiry_routes import admin_router as enquiry_admin_router, router as enquiry_router
 from routes.action_routes import router as action_router
-from routes.whatsapp_routes import admin_router as whatsapp_admin_router, public_router as whatsapp_public_router
+from routes.whatsapp_routes import admin_router as whatsapp_admin_router, pairing_router as whatsapp_pairing_router, public_router as whatsapp_public_router
 from routes.assistant_routes import router as assistant_router
 from routes.customer_auth_routes import router as customer_auth_router
 from routes.memory_routes import router as memory_router
@@ -92,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(enquiry_admin_router)
     app.include_router(whatsapp_public_router)
     app.include_router(whatsapp_admin_router)
+    app.include_router(whatsapp_pairing_router)
     app.include_router(auth_router)
     app.include_router(accounts_router)
     app.include_router(audit_router)

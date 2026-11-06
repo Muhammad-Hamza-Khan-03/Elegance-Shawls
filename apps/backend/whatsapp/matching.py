@@ -23,6 +23,7 @@ class InboundEvent(BaseModel):
     quoted_id: str | None = Field(default=None, max_length=128)
     media: str | None = Field(default=None, max_length=512)
     push_name: str | None = Field(default=None, max_length=256)
+    via_bot: bool = False       # set by the bridge for messages it sent on the bot's behalf
     ts: datetime
 
 

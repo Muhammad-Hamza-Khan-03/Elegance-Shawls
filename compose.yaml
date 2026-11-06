@@ -113,6 +113,7 @@ services:
     environment:
       WHATSAPP_BRIDGE_ENABLED: ${WHATSAPP_BRIDGE_ENABLED:-false}
       WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
+      WHATSAPP_SEND_RATE_PER_MIN: ${WHATSAPP_SEND_RATE_PER_MIN:-20}
       REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
     volumes:
       - whatsapp_session:/data/session
@@ -134,6 +135,7 @@ services:
       WHATSAPP_BRIDGE_ENABLED: ${WHATSAPP_BRIDGE_ENABLED:-false}
       WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
       WHATSAPP_BOT_PAUSE_HOURS: ${WHATSAPP_BOT_PAUSE_HOURS:-12}
+      WHATSAPP_REPLY_ALLOWLIST: ${WHATSAPP_REPLY_ALLOWLIST:-}
     networks: [data]
     depends_on:
       redis:

@@ -7,6 +7,7 @@ export function loadConfig(env = process.env) {
     redisUrl: env.REDIS_URL ?? '',
     sessionDir: env.WHATSAPP_SESSION_DIR ?? '/data/session',
     port: Number(env.PORT ?? 3000),
+    sendRatePerMin: Number(env.WHATSAPP_SEND_RATE_PER_MIN ?? 20),
   };
   const problems = [];
   if (enabled && !config.token) problems.push('WHATSAPP_BRIDGE_TOKEN is not set');
