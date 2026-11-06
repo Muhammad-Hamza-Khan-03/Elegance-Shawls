@@ -17,6 +17,7 @@ PROVIDERS: dict[str, tuple[str, str | None]] = {
     "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),   # paid; not in LLM_FREE_TIER_PROVIDERS, so the privacy gate decides via LLM_PROVIDER_TRAINING_POLICIES
     "ollama": ("http://localhost:11434/v1", None),
 }
 
