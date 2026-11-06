@@ -76,7 +76,8 @@ def test_only_the_minimum_is_stored(env):
     product = make_product(env)
     assert post(env, line(product)).status_code == 201
     columns = {r[0] for r in env.sql("select column_name from information_schema.columns where table_name = 'enquiries'")}
-    assert columns == {"id", "reference", "items", "currency", "total", "created_at"}     # no contact details, no session id
+    assert columns == {"id", "reference", "items", "currency", "total", "created_at",       # no contact details, no session id
+                       "status", "whatsapp_contact_id", "linked_at", "link_source", "customer_details", "bot_paused_until"}   # filled only by the WhatsApp bridge, never by this endpoint
     unknown = env.client.post("/v1/enquiries", json={"items": [line(product)], "phone": "0300"})
     assert unknown.status_code == 422                                                      # extra personal fields are refused
 

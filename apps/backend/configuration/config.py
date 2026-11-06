@@ -86,6 +86,12 @@ class settings(BaseSettings):
     worker_job_timeout_seconds: int = 120
     worker_max_tries: int = 3
 
+    # WhatsApp bridge (optional, off by default = wa.me link mode). This is the only place the switch is parsed.
+    whatsapp_bridge_enabled: bool = False
+    whatsapp_bridge_token: str = ""
+    whatsapp_bridge_url: str = "http://whatsapp-bridge:3000"
+    whatsapp_bot_pause_hours: int = 12
+
     # Anonymous interaction events. The signing key is required to accept events.
     session_signing_key: str = ""
     events_max_batch: int = 20

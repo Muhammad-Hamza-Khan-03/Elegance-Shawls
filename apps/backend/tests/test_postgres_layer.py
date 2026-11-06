@@ -61,7 +61,7 @@ def test_connect_returns_false_when_unreachable(monkeypatch):
 
 def test_ready_reports_postgres_as_the_database_and_optional_services_as_disabled():
     body = TestClient(main.create_app()).get("/ready/").json()
-    assert body == {"status": "ready", "database": "connected", "postgres": "connected", "redis": "disabled", "worker": "disabled"}
+    assert body == {"status": "ready", "database": "connected", "postgres": "connected", "redis": "disabled", "worker": "disabled", "whatsapp": "disabled"}
 
 
 def test_ready_is_503_when_postgres_is_down(monkeypatch):

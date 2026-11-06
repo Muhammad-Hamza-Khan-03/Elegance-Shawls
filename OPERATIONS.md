@@ -153,3 +153,15 @@ or, using the helper (which also keeps its own lock and output directory):
 ```
 
 Review: open `/admin/staging`, check each `pending_review` product, set the PKR price and stock, approve (creates an inactive draft), then publish separately.
+
+## WhatsApp bridge (optional, Phases 1-2: record, link, mark contacted)
+
+`WHATSAPP_BRIDGE_ENABLED=false` (default) is link mode: the `wa.me` handoff and manual replies, nothing else runs, `/v1/admin/whatsapp/*` answers 503 `whatsapp_disabled`. `true` links the shop phone as a device and records every 1:1 chat. This phase never sends a message: there is no `/send`, no automated reply and no pairing page yet.
+
+- **Enable:** set `WHATSAPP_BRIDGE_ENABLED=true`, `WHATSAPP_BRIDGE_TOKEN` and `REDIS_PASSWORD`; run the migration (0019) after a backup; `docker compose --profile whatsapp run --rm whatsapp-bridge node src/main.mjs pair` and scan the QR under WhatsApp > Linked devices; then `docker compose --profile whatsapp up -d`. Use a throwaway number first.
+- **Disable:** set `WHATSAPP_BRIDGE_ENABLED=false`, `docker compose --profile whatsapp up -d`. Both services exit 0; stored messages and the session volume are kept, so re-enabling needs no new QR while the phone is still linked.
+- **Re-pair:** after `needs_pairing` (`GET /v1/admin/whatsapp/status`), remove the device on the phone and run the pair command again.
+- **Upgrade Baileys:** bump the exact pin in `apps/whatsapp-bridge/package.json`, pair a test number on staging, run `npm test`, deploy.
+- **Dead letters:** a non-empty `wa:dead` stream means events failed five times or were malformed; inspect with `redis-cli XRANGE wa:dead - +`.
+- **Privacy:** chats are personal data. The session volume holds long-lived private keys: keep it out of backups and git. Update the privacy policy before going live; messages follow the 12-month conversation retention rule (no purge job yet).
+- Not published on any port, never on `web`. Rollback of the migration refuses while messages exist unless `ALEMBIC_ALLOW_WHATSAPP_DATA_LOSS=1`.

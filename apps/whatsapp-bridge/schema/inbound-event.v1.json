@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wa:inbound event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "wa_id", "chat", "from_me", "type", "ts"],
+  "properties": {
+    "v": {"const": 1},
+    "wa_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "chat": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lid": {"type": ["string", "null"], "maxLength": 128},
+    "from_me": {"type": "boolean"},
+    "type": {"enum": ["text", "image", "audio", "video", "document", "other"]},
+    "text": {"type": ["string", "null"], "maxLength": 8192},
+    "quoted_id": {"type": ["string", "null"], "maxLength": 128},
+    "media": {"type": ["string", "null"], "maxLength": 512},
+    "push_name": {"type": ["string", "null"], "maxLength": 256},
+    "ts": {"type": "string", "format": "date-time"}
+  }
+}

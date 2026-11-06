@@ -53,6 +53,10 @@ services:
       PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
       ADMIN_RATE_LIMIT_PER_MINUTE: ${ADMIN_RATE_LIMIT_PER_MINUTE:-60}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
+      # Optional WhatsApp bridge (docs: OPERATIONS.md). false = wa.me link mode, exactly as before.
+      WHATSAPP_BRIDGE_ENABLED: ${WHATSAPP_BRIDGE_ENABLED:-false}
+      WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
+      WHATSAPP_BOT_PAUSE_HOURS: ${WHATSAPP_BOT_PAUSE_HOURS:-12}
       # The backend is reachable only through the proxy, which overwrites X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
     networks: [data, web]
@@ -75,6 +79,66 @@ services:
     networks: [web]
     depends_on:
       backend:
+        condition: service_healthy
+
+  # ---- Optional WhatsApp automation: `--profile whatsapp`. Nothing here is reachable from `web` or the proxy. ----
+  redis:
+    image: redis:7.4-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    profiles: [whatsapp]
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
+    # noeviction: a full stream rejects writes (the bridge retries) instead of dropping messages.
+    command:
+      - sh
+      - -c
+      - test -n "$$REDIS_PASSWORD" || { echo "Set REDIS_PASSWORD" >&2; exit 1; }; exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes
+    mem_limit: 192m
+    cpus: 0.5
+    volumes:
+      - redis_data:/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  whatsapp-bridge:
+    build: ./apps/whatsapp-bridge
+    image: elegance-whatsapp-bridge:${APP_VERSION:-local}
+    profiles: [whatsapp]
+    restart: unless-stopped
+    environment:
+      WHATSAPP_BRIDGE_ENABLED: ${WHATSAPP_BRIDGE_ENABLED:-false}
+      WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+    volumes:
+      - whatsapp_session:/data/session
+    networks: [data, whatsapp_egress]
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  whatsapp-consumer:
+    image: elegance-backend:${APP_VERSION:-local}
+    profiles: [whatsapp]
+    restart: unless-stopped
+    command: ["python", "-m", "whatsapp.consumer"]
+    environment:
+      DATABASE_URL: *database-url
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      WHATSAPP_BRIDGE_ENABLED: ${WHATSAPP_BRIDGE_ENABLED:-false}
+      WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
+      WHATSAPP_BOT_PAUSE_HOURS: ${WHATSAPP_BOT_PAUSE_HOURS:-12}
+    networks: [data]
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
   proxy:
@@ -101,12 +165,15 @@ services:
           - ${API_DOMAIN:?Set API_DOMAIN}
 
 networks:
+  whatsapp_egress: {}    # the only route out, used by the WhatsApp bridge alone
   web: {}
   data:
     # No route outside Docker: PostgreSQL is reachable only from the backend and the migrate job.
     internal: true
 
 volumes:
+  whatsapp_session:
+  redis_data:
   postgres_data:
   caddy_data:
   caddy_config:
