@@ -34,6 +34,8 @@ The permanent branches are protected with required CI contexts (`frontend`, `bac
 
 ## Reconciliation and cleanup policy
 
+The repeatable audit and cleanup procedure, with the worktree and archive rules, is in `docs/REPO_HYGIENE.md` (read-only audit: `scripts/repo_audit.sh`).
+
 Before cleanup, produce a durable audit covering every local/remote branch and worktree, SHA, dirty state, ancestry/tree/patch equivalence against `main`, `staging`, and `staging-integration`, open PR/issue/project/CI references, active workers, and QA evidence. Classify from evidence, not branch names.
 
 - Always retain permanent branches.
