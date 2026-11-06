@@ -10,7 +10,7 @@ That document is the source of truth for the current architecture direction, rep
 
 ## Git workflow
 
-Permanent branches: `staging-integration` (development), `staging` (release candidates), `main` (production). Branch new work from `staging-integration` and open PRs into it; never target `main` without an explicit production-promotion request. See `CLAUDE.md` and `docs/RELEASE_WORKFLOW.md`.
+Permanent branches: `integration` (development), `staging` (release candidates), `main` (production). Branch new work from `integration` and open PRs into it; never target `main` without an explicit production-promotion request. See `CLAUDE.md` and `docs/RELEASE_WORKFLOW.md`.
 
 ## Project ownership and boundaries
 
