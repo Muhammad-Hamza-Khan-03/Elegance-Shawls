@@ -4123,3 +4123,5 @@
 - Source remote refs were already absent. Local source branches were **retained** because ordinary `git branch -d` correctly refused deletion after squash-merge history was not a direct ancestor; no force deletion was used.
 - Pruned only stale worktree metadata for missing `/tmp/m4-batch-b-qa`; no existing worktree directory or working tree content was removed.
 - No active, dirty, detached-QA, or unique worktree was modified.
+
+See `docs/reconciliation/2026-11-06-verification.md` for exact local verification output and the current staging CI migration-contract blocker.
