@@ -272,3 +272,17 @@ def test_post_search_uses_the_public_rate_limit_not_the_admin_one(monkeypatch):
 
     search, other = asyncio.run(run())
     assert search == [200, 200, 200] and other == [200, 429]
+
+
+@pytest.mark.parametrize("query", [
+    "do you have blue stoles", "can I see blue stoles", "is there a blue stole", "I would like to buy a blue stole",
+    "kya aap ke paas blue stole hai", "آپ کے پاس نیلا سٹول ہے",
+])
+def test_conversational_filler_is_not_required_as_product_text(query):
+    parsed = parse_query(query)
+    assert parsed.text == ()                      # filler never becomes a lexical requirement
+    assert parsed.colors == ("blue",) and parsed.categories == ("stoles",)
+
+
+def test_unknown_words_are_still_required_as_text():
+    assert parse_query("do you have blue banarsi stoles").text == ("banarsi",)   # real product words are not swallowed
