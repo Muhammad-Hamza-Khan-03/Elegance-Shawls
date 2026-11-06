@@ -1,7 +1,7 @@
 # M4 Batch C provider privacy decision packet
 
-**Task:** `t_m4c_provider_decision`  
-**Mode:** privacy-readiness only; no provider selected, no spend, no credentials, no live calls.  
+**Task:** `t_m4c_provider_decision`
+**Mode:** privacy-readiness only; no provider selected, no spend, no credentials, no live calls.
 **Decision:** `BLOCKED_PROVIDER_PRIVACY_DECISION`
 
 ## Scope and non-negotiables

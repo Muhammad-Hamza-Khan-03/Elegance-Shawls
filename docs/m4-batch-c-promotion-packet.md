@@ -1,7 +1,7 @@
 # M4 Batch C promotion packet (readiness, not activation)
 
-**Task:** `t_m4c_promotion_packet`  
-**Parent:** `t_m4c_production_memory_privacy_gate`  
+**Task:** `t_m4c_promotion_packet`
+**Parent:** `t_m4c_production_memory_privacy_gate`
 **State:** `BLOCKED`; `release_ready=false`; no production-memory activation is permitted.
 
 ## Evidence currently available

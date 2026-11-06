@@ -1,7 +1,7 @@
 # M4 Batch C memory-extraction evaluation
 
-**Task:** `t_m4c_memory_extraction_evals`  
-**Artifact:** `evals/datasets/memory_extraction_synthetic.jsonl` + `evals/run_memory_extraction_eval.py`  
+**Task:** `t_m4c_memory_extraction_evals`
+**Artifact:** `evals/datasets/memory_extraction_synthetic.jsonl` + `evals/run_memory_extraction_eval.py`
 **Mode:** deterministic offline synthetic proof; no provider, network, customer data, or database writes.
 
 ## Reproduce

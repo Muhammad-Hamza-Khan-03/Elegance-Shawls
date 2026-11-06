@@ -51,7 +51,9 @@ async def get_consent(session: AsyncSession, customer_id: uuid.UUID) -> dict:
 
 async def set_consent(session: AsyncSession, customer_id: uuid.UUID, granted: bool, now: datetime) -> dict:
     """Revoking hides stored memories (every item operation then needs consent) and keeps them until they expire or are deleted."""
-    if await repo.set_consent(session, customer_id, granted, policy.MEMORY_POLICY_VERSION, now):
+    changed = await repo.set_consent(session, customer_id, granted, policy.MEMORY_POLICY_VERSION, now)
+    if changed:
+        await repo.bump_memory_version(session, customer_id)
         await _audit(session, customer_id, "consent.grant" if granted else "consent.revoke", f"customer:{customer_id}")
     return await get_consent(session, customer_id)
 
@@ -101,6 +103,7 @@ async def update(session: AsyncSession, customer_id: uuid.UUID, item_id: uuid.UU
     changes = {name: getattr(req, name) for name in ("value", "reason") if getattr(req, name) is not None}
     updated, changed = await repo.update_item(session, item, now, **changes)
     if changed:
+        await repo.bump_memory_version(session, customer_id)
         await _audit(session, customer_id, "update", f"memory:{item_id}", category=updated.category, fields=sorted(changes))
     return updated
 
