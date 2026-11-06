@@ -118,10 +118,10 @@ def test_legacy_numbering_is_detected_read_only(pg_url, migrated_url, monkeypatc
     spec.loader.exec_module(check)
     env = ApiEnv(pg_url, monkeypatch)
     import asyncio
-    assert asyncio.run(check.inspect(pg_url)) == ("0016", None)
+    assert asyncio.run(check.inspect(pg_url)) == ("0018", None)
     env.sql("update alembic_version set version_num = '0009'")
     try:
         version, why = asyncio.run(check.inspect(pg_url))
         assert version == "0009" and "admin_accounts" in why
     finally:
-        env.sql("update alembic_version set version_num = '0016'")
+        env.sql("update alembic_version set version_num = '0018'")
