@@ -1,92 +1,48 @@
-# Staging-first release workflow
+# Elegance Shawls Release and Branch Workflow
 
-Elegance Shawls has exactly three permanent branches. Everything else is a short-lived branch that is deleted after it is integrated. GitHub Issues and pull requests are the system of record.
+## Permanent hierarchy
 
 ```text
-feature/* fix/* ai/* docs/* refactor/* test/* infra/*
-        |  PR + CI
-        v
-staging-integration   development source of truth (shared, may hold several features)
-        |  PR + CI, a chosen release-candidate SHA
-        v
-staging               release-candidate source of truth (QA / UAT)
-        |  PR + QA evidence + explicit approval
-        v
-main                  production source of truth
+feature/* | fix/* | ai/* | docs/* | refactor/* | test/* | infra/*
+                         |
+                         v
+integration tier: staging-integration
+                         |
+                         v
+release candidate: staging
+                         |
+                         v
+production: main
 ```
 
-| Branch | Role | Environment | Who/what may change it |
-|---|---|---|---|
-| `staging-integration` | Active development and integration | Vercel Preview / local | PRs from short-lived branches |
-| `staging` | Release candidates, QA, UAT | Isolated staging (not yet provisioned, see below) | PRs from `staging-integration` only |
-| `main` | Production | Production | PRs from `staging` only, with explicit approval (hotfixes excepted, see below) |
+`staging-integration` is the canonical integration branch. The repository currently also contains a historical `integration/local-complete` namespace/ref; it is preserved because it has a linked worktree. Do not create an exact `integration` ref while that namespace collision and active worktree exist. Treat `staging-integration` as the integration tier until an owner-approved namespace migration can be performed without disrupting workers.
 
-`staging` was initialised at the production SHA (`283b27e`) so the first promotion is a reviewed diff. Nothing is promoted automatically.
+## Pull-request gates
 
-## Day-to-day development
+1. New work starts from the latest `origin/staging-integration` in an isolated worktree. Do not use a dirty canonical checkout.
+2. Feature/fix/AI/docs branches open PRs into `staging-integration`; no direct pushes to permanent branches.
+3. A PR must identify scope, migration/config impact, rollback plan, test commands, QA evidence, and any linked issue/project item.
+4. CI must be green for the changed surface. Backend/database changes require backend tests, compile checks, and integration tests when available; frontend changes require lint, typecheck, unit tests, build, and relevant Playwright coverage. Evaluation suites must distinguish `PASS`, `FAIL`, and `NOT EVALUATED`; `NOT EVALUATED` blocks release readiness.
+5. Independent QA must test the exact immutable candidate SHA. Implementation tests are not independent QA. A failed or blocked QA run is not a pass.
+6. Only completed, QA-approved changes are eligible for integration. Do not blind-cherry-pick a branch whose migration/API contract differs from the target; reconcile the target contract first and port only the required behavior.
+7. Promote from `staging-integration` to `staging` only through a PR containing the exact candidate SHA and fresh regression evidence. Fixes found on staging return to the integration tier first.
+8. Promote from `staging` to `main` only through an explicitly approved production promotion. This document does not authorize deployment, VPS changes, production mutations, credential changes, or `release_ready` changes.
 
-1. Open or update a GitHub Issue with acceptance criteria and rollback notes.
-2. Fetch, then create a short-lived branch from the latest `origin/staging-integration` (never from `main`). Allowed prefixes: `feature/`, `fix/`, `ai/`, `docs/`, `refactor/`, `test/`, `infra/`, `hotfix/` (hotfix branches start from `main`).
-3. Implement, run the relevant tests, commit (conventional commits), push.
-4. Open a PR targeting `staging-integration`. CI must pass. Squash merge (the only merge method the repo allows). The head branch is deleted on merge.
+## Protection baseline
 
-## Promoting to staging
+The permanent branches are protected with required CI contexts (`frontend`, `backend`, `containers`, `e2e`) and strict checks on `main`; `staging` and `staging-integration` currently require the same contexts with non-strict status-check ordering. Review-count and administrator-enforcement settings remain subject to the repository's GitHub ruleset and owner governance. Do not bypass required checks or force-push protected branches.
 
-1. Compare `staging-integration` with `staging` (`git log origin/staging..origin/staging-integration`) and choose the release candidate. It must be a green `staging-integration` SHA; unfinished features should be reverted or left out before choosing it.
-2. Open a PR from `staging-integration` (or a branch cut from the chosen SHA) into `staging`. Record the candidate SHA in the PR description.
-3. CI must pass: frontend, backend, backend-integration (includes migration validation and the upgrade-from-0009 test), containers, e2e, evals. Fixture-only AI evals are not release evidence; "not evaluated" blocks release.
-4. Deploy that exact SHA to isolated staging and run QA. Record pass/fail evidence against the SHA.
-5. Fixes found in staging are made on `staging-integration` first and re-promoted. They are not committed directly to `staging`.
+## Reconciliation and cleanup policy
 
-## Promoting to production
+Before cleanup, produce a durable audit covering every local/remote branch and worktree, SHA, dirty state, ancestry/tree/patch equivalence against `main`, `staging`, and `staging-integration`, open PR/issue/project/CI references, active workers, and QA evidence. Classify from evidence, not branch names.
 
-1. Use only a `staging` SHA that has CI success and recorded QA evidence.
-2. Review migrations (`apps/backend/migrations`), write release notes and the rollback procedure.
-3. Get explicit approval. Open a PR from `staging` into `main` and squash merge after review.
-4. Wait for CI on the resulting `main` commit; that merge result is the production candidate.
-5. Explicitly deploy that exact `main` SHA. Record immutable Vercel and Render deployment IDs.
-6. Run production smoke tests (storefront, `/api/health`, backend `/health/` and `/ready/`, non-mutating routes). Stop and roll back if a check fails.
-7. Write a release record: issue/PR, resulting SHA, deployment IDs, timestamps, checks, rollback decision.
+- Always retain permanent branches.
+- Retain active, linked, dirty, detached-QA, ambiguous, blocked, or unique work. Preserve uncommitted changes and untracked evidence.
+- For a branch proven merged/superseded/obsolete and confirmed clean/inactive, first create `archive/reconciliation/<UTC-date>-<source>` and push it where possible. Verify archive SHA equals the source SHA and record the verification.
+- Only after archive verification may the source branch and its clean inactive worktree be removed with ordinary non-force operations.
+- Never use `reset --hard`, broad `git clean`, force-push, blind branch deletion, or history rewriting. `git worktree prune` is limited to demonstrably stale metadata for missing paths.
+- Every archive/removal decision, retained blocker, and final SHA belongs in a durable reconciliation checkpoint.
 
-After a squash merge into `main`, fast-forward is not possible; merge `main` back into `staging` and then `staging-integration` through PRs so the branches share ancestry again.
+## Current reconciliation checkpoint
 
-## Production hotfixes
-
-1. Create `hotfix/<description>` from the latest `main`.
-2. Fix, test, and get explicit approval before merging to `main`; release through the normal explicit deploy.
-3. Propagate the fix: open PRs carrying the same fix into `staging-integration` and into `staging` (cherry-pick the hotfix commit; do not merge unrelated unfinished work into `staging`).
-
-## Retiring branches
-
-Delete a short-lived branch only when its commits are reachable from `staging-integration` (or its replacement is documented), it has no open PR, no active worktree and no deployment reference. Use non-forced deletes. Never delete `main`, `staging` or `staging-integration`; never delete tags. Audit periodically with `git branch -r --merged origin/staging-integration`.
-
-## CI triggers
-
-`.github/workflows/ci.yml` runs on every pull request (any base) and on pushes to `main`, `staging` and `staging-integration`. Required status checks are configured in GitHub branch protection; they must match job names that actually run on that branch.
-
-## Hosting controls and boundaries
-
-- Render production automatic deploys should be disabled so production requires an explicit deploy of an exact `main` SHA. This is a provider setting and must be verified in Render after any change; source files alone are not evidence.
-- Vercel production deployment controls should prevent an unreviewed branch from becoming production. Preview deployments remain enabled for feature branches. The Vercel project setting and the live production deployment must be verified in the provider UI/API.
-- If a provider control is unavailable or a change could risk downtime, do not guess or change it. Record the exact provider limitation as a follow-up and preserve the live production deployment.
-- No GitFlow, Kubernetes, new hosting platform, or production catalog migration is part of this workflow.
-
-## Staging conventions
-
-The reusable staging target is an isolated Render service and an isolated Atlas database (for example, a `staging`-named database), each with separate credentials and a staging-only admin key. Never copy production secrets into staging or Vercel Preview. Use disposable, clearly marked QA fixtures only; remove them after QA. Products are added manually through the built-in admin after the workflow is accepted. The legacy catalog is not imported.
-
-As of the baseline record, the isolated Render/Atlas staging tuple is **not provisioned/verified**. Until it exists and its exact credentials, CORS, deployment SHA, and cleanup procedure are recorded, staging QA is blocked; Vercel Preview alone is not an independent staging gate.
-
-## Rollback
-
-For an application failure, stop promotion, identify the last known-good immutable Vercel/Render deployment IDs, redeploy those artifacts, and rerun health/smoke checks. Do not delete or rewrite production catalog data as part of an application rollback. Database restore is a separate, tested procedure.
-
-## Release record minimum
-
-Record: issue and PR URLs; merged `main` SHA; Vercel Preview and production deployment IDs/URLs; Render staging and production deployment IDs/URLs; QA evidence and reviewer; production smoke results; exact timestamps; and rollback status. Never record secret values.
-
-## Current verified boundaries
-
-- Production baseline is infrastructure readiness, not a commercial launch; the catalog is intentionally empty and no legacy records are to be imported.
-- Atlas network access must retain only `74.220.52.0/24` and `74.220.60.0/24`; `0.0.0.0/0` must remain removed.
-- The baseline's provider-control verification and isolated staging provisioning remain explicit follow-ups where evidence is absent.
+See `docs/reconciliation/2026-11-06-branch-reconciliation-audit.md` and its machine-readable `.json` companion for the complete inventory and evidence snapshot. The audit records why the exact `integration` ref was not created and why active/dirty/ambiguous work was retained.
