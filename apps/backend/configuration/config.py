@@ -46,6 +46,10 @@ class settings(BaseSettings):
     customer_auth_rate_limit_per_minute: int = 10
     # Batch A only: explicit event attribution is off by default and limited to isolated staging.
     customer_anonymous_merge_enabled: bool = False
+    # M4 Batch B: explicit opt-in to the synthetic staging path; never production memory.
+    recommendations_enabled: bool = False
+    recommendations_synthetic_only: bool = True
+    recommendations_experiment_enabled: bool = False
 
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.

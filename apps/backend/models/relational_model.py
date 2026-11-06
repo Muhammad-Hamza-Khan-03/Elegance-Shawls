@@ -651,6 +651,36 @@ class MemoryItem(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class RecommendationImpression(Base):
+    """Append-only provenance for a synthetic staging recommendation impression."""
+    __tablename__ = "recommendation_impressions"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "request_id", "experiment_arm", "position", name="uq_recommendation_impressions_request_position"),
+        CheckConstraint("position >= 0", name="ck_recommendation_impressions_position_nonnegative"),
+        CheckConstraint("request_id ~ '^[A-Za-z0-9_-]{16,128}$'", name="ck_recommendation_impressions_request_id_format"),
+        CheckConstraint("experiment_arm IN ('control', 'treatment')", name="ck_recommendation_impressions_experiment_arm"),
+        CheckConstraint("char_length(context) BETWEEN 1 AND 64", name="ck_recommendation_impressions_context_length"),
+        CheckConstraint("char_length(feature_flag) BETWEEN 1 AND 64", name="ck_recommendation_impressions_feature_flag_length"),
+        CheckConstraint("preference_version >= 0 AND catalogue_revision >= 1", name="ck_recommendation_impressions_versions_nonnegative"),
+        Index("ix_recommendation_impressions_customer_created", "customer_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id", ondelete="SET NULL"))
+    recommendation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    context: Mapped[str] = mapped_column(Text, nullable=False)
+    feature_flag: Mapped[str] = mapped_column(Text, nullable=False)
+    experiment_arm: Mapped[str] = mapped_column(Text, nullable=False)
+    preference_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    catalogue_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_memory_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = _created_at()
+
+
 class SemanticEmbedding(Base):
     """One vector per (product, provider, model, representation version). Fresh = content_hash equals the current
     fingerprint of the product's public text; product_revision records the revision it was read at."""

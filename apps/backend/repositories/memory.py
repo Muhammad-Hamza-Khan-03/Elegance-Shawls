@@ -13,7 +13,25 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.relational_model import MemoryConsent as C, MemoryItem as M
+from models.relational_model import MemoryConsent as C, MemoryItem as M, RecommendationImpression
+
+
+async def record_recommendation_impression(session: AsyncSession, *, customer_id: uuid.UUID, recommendation_id: uuid.UUID,
+                                           product_id: uuid.UUID, variant_id: uuid.UUID | None, request_id: str,
+                                           position: int, context: str, feature_flag: str, experiment_arm: str,
+                                           preference_version: int, catalogue_revision: int,
+                                           source_memory_ids: tuple[uuid.UUID, ...], created_at: datetime) -> bool:
+    """Append once for the request/arm/position key; callers own commits."""
+    result = await session.execute(
+        pg_insert(RecommendationImpression).values(
+            customer_id=customer_id, recommendation_id=recommendation_id, product_id=product_id,
+            variant_id=variant_id, request_id=request_id, position=position, context=context,
+            feature_flag=feature_flag, experiment_arm=experiment_arm, preference_version=preference_version,
+            catalogue_revision=catalogue_revision, source_memory_ids=[str(item) for item in source_memory_ids],
+            created_at=created_at,
+        ).on_conflict_do_nothing(index_elements=["customer_id", "request_id", "experiment_arm", "position"])
+    )
+    return result.rowcount == 1
 
 _CONTENT_SCRUBBED = dict(status="deleted", key=None, value=None, reason=None, source_ref=None, fingerprint=None)
 

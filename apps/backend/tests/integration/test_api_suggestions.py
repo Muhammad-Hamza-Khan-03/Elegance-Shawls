@@ -27,6 +27,10 @@ def env(pg_engine_factory, migrated_url, monkeypatch):
     monkeypatch.setattr(settings, "llm_production_chain", "selfhost/llama")
     monkeypatch.setattr(settings, "llm_provider_training_policies", "selfhost=self_hosted")
     monkeypatch.setattr(settings, "llm_free_tier_providers", "")
+    monkeypatch.setattr(settings, "environment", "staging")
+    monkeypatch.setattr(settings, "recommendations_enabled", True)
+    monkeypatch.setattr(settings, "recommendations_synthetic_only", True)
+    monkeypatch.setattr(settings, "recommendations_experiment_enabled", True)
     e.sql("insert into customers (id, status) values (:id, 'registered')", id=customer)
     e.sql("insert into memory_consents (customer_id, granted, policy_version, changed_at) values (:id, true, '2026-10-30', now())", id=customer)
     e.sql("""insert into products (id, slug, name, category, status, cover_image_url, images, price, currency, revision)
@@ -43,25 +47,26 @@ def env(pg_engine_factory, migrated_url, monkeypatch):
 
 @pytest.mark.integration
 def test_suggestions_use_consented_owned_memory_and_current_product(env):
-    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer)})
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
     assert response.status_code == 200
     payload = response.json()
     assert len(payload["items"]) == 1
     item = payload["items"][0]
     assert item["reason"]["code"] == "explicit_colour_match"
-    assert item["reason"]["source_provenance"] == ["memory-page-7"]
+    assert item["reason"]["source_provenance"] == [f"memory:{item['reason']['source_memory_ids'][0]}"]
+    assert "memory-page-7" not in response.text
     assert item["reason"]["product_evidence"]["product_name"] == "Blue Shawl"
 
 
 @pytest.mark.integration
 def test_suggestions_fail_closed_when_consent_is_revoked(env):
     env.sql("update memory_consents set granted = false where customer_id = :id", id=env.customer)
-    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer)})
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
     assert response.status_code == 200 and response.json()["items"] == []
 
 
 @pytest.mark.integration
 def test_suggestions_fail_closed_for_stale_catalogue(env):
     env.sql("update products set updated_at = now() - interval '25 hours' where slug = 'blue-shawl'")
-    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer)})
+    response = env.client.get("/v1/me/suggestions", headers={"X-Test-Customer": str(env.customer), "X-Synthetic-Subject": f"synthetic:{env.customer}"})
     assert response.status_code == 200 and response.json()["items"] == []
