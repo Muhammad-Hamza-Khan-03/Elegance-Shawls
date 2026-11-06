@@ -19,5 +19,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_customers_memory_version_nonnegative", "customers", type_="check")
+    op.drop_constraint(op.f("ck_customers_memory_version_nonnegative"), "customers", type_="check")
     op.drop_column("customers", "memory_version")

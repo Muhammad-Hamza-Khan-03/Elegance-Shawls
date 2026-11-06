@@ -37,6 +37,6 @@ def downgrade() -> None:
     if bind.execute(sa.text("SELECT count(*) FROM anonymous_merges")).scalar():
         raise RuntimeError("Refusing to remove anonymous merge evidence; restore a backup for rollback")
     op.drop_table("anonymous_merges")
-    op.drop_constraint("ck_customer_sessions_exchange_hash_format", "customer_sessions", type_="check")
+    op.drop_constraint(op.f("ck_customer_sessions_exchange_hash_format"), "customer_sessions", type_="check")
     op.drop_constraint("uq_customer_sessions_exchange_hash", "customer_sessions", type_="unique")
     op.drop_column("customer_sessions", "exchange_hash")
