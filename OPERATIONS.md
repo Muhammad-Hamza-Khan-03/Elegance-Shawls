@@ -179,3 +179,26 @@ Review: open `/admin/staging`, check each `pending_review` product, set the PKR 
 - **Voice notes** (`WHATSAPP_VOICE_ENABLED=true`). The bridge holds a voice note in memory for at most 5 minutes (2 MB, 20 items); the consumer fetches it once, transcribes it, tells the bridge to delete it, and stores only the transcript. It requires `WHATSAPP_ASR_URL` (OpenAI-compatible `/v1/audio/transcriptions`, e.g. a self-hosted faster-whisper server) and `WHATSAPP_ASR_PRIVACY=self_hosted|no_training`; without the declaration it refuses and `/ready/` reports `whatsapp: misconfigured`. A failed transcription leaves a plain audio message with the holding reply.
 - **Catalogue assistant** (`WHATSAPP_ASSISTANT_ENABLED=true`, plus `SITE_URL` for product links). Free-text questions ("red shawl under 3000", also Urdu/Roman Urdu) get up to three real products from the live catalogue with prices and links. Deterministic parser plus catalogue search; the LLM path used by the web assistant is hard-disabled for this channel (`assistant.grounded.llm_blocked`), whatever `ASSISTANT_LLM` says. The only external call is the optional query embedding, which receives the parsed search terms, not the message. Saved-memory requests are web-only and get the holding reply. Reference/details flows still take precedence.
 - **Staff status messages.** On Admin > Enquiries, `Show WhatsApp chat` then `Send "order confirmed"` / `Send "dispatched"` sends a fixed template inside the customer's open chat (the bridge refuses after 24 hours of silence). This is the only way an order is ever called confirmed; it is audited with the staff member's account and marks the enquiry `contacted`.
+
+### WhatsApp: known limits and deliberate shortcuts
+
+Each is a conscious trade-off, with the point at which to revisit it.
+
+| Limit | Effect | Revisit when |
+| --- | --- | --- |
+| The bridge keeps "last customer message per chat" in memory (`sender.mjs`) | After a bridge restart the bot cannot answer a chat until that customer writes again (fails safe: nothing is sent) | A customer writes, the bridge restarts within minutes, and the reply is lost; persist it in Redis |
+| The bridge keeps idempotency keys and the set of bot-sent message ids in memory | A retry that crosses a bridge restart could send a reply twice, and an echo in that window is stored as `staff` instead of `bot` | Duplicate replies are seen in logs |
+| Consumer retry counts are in memory | A consumer restart gives a failing entry five fresh attempts before it reaches `wa:dead` | Poison messages recur; use XPENDING delivery counts |
+| Voice notes are held in bridge memory (5 min, 2 MB, 20 items) | A restart discards pending notes; the customer gets the holding reply | Voice volume grows |
+| Chats identified only by an `@lid` have no phone number | `WHATSAPP_REPLY_ALLOWLIST` never matches them, so the bot stays silent for them while an allowlist is set | Staff test numbers show up as `@lid` |
+| Customer details are parsed only from labelled lines (`Name:`, `City:`, `Address:`, or the Urdu labels) | Free-form addresses are not captured; the bot asks again or the holding reply goes out | Real chats show customers ignoring the format |
+| After the order summary, an unrelated follow-up gets silence (assistant off) or the assistant answer (assistant on) | Without the assistant there is at most one holding reply per pause window | Staff report unanswered customers |
+| Saved-memory requests ("remember…") are web-only | On WhatsApp they get the holding reply | Never without the section 19.2 privacy gate |
+| The catalogue assistant embeds the parsed search terms (not the message) when semantic search is configured | That embedding call leaves the process if the embedding provider is external | Before enabling the assistant with an external embedding provider, confirm its privacy class |
+| Auth state in `whatsapp_auth_entries` lives in the `public` schema | The app role cannot create schemas, so the table is not in its own schema; isolation is the dedicated `elegance_wa_auth` role, which can touch only that table | The migration role is allowed to create schemas |
+| Switching `WHATSAPP_AUTH_STORE`, or losing `WHATSAPP_AUTH_ENCRYPTION_KEY`, means pairing again | No export or import tool | Never, unless re-pairing becomes costly |
+| Monitoring and retention are scripts, not services | Nothing is scheduled, alerting or purging until the host cron / Grafana agent is configured (owner action) | Before launch (`LAUNCH_RUNBOOK.md` section 6) |
+| Message retention is a manual or cron purge | Messages older than 12 months stay until `whatsapp_retention.py purge --apply` runs | Same as above |
+| The Urdu templates and privacy wording are unreviewed drafts | They must not go to customers as they are | Before launch |
+| Playwright's WhatsApp admin spec shares one fake API across the desktop and mobile projects | The spec resets the fake's state at its start; do not run the two projects against the same mock concurrently | A new WhatsApp e2e spec is added |
+| Nothing has been run against real WhatsApp | Baileys behaviour (QR rotation, pairing code timing, echo of sent messages, 515 restart after scan, `@lid` identifiers) is unverified | The staging checklist in `DEPLOYMENT_VALIDATION.md` |

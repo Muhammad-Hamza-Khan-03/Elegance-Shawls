@@ -91,7 +91,7 @@ http.createServer((request, response) => {
   }
   if (request.url === '/__last-enquiry') return response.end(JSON.stringify(globalThis.lastEnquiry ?? null));
   // WhatsApp bridge admin API (fake): `/__whatsapp-disabled?on=1` flips it to the 503 whatsapp_disabled answer.
-  if (request.url?.startsWith('/__whatsapp-disabled')) { globalThis.waDisabled = request.url.endsWith('on=1'); return response.end('{}'); }
+  if (request.url?.startsWith('/__whatsapp-disabled')) { globalThis.waDisabled = request.url.endsWith('on=1'); if (!globalThis.waDisabled) globalThis.wa = undefined; return response.end('{}'); }   // on=0 also resets pairing state, so each Playwright project starts clean
   if ((request.url?.startsWith('/v1/admin/whatsapp') || /^\/v1\/admin\/enquiries\/[^/]+\/whatsapp/.test(request.url ?? '')) && request.headers['x-admin-session'] === SESSION) {
     if (globalThis.waDisabled) { response.statusCode = 503; return response.end(JSON.stringify({ detail: { code: 'whatsapp_disabled' } })); }
     const wa = (globalThis.wa ??= { paired: false, pairing: null, linked: false });

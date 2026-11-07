@@ -68,4 +68,5 @@ Decision recorded: reply automation stays on the unofficial bridge (owner approv
 - [ ] Rollout on a throwaway number first; then the shop number with `WHATSAPP_REPLY_ALLOWLIST` = staff numbers for at least a week; only then clear the allowlist.
 - [ ] Shop phone is used daily (WhatsApp unlinks companion devices after 14 days of primary-phone inactivity) and staff know typing in a chat silences the bot there for 12 hours.
 - [ ] Emergency off rehearsed: `WHATSAPP_BRIDGE_ENABLED=false` then `docker compose --profile whatsapp up -d`, and removing the device under Linked Devices.
+- [ ] Read "WhatsApp: known limits and deliberate shortcuts" in `OPERATIONS.md` and accept each item.
 - [ ] `WHATSAPP_ASSISTANT_ENABLED` and `WHATSAPP_VOICE_ENABLED` stay off until the ASR endpoint is self-hosted and declared and the owner has approved each.
