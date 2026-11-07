@@ -187,3 +187,17 @@ def test_every_card_carries_its_catalogue_link_picture_and_colour_and_its_own_va
     assert len(cards) == 3 and {p["params"]["product_id"] for p in proposals} == in_stock           # one per buyable card, none invented, none for sold out
     assert all(p["decision"]["outcome"] == "validated" for p in proposals)
     assert len({p["idempotency_key"] for p in proposals}) == len(proposals)
+
+
+def said(events):
+    return "".join(d["delta"] for e, d in events if e == "text")
+
+
+def test_how_many_questions_are_counted_from_the_database_not_searched(client):
+    # "store" must not be spell-corrected into "stole", and "how many" is not a product word
+    assert "3 shawls in stock" in said(ask(client, "how many shawls are in store"))          # Ruby, Crimson, Navy; the sold-out Rose is not counted
+    assert "2 shawls in stock (in red)" in said(ask(client, "how many red shawls do you have"))
+    assert "2 shawls in stock (at most PKR 2,000)" in said(ask(client, "how many shawls under 2000"))
+    assert "3 shawls in stock" in said(ask(client, "kitni shawls hain"))
+    nothing = said(ask(client, "how many green shawls"))
+    assert "could not find any" in nothing and not [e for e, _ in ask(client, "how many shawls") if e in ("product", "proposal")]
