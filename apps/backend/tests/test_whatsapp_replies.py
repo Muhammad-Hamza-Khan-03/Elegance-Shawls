@@ -10,7 +10,7 @@ ITEMS = [{"product": "Wool Shawl", "color": "Red", "size": "Free", "quantity": 2
 
 def facts(**over):
     base = dict(now=NOW, event_ts=NOW, text="hi", max_age=timedelta(minutes=15), allowlisted=True, paused=False, bot_recent=False,
-                reference_in_message=False, has_enquiry=True, summary_sent=False)
+                reference_in_message=False, has_enquiry=True, summary_sent=False, is_text=True)
     return Facts(**{**base, **over})
 
 
@@ -51,8 +51,7 @@ def test_unknown_or_missing_reference_asks_once():
 
 def test_anything_else_gets_one_holding_reply_per_window():
     assert decide(facts(summary_sent=True, text="is it pure wool?")).kind == "holding"
-    assert decide(facts(summary_sent=True, text=None, bot_recent=True)) is None
-    assert decide(facts(text=None)).kind == "holding"
+    assert decide(facts(summary_sent=True, text="is it pure wool?", bot_recent=True)) is None
 
 
 def test_silent_when_staff_active_off_allowlist_or_message_is_stale():
@@ -87,8 +86,7 @@ def test_assistant_answers_free_text_when_enabled_with_or_without_an_enquiry():
     assert decide(facts(summary_sent=True, text="Name: Ali", assistant_enabled=True, is_text=True)).kind == "ask_missing"
     # an unknown reference is still asked to use the Order button, and non-text still gets the holding reply
     assert decide(facts(has_enquiry=False, unknown_reference=True, assistant_enabled=True, is_text=True)).kind == "need_reference"
-    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=False)).kind == "need_reference"
-    assert decide(facts(summary_sent=True, text=None, assistant_enabled=True, is_text=False)).kind == "holding"
+    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=False)).kind == "unsupported_media"
 
 
 def test_assistant_stays_behind_the_same_guards():
@@ -101,3 +99,18 @@ def test_status_templates_exist_in_both_languages_and_mention_the_reference():
     for lang in ("en", "ur"):
         for key in ("status_confirmed", "status_dispatched"):
             assert "{reference}" in t[lang][key]
+
+
+def test_voice_notes_browse_but_negation_and_ambiguity_still_fail_closed():
+    from whatsapp.assistant import voice_trusted
+    assert voice_trusted("Kaali shawl") and voice_trusted("black shawl under 5000") and voice_trusted("کالی شال")
+    assert not voice_trusted("red shawl nahi chahiye")                  # negation: do not guess
+    assert not voice_trusted("shawl under 2000 or 5000")                # two prices
+
+
+def test_unreadable_voice_notes_and_images_are_always_answered_but_stay_behind_the_guards():
+    for over in ({}, {"bot_recent": True}, {"assistant_enabled": True}, {"has_enquiry": False}, {"summary_sent": True}):
+        assert decide(facts(text=None, is_text=False, **over)).kind == "unsupported_media", over
+    for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
+        assert decide(facts(text=None, is_text=False, **over)) is None
+    assert "voice note" in render(Decision("unsupported_media"), lang="en", reference="", items=[], total=0, currency="PKR")

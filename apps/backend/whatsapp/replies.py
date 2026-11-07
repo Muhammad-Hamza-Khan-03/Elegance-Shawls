@@ -39,7 +39,7 @@ class Facts:
 
 @dataclass(frozen=True)
 class Decision:
-    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding | assistant
+    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding | assistant | unsupported_media
     save_details: dict | None = None
     flag: str | None = None           # staff-visible marker written to enquiries.customer_details["staff_flag"]
     missing: tuple = ()
@@ -61,9 +61,13 @@ def missing_fields(details: dict) -> tuple:
 def decide(f: Facts) -> Decision | None:
     if not f.allowlisted or f.paused or f.now - f.event_ts > f.max_age:
         return None
-    holding = Decision("assistant") if f.assistant_enabled and f.is_text else None if f.bot_recent else Decision("holding")
+    # A voice note or image we could not read is answered every time (the bridge's send cap bounds it): silence reads as "ignored".
+    holding = (Decision("unsupported_media") if not f.is_text else Decision("assistant") if f.assistant_enabled
+               else None if f.bot_recent else Decision("holding"))
     if not f.has_enquiry:
-        if f.assistant_enabled and f.is_text and not f.unknown_reference:
+        if not f.is_text:
+            return Decision("unsupported_media")
+        if f.assistant_enabled and not f.unknown_reference:
             return Decision("assistant")
         return None if f.bot_recent else Decision("need_reference")
     if not f.summary_sent:
