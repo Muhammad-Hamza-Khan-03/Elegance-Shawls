@@ -261,6 +261,28 @@ Set `LOCAL_ENV_FILE=/path/to/apps/backend/.env` to also load provider keys, `LLM
 
 Starts a pgvector Postgres container (data kept in a docker volume), runs migrations, creates the owner account (`owner@elegance.local`), seeds a synthetic 36-product catalogue (`scripts/seed_local.py`, development only), then runs the API on :8000 (CORS allows `localhost`/`127.0.0.1` on :3000 and :3001, because Next moves to 3001 when 3000 is busy) and the storefront with the assistant enabled (`NEXT_PUBLIC_ASSISTANT_ENABLED=1`).
 
+### Try the WhatsApp automation locally (no WhatsApp account)
+
+Everything WhatsApp is off by default. To see it working on your machine, add `WHATSAPP_LOCAL=1` to the one-command store. It starts Redis, the WhatsApp consumer and a **fake bridge** (`apps/whatsapp-bridge/dev/fake-bridge.mjs`) that stands in for WhatsApp; nothing reaches a real number. Docker, Node 22 and `npm ci` in `apps/frontend` are needed.
+
+```bash
+cd apps/backend && . .venv/bin/activate
+WHATSAPP_LOCAL=1 ADMIN_ACCOUNT_PASSWORD='choose-a-long-passphrase' bash scripts/dev_local.sh
+# if 55432 / 3000 are taken or you already have an `elegance-local-db` container you want to keep:
+#   LOCAL_DB_CONTAINER=elegance-wa-demo-db LOCAL_DB_PORT=56432 LOCAL_FRONTEND_PORT=3010
+```
+
+Then, with the storefront on `http://localhost:3000` (or your `LOCAL_FRONTEND_PORT`):
+
+1. **Pair.** Sign in at `/admin/login` (`owner@elegance.local`), open **WhatsApp**, press **Connect WhatsApp**. A QR appears and the fake bridge "scans" it after about six seconds: the card turns to *Connected as +923001234567*.
+2. **Make an enquiry.** On the storefront add something in stock to the cart and press *Send cart on WhatsApp* (this issues the `ES-XXXXXX` reference; the wa.me tab can be closed). The reference also shows under **Enquiries**.
+3. **Be the customer.** Open `http://127.0.0.1:3600/sim`. Paste the cart message (or just `Ref: ES-XXXXXX`) and send: the bot replies with the order summary and asks for Name, City and Address. Reply `Name: ...`, `City: ...`, `Address: ...` lines to see the details saved.
+4. **Be the shop.** Type in the *Shop phone* box: the enquiry becomes `contacted` and the bot stays silent in that chat for 12 hours. On **Enquiries** press *Show WhatsApp chat* to see the timeline and the *Send "order confirmed"* / *"dispatched"* buttons.
+5. **Other things to try.** A message with no reference (appears under *Unlinked chats* with a manual link), `red shawl under 4000` (catalogue assistant: real products, prices and links, no LLM), a voice note (the "audio" is the text you type, the fake ASR returns it), a price or stock change in the catalogue before step 3 (the bot states the change and confirms nothing).
+6. **Look at the plumbing.** `python scripts/whatsapp_monitor.py` (metrics) and `python scripts/whatsapp_monitor.py --check` (alerts) work against the local Redis and database.
+
+Ctrl-C stops the API, storefront, consumer and fake bridge; the database and Redis containers keep their data (`docker stop elegance-local-redis <your-db-container>` to stop them). To try the **real** bridge on a throwaway number instead, run `node src/main.mjs` in `apps/whatsapp-bridge` with the same Redis and token, in place of the fake one (see `OPERATIONS.md`).
+
 ### Semantic search, assistant wording, voice and customer sign-in (all optional)
 
 - **Semantic search.** `pip install -r requirements-local-e5.txt` (CPU torch first, see the file), `python scripts/fetch_e5_model.py`, then `dev_local.sh` embeds the catalogue and `/v1/search` and the assistant rank with `intfloat/multilingual-e5-base` (keyword search stays the fallback). Choice and eval numbers: `docs/qa/local-e5-evaluation-manifest.md` on branch `ai/local-e5-v2-evidence` (recall@10 0.954; Roman Urdu 0.892 on that small, easy set). A larger set (`evals/roman_urdu_retrieval_eval.py`, 362 labelled English / Roman Urdu / Urdu queries, synthetic and unreviewed) puts raw E5 at 0.57 recall@10 on Roman Urdu, keyword search at 0.78, and the real pipeline (query parser, then colour filter, then E5) at 0.94. Sets written after tuning started score 0.94 and 0.89; the first time the weak cases (no product word, misspellings) were scored on queries not yet seen, the pipeline got 0.70, so expect 0.7-0.9 on real traffic, not 0.94. Off-topic queries (no shopping word) keep semantic neighbours only within `SEMANTIC_MAX_DISTANCE` (default 0.18); 0% of the off-topic probes returned products. Misspelt product, fabric and season words are corrected as search terms only; a misspelt colour is never turned into a filter.

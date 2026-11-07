@@ -124,4 +124,21 @@ def test_legacy_numbering_is_detected_read_only(pg_url, migrated_url, monkeypatc
         version, why = asyncio.run(check.inspect(pg_url))
         assert version == "0009" and "admin_accounts" in why
     finally:
-        env.sql("update alembic_version set version_num = '0019'")
+        env.sql("update alembic_version set version_num = '0020'")
+
+
+def test_a_brand_new_database_has_no_stamp_instead_of_crashing(pg_url, migrated_url, monkeypatch):
+    """dev_local.sh runs the check before the first `alembic upgrade`, when alembic_version does not exist yet."""
+    import asyncio
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("stamp_check", Path(__file__).resolve().parents[2] / "scripts" / "check_migration_stamp.py")
+    check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check)
+    env = ApiEnv(pg_url, monkeypatch)
+    env.sql("alter table alembic_version rename to alembic_version_hidden")
+    try:
+        assert asyncio.run(check.inspect(pg_url)) == (None, None)
+    finally:
+        env.sql("alter table alembic_version_hidden rename to alembic_version")

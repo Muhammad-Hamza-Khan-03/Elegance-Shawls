@@ -25,7 +25,9 @@ async def inspect(url: str) -> tuple[str | None, str | None]:
     engine = create_async_engine(url)
     try:
         async with engine.connect() as conn:
-            version = (await conn.execute(text("select version_num from alembic_version"))).scalar_one_or_none()
+            # A brand-new database has no alembic_version table yet: that is "no stamp", not an error.
+            has_stamp = (await conn.execute(text("select to_regclass('public.alembic_version')"))).scalar() is not None
+            version = (await conn.execute(text("select version_num from alembic_version"))).scalar_one_or_none() if has_stamp else None
             tables = {r[0] for r in await conn.execute(text("select table_name from information_schema.tables where table_schema = 'public'"))}
             cols = {r[0] for r in await conn.execute(text(
                 "select column_name from information_schema.columns where table_name = 'product_embeddings'"))}
