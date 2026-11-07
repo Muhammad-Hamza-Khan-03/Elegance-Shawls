@@ -10,7 +10,7 @@ ITEMS = [{"product": "Wool Shawl", "color": "Red", "size": "Free", "quantity": 2
 
 def facts(**over):
     base = dict(now=NOW, event_ts=NOW, text="hi", max_age=timedelta(minutes=15), allowlisted=True, paused=False, bot_recent=False,
-                reference_in_message=False, has_enquiry=True, summary_sent=False)
+                reference_in_message=False, has_enquiry=True, summary_sent=False, is_text=True)
     return Facts(**{**base, **over})
 
 
@@ -51,8 +51,7 @@ def test_unknown_or_missing_reference_asks_once():
 
 def test_anything_else_gets_one_holding_reply_per_window():
     assert decide(facts(summary_sent=True, text="is it pure wool?")).kind == "holding"
-    assert decide(facts(summary_sent=True, text=None, bot_recent=True)) is None
-    assert decide(facts(text=None)).kind == "holding"
+    assert decide(facts(summary_sent=True, text="is it pure wool?", bot_recent=True)) is None
 
 
 def test_silent_when_staff_active_off_allowlist_or_message_is_stale():
@@ -87,8 +86,7 @@ def test_assistant_answers_free_text_when_enabled_with_or_without_an_enquiry():
     assert decide(facts(summary_sent=True, text="Name: Ali", assistant_enabled=True, is_text=True)).kind == "ask_missing"
     # an unknown reference is still asked to use the Order button, and non-text still gets the holding reply
     assert decide(facts(has_enquiry=False, unknown_reference=True, assistant_enabled=True, is_text=True)).kind == "need_reference"
-    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=False)).kind == "need_reference"
-    assert decide(facts(summary_sent=True, text=None, assistant_enabled=True, is_text=False)).kind == "holding"
+    assert decide(facts(has_enquiry=False, assistant_enabled=True, is_text=False)).kind == "unsupported_media"
 
 
 def test_assistant_stays_behind_the_same_guards():
@@ -101,3 +99,28 @@ def test_status_templates_exist_in_both_languages_and_mention_the_reference():
     for lang in ("en", "ur"):
         for key in ("status_confirmed", "status_dispatched"):
             assert "{reference}" in t[lang][key]
+
+
+def test_assistant_checks_what_the_model_returns():
+    from whatsapp.assistant import _filters, _json, _safe
+    assert _json('Sure! {"action": "reply", "reply": "hi"} done') == {"action": "reply", "reply": "hi"} and _json("no json") is None
+    flt, applied, absent = _filters({"colour": "Black", "min_price": 5000, "max_price": 2000, "in_stock": True}, {"black"})
+    assert (flt.colour, flt.min_price, flt.max_price, flt.in_stock) == ("black", 2000, 5000, True) and absent is None   # swapped, not trusted
+    assert _filters({"colour": "purple", "max_price": "cheap"}, {"black"})[2] == "purple"      # unknown colour is reported, never a filter
+    assert _filters({"colour": "purple", "max_price": "cheap"}, {"black"})[0] is None
+    assert _safe("Here you go https://shop.example/a.", {"https://shop.example/a"}) and _safe("pay https://evil.example", set()) is None and _safe("  ", set()) is None
+
+
+def test_unreadable_voice_notes_and_images_are_always_answered_but_stay_behind_the_guards():
+    for over in ({}, {"bot_recent": True}, {"assistant_enabled": True}, {"has_enquiry": False}, {"summary_sent": True}):
+        assert decide(facts(text=None, is_text=False, **over)).kind == "unsupported_media", over
+    for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
+        assert decide(facts(text=None, is_text=False, **over)) is None
+    assert "voice note" in render(Decision("unsupported_media"), lang="en", reference="", items=[], total=0, currency="PKR")
+
+
+def test_a_matched_photo_is_answered_even_in_a_chat_with_an_enquiry_but_not_past_the_guards():
+    for over in ({}, {"summary_sent": True}, {"has_enquiry": False}, {"bot_recent": True}):
+        assert decide(facts(text=None, is_text=False, has_image_reply=True, **over)).kind == "image_match", over
+    for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
+        assert decide(facts(text=None, is_text=False, has_image_reply=True, **over)) is None

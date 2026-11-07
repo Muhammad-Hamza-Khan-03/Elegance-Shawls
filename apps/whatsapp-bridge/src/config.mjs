@@ -9,6 +9,7 @@ export function loadConfig(env = process.env) {
     authStore: String(env.WHATSAPP_AUTH_STORE ?? 'file').toLowerCase(),
     authDatabaseUrl: env.WHATSAPP_AUTH_DATABASE_URL ?? '',
     authKey: env.WHATSAPP_AUTH_ENCRYPTION_KEY ?? '',
+    imageEnabled: String(env.WHATSAPP_IMAGE_ENABLED ?? 'false').trim().toLowerCase() === 'true',
     voiceEnabled: String(env.WHATSAPP_VOICE_ENABLED ?? 'false').trim().toLowerCase() === 'true',
     port: Number(env.PORT ?? 3000),
     sendRatePerMin: Number(env.WHATSAPP_SEND_RATE_PER_MIN ?? 20),

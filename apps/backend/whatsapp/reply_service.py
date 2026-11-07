@@ -63,7 +63,7 @@ def allowlisted(chat: str) -> bool:
     return bool(phone) and phone.lstrip("+") in allowed
 
 
-async def _prepare(session: AsyncSession, event: InboundEvent, now: datetime):
+async def _prepare(session: AsyncSession, event: InboundEvent, now: datetime, image_reply: str | None = None):
     contact = await repo.contact_by_chat(session, event.chat)
     if contact is None:
         return None
@@ -80,12 +80,12 @@ async def _prepare(session: AsyncSession, event: InboundEvent, now: datetime):
         reference_in_message=bool(reference and enquiry and reference == enquiry.reference), has_enquiry=enquiry is not None,
         summary_sent=summary_sent, details={k: v for k, v in details.items() if k in replies.FIELDS},
         unknown_reference=bool(reference) and not (enquiry and reference == enquiry.reference),
-        assistant_enabled=settings.whatsapp_assistant_enabled, is_text=bool((event.text or "").strip()),
+        assistant_enabled=settings.whatsapp_assistant_enabled, is_text=bool((event.text or "").strip()), has_image_reply=image_reply is not None,
         issues=tuple(await repo.verify_items(session, enquiry.items)) if enquiry and not summary_sent else ())
     return contact, enquiry, facts
 
 
-async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | None = None) -> str | None:
+async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | None = None, image_reply: str | None = None) -> str | None:
     """Reply to one inbound customer message if the rules allow. Safe to call again for the same event (idempotency key)."""
     if event.from_me:
         return None
@@ -93,7 +93,7 @@ async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | Non
     ts = event.ts if event.ts.tzinfo else event.ts.replace(tzinfo=timezone.utc)
     event = event.model_copy(update={"ts": ts})
     async with sessions() as session, session.begin():
-        prepared = await _prepare(session, event, now)
+        prepared = await _prepare(session, event, now, image_reply)
         decision = replies.decide(prepared[2]) if prepared else None
         if decision is None:
             return None
@@ -115,7 +115,7 @@ async def maybe_reply(sessions, event: InboundEvent, sender, now: datetime | Non
                 details["staff_flag"] = decision.flag
             if details != (enquiry.customer_details or {}):
                 enquiry.customer_details = details
-        text = assistant_text or replies.render(decision, lang=replies.language(event.text), reference=enquiry.reference if enquiry else "",
+        text = image_reply if decision.kind == "image_match" else assistant_text or replies.render(decision, lang=replies.language(event.text), reference=enquiry.reference if enquiry else "",
                               items=enquiry.items if enquiry else [], total=enquiry.total if enquiry else 0,
                               currency=enquiry.currency if enquiry else "PKR", issues=facts.issues)
         target = enquiry.reference if enquiry else event.chat

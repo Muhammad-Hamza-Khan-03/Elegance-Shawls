@@ -82,4 +82,6 @@ test('config validates the postgres auth store only when enabled', () => {
   assert.equal(loadConfig({ ...on, WHATSAPP_AUTH_STORE: 'redis' }).problems.length, 1);
   assert.equal(loadConfig({ WHATSAPP_AUTH_STORE: 'postgres' }).problems.length, 0);
   assert.equal(loadConfig({}).voiceEnabled, false);
+  assert.equal(loadConfig({}).imageEnabled, false);
+  assert.equal(loadConfig({ WHATSAPP_IMAGE_ENABLED: 'true' }).imageEnabled, true);
 });
