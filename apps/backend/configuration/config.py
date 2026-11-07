@@ -105,7 +105,7 @@ class settings(BaseSettings):
     whatsapp_image_enabled: bool = False
     image_match_model_path: str = ""
     image_match_model_revision: str = ""      # tree digest from `python -m embeddings.providers.local_e5 <dir>`; a swapped model fails closed
-    image_match_min_similarity: float = 0.6   # cosine; below this a product is not "similar"
+    image_match_min_similarity: float = 0.8   # cosine, calibrated on the local catalogue: phone-style copies of a product score 0.92-0.97, other products 0.64-0.73, a flat unrelated colour 0.76
     image_match_max_results: int = 3
     # Catalogue assistant on WhatsApp (deterministic: parser + live catalogue search; never an LLM). Needs the storefront URL for links.
     whatsapp_assistant_enabled: bool = False

@@ -307,7 +307,7 @@ alembic upgrade head                                               # migration 0
 python scripts/image_embedding_backfill.py                         # embeds catalogue images (https, allowlisted hosts only); resumable
 ```
 
-Then start the bridge with `WHATSAPP_IMAGE_ENABLED=true` and the consumer with `WHATSAPP_IMAGE_ENABLED=true IMAGE_MATCH_MODEL_PATH=... IMAGE_MATCH_MODEL_REVISION=...`. `IMAGE_MATCH_MIN_SIMILARITY` (default 0.6) and `IMAGE_MATCH_MAX_RESULTS` (3) tune it. The seeded local catalogue uses random stock photos, so matches there prove the wiring only; judge quality on your real product images.
+Then start the bridge with `WHATSAPP_IMAGE_ENABLED=true` and the consumer with `WHATSAPP_IMAGE_ENABLED=true IMAGE_MATCH_MODEL_PATH=... IMAGE_MATCH_MODEL_REVISION=...`. `IMAGE_MATCH_MIN_SIMILARITY` (default 0.8; on the seeded catalogue a phone-style copy of a product scored 0.92-0.97, other products 0.64-0.73 and a flat unrelated colour 0.76, so keep it above about 0.8 and re-tune on real photos) and `IMAGE_MATCH_MAX_RESULTS` (3) tune it. The seeded local catalogue uses random stock photos, so matches there prove the wiring only; judge quality on your real product images.
 
 ### Semantic search, assistant wording, voice and customer sign-in (all optional)
 
