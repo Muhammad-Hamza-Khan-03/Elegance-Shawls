@@ -8,7 +8,7 @@ Carry rules (fold oldest -> newest):
 * a message that names no product word, or names one we sell, is a follow-up; anything else ("delivery kitne din") starts fresh;
 * whatever the new message states wins; what it leaves out (colour, budget, in-stock, product type) is kept from before;
 * a new product word replaces the old one; a budget that would contradict a kept one replaces it;
-* a message the parser needed to ask about contributes nothing.
+* a message the parser needed to ask about contributes nothing, and neither does one that states no product, colour, budget or stock wish ("?", "hi").
 """
 from dataclasses import replace
 from typing import Sequence
@@ -21,6 +21,8 @@ MAX_HISTORY = 3
 def _carry(prev: QueryIntent, cur: QueryIntent, text: str) -> tuple[QueryIntent, list[str]]:
     if cur.needs_review or (cur.terms and not has_shopping_signal(text)):
         return cur, []                                              # clarify first / a new topic: nothing carries
+    if not (cur.terms or cur.colour or cur.min_price is not None or cur.max_price is not None or cur.in_stock):
+        return cur, []                                              # "?", "hi", "thanks": states nothing, so it must not resurrect an old search
     taken: list[str] = []
     colour = cur.colour or prev.colour
     terms = cur.terms or prev.terms

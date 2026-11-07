@@ -283,6 +283,17 @@ Then, with the storefront on `http://localhost:3000` (or your `LOCAL_FRONTEND_PO
 
 Ctrl-C stops the API, storefront, consumer and fake bridge; the database and Redis containers keep their data (`docker stop elegance-local-redis <your-db-container>` to stop them). To try the **real** bridge on a throwaway number instead, run `node src/main.mjs` in `apps/whatsapp-bridge` with the same Redis and token, in place of the fake one (see `OPERATIONS.md`).
 
+#### Real voice notes on the real bridge (optional)
+
+The fake bridge fakes transcription. With the real bridge, a voice note needs a real **self-hosted** speech-to-text server; without one the bot replies "I could not read that voice note, please type" instead of staying silent. Example with the open-source Speaches (faster-whisper) image, run by you:
+
+```bash
+docker run -d --name elegance-local-asr -p 127.0.0.1:8001:8000 -v elegance-asr-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:latest-cpu
+curl -X POST localhost:8001/v1/models/Systran/faster-whisper-small      # downloads the model once (about 500 MB)
+```
+
+Then start the bridge with `WHATSAPP_VOICE_ENABLED=true` and the consumer with `WHATSAPP_VOICE_ENABLED=true WHATSAPP_ASR_URL=http://127.0.0.1:8001/v1/audio/transcriptions WHATSAPP_ASR_MODEL=Systran/faster-whisper-small WHATSAPP_ASR_PRIVACY=self_hosted` (the privacy class is your declaration that audio stays on your machine). Voice notes are used for browsing only: a negated ("not red") or two-price request asks the customer to repeat it.
+
 ### Semantic search, assistant wording, voice and customer sign-in (all optional)
 
 - **Semantic search.** `pip install -r requirements-local-e5.txt` (CPU torch first, see the file), `python scripts/fetch_e5_model.py`, then `dev_local.sh` embeds the catalogue and `/v1/search` and the assistant rank with `intfloat/multilingual-e5-base` (keyword search stays the fallback). Choice and eval numbers: `docs/qa/local-e5-evaluation-manifest.md` on branch `ai/local-e5-v2-evidence` (recall@10 0.954; Roman Urdu 0.892 on that small, easy set). A larger set (`evals/roman_urdu_retrieval_eval.py`, 362 labelled English / Roman Urdu / Urdu queries, synthetic and unreviewed) puts raw E5 at 0.57 recall@10 on Roman Urdu, keyword search at 0.78, and the real pipeline (query parser, then colour filter, then E5) at 0.94. Sets written after tuning started score 0.94 and 0.89; the first time the weak cases (no product word, misspellings) were scored on queries not yet seen, the pipeline got 0.70, so expect 0.7-0.9 on real traffic, not 0.94. Off-topic queries (no shopping word) keep semantic neighbours only within `SEMANTIC_MAX_DISTANCE` (default 0.18); 0% of the off-topic probes returned products. Misspelt product, fabric and season words are corrected as search terms only; a misspelt colour is never turned into a filter.

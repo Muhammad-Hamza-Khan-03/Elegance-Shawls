@@ -190,7 +190,8 @@ _STORE_WORDS = re.compile(r"\b(stores?|shops?|stocks?|available|availability)\b"
 
 
 def is_count_question(message: str) -> bool:
-    return bool(_COUNT.search(message))
+    # "i mean total" after a count question; a number in the message ("total 5000") is a price talk, not a count
+    return bool(_COUNT.search(message)) or bool(re.search(r"\b(total|overall)\b", message, re.IGNORECASE) and not re.search(r"\d", message))
 
 
 async def _count_answer(session: AsyncSession, message: str) -> str:
@@ -211,7 +212,8 @@ async def _count_answer(session: AsyncSession, message: str) -> str:
         n = len({r[0] for r in rows if r[1] == category})
         if n:
             parts.append(f"{n} {category if n != 1 else category.rstrip('s') if category != 'scarves' else 'scarf'}")
-    return f"We currently have {' and '.join(parts)} in stock{suffix}. Tell me a colour or budget and I will show you the options. "
+    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f"We currently have {listed} in stock{suffix}. Tell me a colour or budget and I will show you the options. "
 
 
 async def ground(session: AsyncSession, message: str, idempotency_key: str, *, voice: bool = False,
@@ -234,7 +236,7 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
         intent = parse_query(message)
     intent, kept = conversation.with_history(history, message, intent)     # follow-ups keep what was already asked
     plan = handoff(intent)
-    if plan is None:
+    if plan is None or (plan.q is None and plan.variant is None):   # nothing to search for ("?", "hi"): ask, never list the newest items
         asks = tuple(f"{q} " for q in intent.clarifications) or ("Could you tell me a little more about what you are looking for?",)
         return _say(*asks), k.InMemoryCatalogue({})
     page = await hybrid_search(session, q=plan.q, limit=MAX_CARDS * 3 if prefs.values else MAX_CARDS, variant=plan.variant, embedding=await embed_query(plan.q),
