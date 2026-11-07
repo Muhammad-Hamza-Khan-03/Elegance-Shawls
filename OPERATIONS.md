@@ -180,6 +180,8 @@ Review: open `/admin/staging`, check each `pending_review` product, set the PKR 
 - **Catalogue assistant** (`WHATSAPP_ASSISTANT_ENABLED=true`, plus `SITE_URL` for product links). Free-text questions ("red shawl under 3000", also Urdu/Roman Urdu) get up to three real products from the live catalogue with prices and links. Deterministic parser plus catalogue search; the LLM path used by the web assistant is hard-disabled for this channel (`assistant.grounded.llm_blocked`), whatever `ASSISTANT_LLM` says. The only external call is the optional query embedding, which receives the parsed search terms, not the message. Saved-memory requests are web-only and get the holding reply. Reference/details flows still take precedence.
 - **Staff status messages.** On Admin > Enquiries, `Show WhatsApp chat` then `Send "order confirmed"` / `Send "dispatched"` sends a fixed template inside the customer's open chat (the bridge refuses after 24 hours of silence). This is the only way an order is ever called confirmed; it is audited with the staff member's account and marks the enquiry `contacted`.
 
+Trying it locally without a WhatsApp account (fake bridge and customer-phone simulator): README, "Try the WhatsApp automation locally".
+
 ### WhatsApp: known limits and deliberate shortcuts
 
 Each is a conscious trade-off, with the point at which to revisit it.
