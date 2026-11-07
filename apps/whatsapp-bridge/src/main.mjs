@@ -29,6 +29,7 @@ const { default: Redis } = await import('ioredis');
 const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 const status = { state: 'needs_pairing', lastEventAt: null, attempt: 0, number: null, since: new Date().toISOString() };
 const media = createMediaStore();
+const images = createMediaStore({ maxBytes: 5 * 1024 * 1024, maxItems: 10 }); // customer photos: memory only, minutes, never disk or Redis
 let store = null; // the auth store: file volume or encrypted PostgreSQL
 const pairing = createPairing();
 const pairOnly = process.argv[2] === 'pair';
@@ -100,6 +101,12 @@ async function connect() {
       const event = toEvent(msg);
       if (!event) continue;
       if (!event.from_me) sender.noteInbound(event.chat, msg.key, Date.parse(event.ts));
+      if (config.imageEnabled && event.type === 'image' && !event.from_me) {
+        try {
+          const photo = await downloadMediaMessage(msg, 'buffer', {});
+          if (images.put(event.wa_id, photo, msg.message.imageMessage?.mimetype ?? 'image/jpeg')) event.media = `image:${event.wa_id}`;
+        } catch (err) { log.warn({ err: err.message }, 'image download failed'); }
+      }
       if (config.voiceEnabled && event.type === 'audio' && !event.from_me) {
         try {
           const audio = await downloadMediaMessage(msg, 'buffer', {});
@@ -162,11 +169,11 @@ http.createServer(async (req, res) => {
     }
     const voice = req.url?.match(/^\/media\/([A-Za-z0-9_-]{1,128})$/);
     if (voice && req.method === 'GET') {
-      const item = media.get(voice[1]);
+      const item = media.get(voice[1]) ?? images.get(voice[1]);
       if (!item) return reply(404, { error: 'not_found' });
       res.writeHead(200, { 'content-type': item.mimetype }); return res.end(item.buffer);
     }
-    if (voice && req.method === 'DELETE') { media.delete(voice[1]); return reply(200, { deleted: true }); }
+    if (voice && req.method === 'DELETE') { media.delete(voice[1]); images.delete(voice[1]); return reply(200, { deleted: true }); }
     if (route === 'POST /send') return reply(200, await sender.send(await readJson(req)));
     res.writeHead(404).end();
   } catch (err) {

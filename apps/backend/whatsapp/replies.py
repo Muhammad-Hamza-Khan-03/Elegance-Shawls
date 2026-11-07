@@ -35,11 +35,12 @@ class Facts:
     unknown_reference: bool = False   # the message carries a reference that matches no open enquiry of this chat
     assistant_enabled: bool = False   # WHATSAPP_ASSISTANT_ENABLED: free text goes to the catalogue assistant, not a holding reply
     is_text: bool = False             # there is text to answer (typed, or a transcribed voice note)
+    has_image_reply: bool = False     # a customer photo was matched against the catalogue and the reply text is ready
 
 
 @dataclass(frozen=True)
 class Decision:
-    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding | assistant | unsupported_media
+    kind: str                         # summary | changed | ask_missing | details_done | need_reference | holding | assistant | unsupported_media | image_match
     save_details: dict | None = None
     flag: str | None = None           # staff-visible marker written to enquiries.customer_details["staff_flag"]
     missing: tuple = ()
@@ -61,6 +62,8 @@ def missing_fields(details: dict) -> tuple:
 def decide(f: Facts) -> Decision | None:
     if not f.allowlisted or f.paused or f.now - f.event_ts > f.max_age:
         return None
+    if f.has_image_reply:
+        return Decision("image_match")                # the structured enquiry flows need text; a photo is its own request
     # A voice note or image we could not read is answered every time (the bridge's send cap bounds it): silence reads as "ignored".
     holding = (Decision("unsupported_media") if not f.is_text else Decision("assistant") if f.assistant_enabled
                else None if f.bot_recent else Decision("holding"))
