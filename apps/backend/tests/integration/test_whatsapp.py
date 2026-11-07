@@ -248,10 +248,11 @@ class ScriptedGateway:
     """Stands in for the LLM gateway: returns the scripted texts in call order and records what the model was shown."""
 
     def __init__(self, *texts):
-        self.texts, self.prompts = list(texts), []
+        self.texts, self.prompts, self.calls = list(texts), [], []
 
     async def complete(self, messages, logical="default", personal=False):
         from types import SimpleNamespace
+        self.calls.append((logical, personal))
         self.prompts.append("\n".join(m["content"] for m in messages))
         if not self.texts:
             raise RuntimeError("model unavailable")
@@ -304,6 +305,16 @@ def test_an_unconfirmed_yes_with_no_summary_shown_creates_nothing(env, monkeypat
     use_model(monkeypatch, '{"action": "order", "order": {"lines": [{"q": "shawl", "quantity": 1}], "confirmed": true}}', "Reply yes to place it.")
     assert converse(env, FakeSender(), event("o4", "order it")) == ["assistant"]
     assert row(env, "select count(*) from enquiries")[0] == 1
+
+
+def test_training_providers_are_used_only_when_the_operator_allows_them(env, monkeypatch):
+    seed_catalogue(env)
+    gateway = use_model(monkeypatch, '{"action": "reply", "reply": "Hello!"}', '{"action": "reply", "reply": "Hello!"}')
+    monkeypatch.setattr(settings, "environment", "production")
+    converse(env, FakeSender(), event("t1", "hi"))
+    monkeypatch.setattr(settings, "whatsapp_llm_allow_training", True)
+    converse(env, FakeSender(), event("t2", "hi", chat="923000000008@s.whatsapp.net"))
+    assert gateway.calls == [("default", True), ("production", False)]
 
 
 def test_a_colour_the_shop_does_not_stock_is_never_searched_and_the_model_is_told(env, monkeypatch):

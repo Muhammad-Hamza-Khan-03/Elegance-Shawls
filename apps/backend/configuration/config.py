@@ -109,6 +109,9 @@ class settings(BaseSettings):
     image_match_max_results: int = 3
     # Catalogue assistant on WhatsApp (deterministic: parser + live catalogue search; never an LLM). Needs the storefront URL for links.
     whatsapp_assistant_enabled: bool = False
+    # Operator opt-in: WhatsApp chat text may go to the LLM_PRODUCTION_CHAIN even when it contains training (free-tier) providers such as Groq/Gemini.
+    # Off keeps the strict no-training chain. Only this channel is affected; the web assistant's saved-memory gate is unchanged.
+    whatsapp_llm_allow_training: bool = False
     whatsapp_site_url: str = ""
     # A backlog replayed after downtime must never trigger replies to old messages.
     whatsapp_reply_max_age_seconds: int = 900

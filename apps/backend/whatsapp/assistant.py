@@ -125,8 +125,12 @@ def _safe(text, links: set[str]) -> str | None:
 
 
 async def _ask(system: str, user: str, personal: bool) -> str:
-    result = await get_gateway().complete([{"role": "system", "content": system}, {"role": "user", "content": user}], personal=personal)
-    return result.text
+    """One gateway call. WHATSAPP_LLM_ALLOW_TRAINING=true is the operator's explicit choice to use the production chain as configured
+    (training providers included); otherwise personal=True filters those out."""
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    if settings.whatsapp_llm_allow_training:
+        return (await get_gateway().complete(messages, logical="production", personal=False)).text
+    return (await get_gateway().complete(messages, personal=personal)).text
 
 
 def _filters(search: dict, colours: set[str]) -> tuple[VariantFilter | None, str, str | None]:
