@@ -15,6 +15,7 @@ from configuration.config import settings
 from whatsapp import config as wa_config
 from whatsapp.ingest import ingest
 from whatsapp.matching import InboundEvent
+from whatsapp.image_service import match_event
 from whatsapp.voice_service import transcribe_event
 from whatsapp.reply_service import BridgeSender, SendRefused, maybe_reply
 
@@ -28,10 +29,13 @@ async def handle_entry(sessions, redis, entry_id, fields, attempts: dict, sender
         event = InboundEvent.model_validate_json(fields[b"event"] if b"event" in fields else fields["event"])
         if sender is not None:
             event = await transcribe_event(event, sender)
+            event, image_reply = await match_event(event, sender, sessions)
+        else:
+            image_reply = None
         async with sessions() as session, session.begin():
             await ingest(session, event)
         if sender is not None:
-            await maybe_reply(sessions, event, sender)
+            await maybe_reply(sessions, event, sender, image_reply=image_reply)
     except SendRefused as exc:
         logger.warning("bridge refused reply for %s: %s", entry_id, exc)     # permanent: record nothing more, ack below
     except Exception as exc:
