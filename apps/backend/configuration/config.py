@@ -86,6 +86,26 @@ class settings(BaseSettings):
     worker_job_timeout_seconds: int = 120
     worker_max_tries: int = 3
 
+    # WhatsApp bridge (optional, off by default = wa.me link mode). This is the only place the switch is parsed.
+    whatsapp_bridge_enabled: bool = False
+    whatsapp_bridge_token: str = ""
+    whatsapp_bridge_url: str = "http://whatsapp-bridge:3000"
+    whatsapp_bot_pause_hours: int = 12
+    # Rollout guard: comma-separated numbers. When set the bot replies only to them (it still records everywhere).
+    whatsapp_reply_allowlist: str = ""
+    # Voice notes (Phase 4): the bridge holds the audio in memory for minutes; the consumer transcribes it with a SELF-HOSTED or
+    # no-training OpenAI-compatible endpoint, then deletes it. Raw audio is never stored. Off unless the privacy class is declared.
+    whatsapp_voice_enabled: bool = False
+    whatsapp_asr_url: str = ""
+    whatsapp_asr_model: str = "whisper-1"
+    whatsapp_asr_api_key: str = ""
+    whatsapp_asr_privacy: str = ""      # self_hosted | no_training
+    # Catalogue assistant on WhatsApp (deterministic: parser + live catalogue search; never an LLM). Needs the storefront URL for links.
+    whatsapp_assistant_enabled: bool = False
+    whatsapp_site_url: str = ""
+    # A backlog replayed after downtime must never trigger replies to old messages.
+    whatsapp_reply_max_age_seconds: int = 900
+
     # Anonymous interaction events. The signing key is required to accept events.
     session_signing_key: str = ""
     events_max_batch: int = 20

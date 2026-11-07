@@ -30,7 +30,7 @@ def test_revision_chain_follows_0014(pg_url):
     script = ScriptDirectory.from_config(alembic_config(pg_url))
     rev = script.get_revision("0015")
     assert rev.down_revision == "0014" and script.get_revision("0014").nextrev == {"0015"}
-    assert script.get_heads() == ["0018"]
+    assert script.get_heads() == ["0020"]
 
 
 def test_upgrade_adds_only_the_sessions_table_and_keeps_existing_rows(at_0014):

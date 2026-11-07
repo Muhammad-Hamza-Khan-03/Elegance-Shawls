@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    ARRAY, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
+    ARRAY, LargeBinary, CHAR, BigInteger, Boolean, CheckConstraint, Computed, DateTime, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, MetaData, Numeric, Text,
     UniqueConstraint, func, text,
 )
 from pgvector.sqlalchemy import Vector
@@ -558,7 +558,10 @@ class Enquiry(Base):
         CheckConstraint("currency = upper(currency)", name="currency_upper"),
         CheckConstraint("total >= 0", name="total_nonnegative"),
         CheckConstraint("jsonb_typeof(items) = 'array' AND jsonb_array_length(items) BETWEEN 1 AND 50", name="items_array"),
+        CheckConstraint(_in("status", ("handed_off", "contacted", "converted", "lost")), name="status"),
+        CheckConstraint("link_source IS NULL OR link_source IN ('reference', 'staff')", name="link_source"),
         Index("ix_enquiries_created_at", text("created_at DESC"), text("id DESC")),
+        Index("ix_enquiries_whatsapp_contact_id", "whatsapp_contact_id", text("created_at DESC")),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -568,6 +571,62 @@ class Enquiry(Base):
     currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     total: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = _created_at()
+    # WhatsApp bridge (migration 0019); all inert while WHATSAPP_BRIDGE_ENABLED=false.
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="handed_off")
+    whatsapp_contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("whatsapp_contacts.id", ondelete="SET NULL"))
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    link_source: Mapped[str | None] = mapped_column(Text)
+    customer_details: Mapped[dict | None] = mapped_column(JSONB)
+    bot_paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WhatsAppContact(Base):
+    __tablename__ = "whatsapp_contacts"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    chat_jid: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    lid: Mapped[str | None] = mapped_column(Text)
+    phone_e164: Mapped[str | None] = mapped_column(Text)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id", ondelete="SET NULL"))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class WhatsAppMessage(Base):
+    __tablename__ = "whatsapp_messages"
+    __table_args__ = (
+        CheckConstraint(_in("direction", ("in", "out")), name="direction"),
+        CheckConstraint(_in("type", ("text", "image", "audio", "video", "document", "other")), name="type"),
+        CheckConstraint(_in("sent_by", ("customer", "staff", "bot")), name="sent_by"),
+        Index("ix_whatsapp_messages_contact_sent", "contact_id", "sent_at"),
+        Index("ix_whatsapp_messages_enquiry_sent", "enquiry_id", "sent_at"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    wa_message_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    contact_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("whatsapp_contacts.id", ondelete="CASCADE"), nullable=False)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    from_me: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)
+    sent_by: Mapped[str] = mapped_column(Text, nullable=False)
+    quoted_wa_id: Mapped[str | None] = mapped_column(Text)
+    media_ref: Mapped[str | None] = mapped_column(Text)
+    enquiry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("enquiries.id", ondelete="SET NULL"))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class WhatsAppAuthEntry(Base):
+    """Baileys auth state for the bridge (WHATSAPP_AUTH_STORE=postgres). Read and written only by the bridge, through its own role;
+    `value` is AES-256-GCM ciphertext under a key this database never holds. The backend never touches this table."""
+    __tablename__ = "whatsapp_auth_entries"
+    __table_args__ = (UniqueConstraint("session", "kind", "key_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    key_id: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class ActionExecution(Base):

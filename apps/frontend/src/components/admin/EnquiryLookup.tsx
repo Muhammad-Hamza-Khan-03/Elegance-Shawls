@@ -3,13 +3,57 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/whatsapp';
+import { adminFetch, DISABLED_NOTICE, type TimelineMessage } from '@/lib/whatsapp-admin';
 
 export type Enquiry = {
   reference: string;
   currency: string;
   total: number;
   created_at: string;
+  status?: string;
   items: Array<{ product: string; color?: string | null; size?: string | null; quantity: number; unit_price: number }>;
+};
+
+const Timeline = ({ reference }: { reference: string }) => {
+  const [messages, setMessages] = useState<TimelineMessage[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = async () => {
+    const result = await adminFetch<{ items: TimelineMessage[] }>(`/api/admin/enquiries/${encodeURIComponent(reference)}/whatsapp`);
+    if (result.ok) { setMessages(result.data.items); setNotice(null); }
+    else setNotice(result.disabled ? DISABLED_NOTICE : result.message);
+  };
+
+  // A person presses these; the automatic replies never say an order is confirmed. Sent only inside a chat the customer opened.
+  const sendStatus = async (template: 'confirmed' | 'dispatched') => {
+    if (!window.confirm(`Send the "${template}" message to this customer on WhatsApp?`)) return;
+    const result = await adminFetch(`/api/admin/enquiries/${encodeURIComponent(reference)}/whatsapp/message`, {
+      method: 'POST', body: JSON.stringify({ template, idempotency_key: crypto.randomUUID().replace(/-/g, '') }),
+    });
+    if (!result.ok) { setNotice(result.status === 409 && !result.disabled ? 'The customer has not written in the last 24 hours, so no message can be sent.' : result.disabled ? DISABLED_NOTICE : result.message); return; }
+    await load();
+    setNotice(`Sent: ${template}.`);
+  };
+
+  return (
+    <div className="mt-4 border-t border-[#e7dac8] pt-4">
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" className="rounded-full" onClick={() => void load()}>Show WhatsApp chat</Button>
+        {messages && <Button type="button" variant="outline" className="rounded-full" onClick={() => void sendStatus('confirmed')}>{'Send "order confirmed"'}</Button>}
+        {messages && <Button type="button" variant="outline" className="rounded-full" onClick={() => void sendStatus('dispatched')}>{'Send "dispatched"'}</Button>}
+      </div>
+      {notice && <p className="mt-3 text-sm text-[#6f625a]">{notice}</p>}
+      {messages?.length === 0 && <p className="mt-3 text-sm text-[#6f625a]">No messages linked to this enquiry yet.</p>}
+      <ul className="mt-3 space-y-2">
+        {messages?.map((m) => (
+          <li key={m.id} className={`max-w-xl rounded-2xl px-4 py-2 text-sm ${m.sent_by === 'customer' ? 'bg-white' : m.sent_by === 'bot' ? 'ml-auto bg-[#efe3d1]' : 'ml-auto bg-[#e1ecdd]'}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#9a6b3f]">{m.sent_by} · {new Date(m.sent_at).toLocaleString()}</p>
+            <p className="whitespace-pre-wrap">{m.text ?? `(${m.type})`}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 };
 
 // Read-only: a reference is a record of what a customer was about to send on WhatsApp, not an order.
@@ -63,7 +107,7 @@ export const EnquiryLookup = () => {
         {enquiries?.map((enquiry) => (
           <li key={enquiry.reference} className="rounded-[1.75rem] border border-[#e7dac8] bg-[#fbf7f0] p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-mono text-xl font-semibold">{enquiry.reference}</h2>
+              <h2 className="font-mono text-xl font-semibold">{enquiry.reference}{enquiry.status && enquiry.status !== 'handed_off' ? <span className="ml-3 rounded-full bg-[#e1ecdd] px-3 py-1 font-sans text-xs font-medium uppercase tracking-wide">{enquiry.status}</span> : null}</h2>
               <p className="text-sm text-[#6f625a]">{new Date(enquiry.created_at).toLocaleString()}</p>
             </div>
             <ul className="mt-3 space-y-1 text-sm">
@@ -74,6 +118,7 @@ export const EnquiryLookup = () => {
               ))}
             </ul>
             <p className="mt-3 font-semibold">Total: {formatCurrency(enquiry.total, enquiry.currency)}</p>
+            <Timeline reference={enquiry.reference} />
           </li>
         ))}
       </ul>

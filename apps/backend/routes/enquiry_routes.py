@@ -41,6 +41,7 @@ class EnquiryResponse(BaseModel):
     currency: str
     total: int
     created_at: datetime
+    status: str = "handed_off"
 
 
 @router.post("", response_model=EnquiryResponse, status_code=201)
