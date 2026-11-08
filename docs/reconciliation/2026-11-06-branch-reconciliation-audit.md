@@ -1,6 +1,8 @@
 # Elegance Shawls Git Reconciliation Audit
 
-> **Live-ref correction (2026-11-08):** this file is a historical 2026-11-06 snapshot. The current refs are `origin/staging-integration` `96baedfeef6578a38c7fddf8b446b39973cebd60` (PR #193), `origin/staging` `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` (PR #192), and `origin/main` `283b27eee90533435ef3b2e28e6a3823ee1c5d23` (unchanged). Do not use the older `fed9db4`, `b4c5f580`, `581fad4`, or `15442712` values below as current release evidence; retained branch/worktree inventories remain historical records.
+**Purpose and audience.** Historical Git/worktree reconciliation for maintainers and reviewers. It preserves the 2026-11-06 inventory and safety boundary; it is not a current branch-status dashboard.
+
+> **Live-ref correction (2026-11-09):** this file is a historical 2026-11-06 snapshot. At this review the current refs are `origin/staging-integration` `63f1730663114d31085967ae01a05687bd614979` (PR #194), `origin/staging` `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` (PR #192), and `origin/main` `283b27eee90533435ef3b2e28e6a3823ee1c5d23` (unchanged). Do not use the older values below as current release evidence; retained branch/worktree inventories remain historical records.
 
 - Generated (UTC): `2026-11-06T14:17:20.641069+00:00`
 - Scope: local/remote refs, all registered worktrees, dirty state, ancestry/tree-delta comparisons, GitHub PR/issue/project/CI references, and cleanup classification.

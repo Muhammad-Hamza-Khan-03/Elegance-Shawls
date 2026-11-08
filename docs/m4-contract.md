@@ -1,5 +1,7 @@
 # M4 contract expansion: staged returning-customer experience
 
+**Purpose and audience.** Bounded work-order and acceptance contract for engineering, product, privacy/security, and independent QA owners. It records planned staging-only work and gates; it is not evidence that the features are enabled.
+
 **Contract ID:** `t_aba73777` (expanded in place; do not create a second M4 contract)
 **Status:** `staging evidence recorded; activation deferred`, `release_ready=false`
 
@@ -9,7 +11,7 @@ The provider-training policy gate and migration downgrade fixture are present in
 
 | Evidence | Exact reference | Interpretation |
 |---|---|---|
-| Current integration tree | `origin/staging-integration` = `4675052b7b983c24b46b2d39fa18e4f1a8815124` (PR #191) | Documentation and evidence are based on the current staging-integration tip. |
+| Current integration tree | `origin/staging-integration` = `63f1730663114d31085967ae01a05687bd614979` (PR #194) | Documentation and evidence are based on the current staging-integration tip. |
 | Provider policy | PR #179 merged as `e04fb7470fb921032086f8c99217247458efec1d` | Eight-control, use-case-scoped training-provider policy is in the integration tree; no provider is selected or activated. |
 | Provider policy promotion | PR #184 merged to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d` | The policy tree was promoted to staging without production/main changes. |
 | Migration downgrade fixture | PR #185 merged as `5a6ed21a5665d254ac345749811efa9dc63a8722` | Synthetic memory rows are isolated before the intentional downgrade guard is exercised. |
