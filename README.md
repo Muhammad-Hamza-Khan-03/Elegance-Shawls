@@ -21,6 +21,14 @@ This repository contains the customer-facing storefront and the backend product 
 - *Ordering model:* WhatsApp-first purchase intent flow
 - *Ops posture:* health checks, readiness checks, CI, deployment docs, and operations runbooks
 
+## Current milestone status (2026-11-08)
+
+M4 provider-policy and migration-fixture evidence is in staging, not production. The current `origin/staging-integration` tip is `5a6ed21a5665d254ac345749811efa9dc63a8722`; PR #179 merged the provider policy at `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 promoted it to staging at `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 merged the migration fixture at `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 promoted the integration tree to `origin/staging` at `d020d521f2666726a2b82316785c8bf72669e83a`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+
+Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis/arq synthetic verification passed: Redis was healthy at `127.0.0.1:6380`, backend readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq smoke was bounded synthetic-only (two calls); no secrets or API-key values are recorded.
+
+**Deferred:** deployment, production/provider activation, credentialing, and `release_ready` remain blocked. Remaining blockers are a disposable backend URL for frontend live-proxy verification, unavailable embeddings activation/backfill, incomplete evaluation provenance, and unexercised external observability. See [`docs/m4-contract.md`](./docs/m4-contract.md), [`docs/m4-batch-c-provider-privacy-decision.md`](./docs/m4-batch-c-provider-privacy-decision.md), and [`docs/m4-batch-c-promotion-packet.md`](./docs/m4-batch-c-promotion-packet.md) for the canonical evidence and boundaries.
+
 ## Quick links
 
 - [Architecture overview](#architecture-overview)

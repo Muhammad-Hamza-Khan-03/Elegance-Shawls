@@ -193,6 +193,14 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 - **Bounded expansion:** the idempotent work order, exact task IDs, synthetic-only Batch A login/merge gate, synthetic-only Batch B explainable recommendation gate, and blocked Batch C privacy gate are recorded in [`docs/m4-contract.md`](./m4-contract.md). Batch 1 (`t_2f755ea0`) and M3 remain preserved; no batch may set `release_ready=true` or promote to `main`.
 - **Batch A backend implementation (not independently QA-approved):** deterministic Google/phone OTP adapters live only under tests. Verified issuer and subject are bound in the stored identity key; optional exchange idempotency keys refuse replay without issuing a second session. The disabled-by-default staging-only merge API attributes at most 100 recent signed-session anonymous events to a live customer after explicit consent, with a unique ledger and same-transaction audit. It never writes memory. See [`M4_BATCH_A_BACKEND.md`](./M4_BATCH_A_BACKEND.md) for limits and migration notes.
 
+#### Current M4 milestone status — 2026-11-08
+
+The provider-training policy and migration downgrade fixture are now present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`; current `origin/staging-integration` is `5a6ed21a5665d254ac345749811efa9dc63a8722`, while `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+
+Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis and arq verification passed: Redis was healthy at `127.0.0.1:6380`, readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq was exercised only through two bounded synthetic calls; no secrets or API keys are documented.
+
+This remains a staging/non-production milestone. Deployment, production activation, provider selection/credentialing, and `release_ready` remain deferred. Remaining blockers: frontend live proxy needs a disposable backend URL; embeddings activation/backfill is unavailable; evaluation provenance is incomplete; and external observability has not been exercised.
+
 ### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
 
 The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.

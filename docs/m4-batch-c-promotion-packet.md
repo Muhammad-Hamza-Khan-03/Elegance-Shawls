@@ -5,7 +5,7 @@
 **Idempotency key:** `m4c-production-memory-privacy-gate/promotion-packet/v1`
 **Policy change key:** `m4c-provider-training-policy-relaxation/v1`
 **Packet revision:** `2026-11-08-staging-integration-provider-controls`
-**State:** `BLOCKED`
+**State:** `STAGING_EVIDENCE_RECORDED; BLOCKED_FOR_ACTIVATION`
 **`release_ready`:** `false`
 **Production memory:** disabled; no activation is authorized.
 
@@ -15,10 +15,18 @@ Re-applying this packet updates the same task and idempotency key. It must not c
 
 The packet is reconciled to the current integration ref:
 
-- `origin/staging-integration`: `897eb76ce8c4fa25416333b22eb702a381879604`
-- The prior staging-only M4 packet ancestry (`origin/staging` and `15442712...`) is historical evidence and is not this PR's base.
+- `origin/staging-integration`: `5a6ed21a5665d254ac345749811efa9dc63a8722`
+- `origin/staging`: `d020d521f2666726a2b82316785c8bf72669e83a` (PR #186)
+- `origin/main`: `283b27eee90533435ef3b2e28e6a3823ee1c5d23` (unchanged)
+- PR #179 provider-policy merge: `e04fb7470fb921032086f8c99217247458efec1d`; PR #184 staging promotion: `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`; PR #185 migration-fixture merge: `5a6ed21a5665d254ac345749811efa9dc63a8722`.
 
 The provider/privacy and production-activation gates remain open.
+
+## Staging verification packet
+
+The provider policy and migration downgrade fixture are in staging. Independent evidence is `119 passed, 29 deselected` for M4, `23 passed, 2 warnings` for migration promotion, and `70 passed` for the targeted migration suites. Local disposable Redis `elegance-local-staging-redis-1` was healthy at `127.0.0.1:6380`; readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected; and the synthetic arq job traversed `queued → deferred → queued → complete` on attempt 2. Groq smoke was bounded synthetic-only at two calls. No secret, API-key value, customer data, deployment, provider activation, or production claim is included.
+
+This packet remains non-production. It does not prove a hosted deployment, frontend live proxy (a disposable backend URL is still needed), embeddings activation/backfill, complete evaluation provenance, or external observability. `release_ready` remains false.
 
 ## Verified readiness evidence already available
 
