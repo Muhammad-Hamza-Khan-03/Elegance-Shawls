@@ -75,7 +75,7 @@ The batches are strictly ordered. A later batch cannot start until the prior bat
 
 **Specialist tasks:**
 
-- `t_m4c_provider_decision`: select and verify a paid no-training provider or a self-hosted model, with written data-use/retention/subprocessor evidence and an approved cost/budget boundary.
+- `t_m4c_provider_decision`: record the approved `m4c-provider-training-policy-relaxation/v1` gate; no provider selection or activation.
 - `t_m4c_memory_extraction_evals`: build and run reviewed synthetic memory extraction evals covering save, do-not-save, correction, relevance, sensitive-data refusal, consent, and forgetting; record reproducible results.
 - `t_m4c_tombstone_queue_proof`: prove delete/disable tombstones and `memory_version` prevent queued jobs and retries from recreating deleted memory; include replay, retry, and worker-restart cases.
 - `t_m4c_promotion_packet`: assemble model/provider evidence, eval report, deletion proof, threat/privacy review, rollback plan, and explicit owner approvals. This task cannot enable memory by itself.
@@ -84,8 +84,8 @@ The batches are strictly ordered. A later batch cannot start until the prior bat
 
 **Acceptance criteria:**
 
-1. Production-memory extraction remains disabled until a named paid no-training or self-hosted model is selected and independently verified. Free-tier or unverified providers are rejected.
-2. Verification includes contractual no-training/data-use terms, retention/deletion behavior, region/subprocessor review, access controls, bounded budget, and a tested fail-closed configuration. No credential is committed or shared in chat.
+1. Production-memory extraction remains disabled until the complete use-case control record is present and independently verified for the exact selected model/provider. Training-enabled providers are permitted by policy but no provider is selected here; free-tier or unverified providers are rejected.
+2. Verification includes explicit disclosure/consent where applicable, retention/deletion behavior, region/subprocessor/security review, data classification/minimization, opt-out/deletion behavior, audit evidence, rollback/disable controls, and a tested fail-closed configuration. No credential is committed or shared in chat.
 3. Memory extraction evals are non-empty, reproducible, human-reviewed, and pass agreed thresholds for save/do-not-save, correction, relevance, sensitive-data refusal, consent, and forgetting. Missing or `NOT_EVALUATED` evidence blocks the gate.
 4. Delete, disable, tombstone, version, retry, replay, and worker-restart tests prove queued jobs cannot recreate deleted or disabled memory.
 5. View/correct/delete/turn-off, audit, ownership isolation, retention, and rollback evidence is complete for the explicit `MemoryProvider` contract.

@@ -3,7 +3,8 @@
 **Task ID:** `t_m4c_provider_decision`
 **Parent:** `t_m4c_production_memory_privacy_gate`
 **Idempotency key:** `m4c-production-memory-privacy-gate/provider-decision/v1`
-**Packet revision:** `2026-11-06-origin-staging-1544271`
+**Policy change key:** `m4c-provider-training-policy-relaxation/v1`
+**Packet revision:** `2026-11-08-staging-integration-provider-controls`
 **Decision state:** `BLOCKED_PROVIDER_PRIVACY_DECISION`
 **Selection:** none. No provider has been selected, purchased, credentialed, called, or activated.
 
@@ -11,12 +12,9 @@ Re-applying this record updates this same task and idempotency key. It must not 
 
 ## Scope and hard boundaries
 
-This is a production-memory privacy decision gate, not a provider rollout. The only acceptable future choices are:
+This is a production-memory privacy decision gate, not a provider rollout. Training-enabled (`may_train`) providers are now eligible for assistant, customer-memory, and extraction paths only when the complete use-case control record below is present and independently verified. No-training and self-hosted providers retain their existing eligibility; unknown, opt-out, missing, conflicting, free-tier, or unverified records deny.
 
-1. an exact paid API account/contract with written no-training/data-use terms for the exact account, endpoint, and model; or
-2. an exact self-hosted/local model snapshot with license, provenance, pinned digests, host isolation, and deletion/retention controls.
-
-Free tiers, consumer plans, informal opt-out claims, unverified reseller/cloud terms, and “API data is usually not used for training” are not sufficient evidence. Customer memory extraction remains disabled by default (`MEMORY_EXTRACTION_ENABLED=false`); PostgreSQL remains the sole application database. No real customer data, credentials, live provider calls, production/VPS/main changes, deployment, spend, issue closure, or `release_ready=true` is allowed by this record.
+The change does not select or purchase a provider. Customer memory extraction remains disabled by default (`MEMORY_EXTRACTION_ENABLED=false`); PostgreSQL remains the sole application database. No real customer data, credentials, live provider calls, production/VPS/main changes, deployment, spend, issue closure, or `release_ready=true` is allowed by this record.
 
 ## Current implementation boundary (verified against origin/staging)
 
@@ -26,7 +24,12 @@ Free tiers, consumer plans, informal opt-out claims, unverified reseller/cloud t
 - M2 local EmbeddingGemma2, promoted separately at `15442712fa4799cfc9e3bfb889f77b1769beaffa`, is a search/embedding path. It is **not** a memory-extraction model and must not be treated as model-backed memory evidence.
 - The M4 synthetic runner is a deterministic rule/fixture contract check. It makes no provider calls and no database writes; it is not a model-quality or production approval.
 
-## Option comparison — no option selected
+## Training-enabled provider control record
+
+For each exact provider/account/endpoint/model and each applicable use case (`assistant`, `memory`, `extraction`), `LLM_PROVIDER_CONTROL_RECORDS` must contain exactly these eight boolean fields, all `true`: `disclosure_consent`, `retention_deletion`, `residency_security`, `provider_terms`, `data_classification`, `opt_out_deletion`, `audit_evidence`, and `rollback_disable`. The record is a declaration of independently verified evidence, not a provider selection. Missing, extra, malformed, conflicting, or stale fields fail closed; free-tier providers remain denied even with a record. Consent remains a literal prerequisite for customer-memory use, and extraction remains off until separately activated.
+
+The deterministic gate is use-case scoped and tests all fallback-chain members. This preserves the default-off, unknown-deny behavior while allowing a training-enabled provider only after disclosure/consent where applicable, retention/deletion/residency/security, exact provider terms, classification/minimization, opt-out/deletion, audit evidence, and rollback/disable controls are recorded.
+
 
 | Criterion | Paid no-training API | Self-hosted/local model |
 |---|---|---|
@@ -62,7 +65,7 @@ A future candidate is `CLEARED_FOR_REVIEW` only when every applicable item below
 
 ## Required approval checkpoints (must be explicit)
 
-1. **Candidate decision:** Hamza chooses either one exact paid no-training account/contract or one exact self-hosted/local model snapshot/license. This is a choice for evaluation, not permission to activate production memory.
+1. **Policy task:** update this same idempotent task with the approved training-policy relaxation; no provider is selected.
 2. **Privacy/security review:** named reviewer signs PD-01 through PD-03, including retention/deletion, residency/subprocessors/operators, access, incident handling, and budget boundary.
 3. **Model-backed synthetic eval:** engineering records the pinned artifact, offline/network isolation, thresholds, raw report, and human review. `NOT_EVALUATED` or fixture-only evidence blocks promotion.
 4. **Operational readiness:** engineering signs PD-04, PD-06, and PD-07, including a bounded rollback/disable drill using synthetic data only.

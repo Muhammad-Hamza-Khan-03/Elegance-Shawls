@@ -170,17 +170,19 @@ def test_remember_explains_what_is_missing(world):
 def test_memory_reaches_the_llm_only_when_the_whole_chain_is_cleared(world, monkeypatch):
     world.sign_in(); world.remember(favourite_colour="brown")
     monkeypatch.setattr(settings, "assistant_llm", True)
+    monkeypatch.setattr(settings, "llm_free_tier_providers", "groq,gemini,openrouter")
+    monkeypatch.setattr(settings, "llm_provider_training_policies", "")
     free = StubGateway(models=["groq/some-model"])
     monkeypatch.setattr("assistant.grounded.get_gateway", lambda: free)
     ask(world, "shawl")
-    assert "saved these preferences" not in free.prompts[-1] and free.calls[-1] == {"personal": False}      # free tier: memory kept out
+    assert "saved these preferences" not in free.prompts[-1] and free.calls[-1] == {"personal": False, "use_case": "assistant"}  # free tier: memory kept out
 
     cleared = StubGateway(models=["acme/private-model"])
     monkeypatch.setattr(settings, "llm_provider_training_policies", "acme=no_training")
     monkeypatch.setattr(settings, "llm_free_tier_providers", "groq,gemini")
     monkeypatch.setattr("assistant.grounded.get_gateway", lambda: cleared)
     ask(world, "shawl")
-    assert "favourite colour brown" in cleared.prompts[-1] and cleared.calls[-1] == {"personal": True}      # cleared: shared, personal chain
+    assert "favourite colour brown" in cleared.prompts[-1] and cleared.calls[-1] == {"personal": True, "use_case": "memory"}  # cleared: shared, personal chain
 
     monkeypatch.setattr(settings, "llm_provider_training_policies", "")
     ask(world, "shawl")

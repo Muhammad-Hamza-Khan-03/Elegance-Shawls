@@ -159,10 +159,10 @@ def test_outside_development_only_a_no_training_provider_is_used_and_personal_da
     gateway = StubGateway("Ok.")
     with_llm(monkeypatch, gateway)
     ask(client, "red shawl, mail jane@example.com")
-    assert gateway.calls[-1] == {"personal": False}                       # test env is "development"
+    assert gateway.calls[-1] == {"personal": False, "use_case": "assistant"}  # test env is "development"
     monkeypatch.setattr(settings, "environment", "production")
     ask(client, "red shawl, mail jane@example.com")
-    assert gateway.calls[-1] == {"personal": True}                        # gateway then refuses free tiers
+    assert gateway.calls[-1] == {"personal": True, "use_case": "assistant"}   # gateway then refuses free tiers
     sent = gateway.prompts[-1][1]["content"]
     assert "jane@example.com" not in sent and "red shawl" in sent
 
