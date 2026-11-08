@@ -111,6 +111,13 @@ def test_assistant_checks_what_the_model_returns():
     assert _safe("Here you go https://shop.example/a.", {"https://shop.example/a"}) and _safe("pay https://evil.example", set()) is None and _safe("  ", set()) is None
 
 
+def test_voice_notes_browse_but_negation_and_ambiguity_still_fail_closed():
+    from whatsapp.assistant import voice_trusted
+    assert voice_trusted("Kaali shawl") and voice_trusted("black shawl under 5000") and voice_trusted("کالی شال")
+    assert not voice_trusted("red shawl nahi chahiye")                  # negation: do not guess
+    assert not voice_trusted("shawl under 2000 or 5000")                # two prices
+
+
 def test_unreadable_voice_notes_and_images_are_always_answered_but_stay_behind_the_guards():
     for over in ({}, {"bot_recent": True}, {"assistant_enabled": True}, {"has_enquiry": False}, {"summary_sent": True}):
         assert decide(facts(text=None, is_text=False, **over)).kind == "unsupported_media", over

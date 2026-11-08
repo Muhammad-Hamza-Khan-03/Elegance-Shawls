@@ -29,6 +29,7 @@ from repositories.products import VariantFilter
 from semantic.query_parser import MAX_PRICE
 from semantic.representation import _SCRUB
 from utils.colour_vocabulary import normalize
+from voice.bridge import bridge_voice_transcript
 from whatsapp.matching import InboundEvent
 from whatsapp.replies import FIELDS, _LIMITS as LIMITS, missing_fields
 
@@ -91,6 +92,14 @@ def _card(product: dict) -> str:
         return f"• {product['name']}: out of stock{link}"
     colour = f" ({v['color']})" if v.get("color") else ""
     return f"• {product['name']}{colour}: {v['currency']} {v['price']:,}{link}"
+
+
+def voice_trusted(text: str) -> bool:
+    """A transcribed voice note may be used to browse, never to act. The voice contract's price-or-negation check still fails closed
+    for a negated or ambiguous request ("not red", two different prices); merely lacking a price is fine for browsing, and this
+    channel proposes no cart or order action anyway."""
+    reasons = bridge_voice_transcript(text, provenance="whatsapp_asr").reasons
+    return not {"voice_negation", "voice_ambiguous", "invalid_transcript"} & set(reasons)
 
 
 def _json(text: str) -> dict | None:
@@ -231,6 +240,8 @@ async def answer(session: AsyncSession, event: InboundEvent, contact_id, now: da
     text = (event.text or "").strip()
     if not text:
         return None
+    if event.type == "audio" and not voice_trusted(text):
+        return "I was not sure I heard that correctly. Could you say it again, or type it instead?"
     personal = settings.environment != "development"
     turns = await repo.recent_turns(session, contact_id, event.wa_id, now - HISTORY_WINDOW)
     transcript, links = _transcript(turns)
