@@ -9,7 +9,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 
 @pytest.fixture(autouse=True)
-def isolate_optional_runtime_configuration(monkeypatch):
+def isolate_optional_runtime_configuration(request, monkeypatch):
     """Keep the default suite independent of a developer's local .env."""
     from configuration.config import settings
     from llm import gateway
@@ -27,6 +27,7 @@ def isolate_optional_runtime_configuration(monkeypatch):
     ):
         monkeypatch.setattr(settings, name, value)
 
-    # Prevent cached clients created from .env from leaking into tests.
-    monkeypatch.setattr(gateway, "get_redis", lambda: None)
-    monkeypatch.setattr(rate_limit, "get_redis", lambda: None)
+    # Integration tests provision Redis explicitly; keep the real client path available there.
+    if "tests/integration/" not in request.node.nodeid.replace("\\", "/"):
+        monkeypatch.setattr(gateway, "get_redis", lambda: None)
+        monkeypatch.setattr(rate_limit, "get_redis", lambda: None)
