@@ -16,6 +16,14 @@ This is a production-memory privacy decision gate, not a provider rollout. Train
 
 The change does not select or purchase a provider. Customer memory extraction remains disabled by default (`MEMORY_EXTRACTION_ENABLED=false`); PostgreSQL remains the sole application database. No real customer data, credentials, live provider calls, production/VPS/main changes, deployment, spend, issue closure, or `release_ready=true` is allowed by this record.
 
+## Current staging evidence — 2026-11-08
+
+The policy record is present in the current staging lineage: PR #179 merged to `staging-integration` as `e04fb7470fb921032086f8c99217247458efec1d`, and PR #184 promoted that policy tree to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`. The current `origin/staging-integration` tip is `5a6ed21a5665d254ac345749811efa9dc63a8722`; the migration fixture was merged by PR #185 at that SHA and promoted by PR #186 to `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+
+Independent evidence recorded for this staging-only milestone includes M4 QA (`119 passed, 29 deselected`), migration promotion QA (`23 passed, 2 warnings`), and targeted migration suites (`70 passed`). Local disposable Redis was healthy at `127.0.0.1:6380`; backend readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected; and the synthetic arq job completed `queued → deferred → queued → complete` on attempt 2. A bounded Groq synthetic smoke made two calls only. No API key, credential, customer data, deployment, or provider activation is claimed.
+
+Remaining blockers are the disposable backend URL needed for frontend live-proxy verification, unavailable embeddings activation/backfill, incomplete evaluation provenance, and unexercised external observability. These keep the decision blocked and `release_ready=false`.
+
 ## Current implementation boundary (verified against origin/staging)
 
 - `MemoryProvider` is a provider-neutral PostgreSQL CRUD/consent contract; it does not install or call an extraction model (`apps/backend/memory/provider.py`).
