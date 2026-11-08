@@ -91,6 +91,7 @@ def test_consent_is_idempotent_audited_once_per_change_and_records_the_policy_ve
     env.client.put(f"{URL}/consent", json={"granted": False}, headers=h)
     assert audit_actions(env) == ["memory.consent.grant", "memory.consent.revoke"]
     assert env.client.get(f"{URL}/consent", headers=h).json()["granted"] is False
+    assert env.sql("select memory_version from customers where id = :c", c=h["X-Test-Customer"])[0][0] == 2
 
 
 def test_revoking_consent_hides_memories_and_regranting_shows_them_again(env):
@@ -331,12 +332,15 @@ def test_a_real_correction_restarts_the_retention_window_but_a_repeat_does_not(p
         t1 = T0 + timedelta(days=6)
         async with tx(sessions) as s:
             changed = await service.update(s, cid, item.id, MemoryUpdate(value="fresh"), t1)
+            corrected_version = await repo.memory_version(s, cid)
         async with tx(sessions) as s:
             repeat = await service.update(s, cid, item.id, MemoryUpdate(value="fresh"), t1 + timedelta(days=2))
-        return changed.expires_at, repeat.expires_at, repeat.version
+            repeated_version = await repo.memory_version(s, cid)
+        return changed.expires_at, repeat.expires_at, repeat.version, corrected_version, repeated_version
 
-    changed, repeat, version = run_repo(pg_engine_factory, scenario)
+    changed, repeat, version, corrected_version, repeated_version = run_repo(pg_engine_factory, scenario)
     assert changed == T0 + timedelta(days=16) and repeat == changed and version == 2
+    assert corrected_version == 2 and repeated_version == corrected_version
 
 
 # ---- concurrency ---------------------------------------------------------------------------------

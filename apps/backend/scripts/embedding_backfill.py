@@ -64,7 +64,16 @@ async def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--after", type=uuid.UUID, help="resume after this owner id (the last_id of a previous run)")
     parser.add_argument("--scope", default=settings.ingestion_source_id, help="only the single approved catalogue exists")
+    parser.add_argument("--require-staging", action="store_true", help="container startup: needs ENVIRONMENT=staging, RUN_E5_BACKFILL_ON_STARTUP=true and a staging database name")
     args = parser.parse_args()
+    if args.require_staging:
+        from ingestion.staging_guard import StagingGuardError, assert_staging_run
+
+        try:
+            assert_staging_run("RUN_E5_BACKFILL_ON_STARTUP")
+        except StagingGuardError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     if args.scope != settings.ingestion_source_id:
         print(f"unknown scope {args.scope!r}", file=sys.stderr)
         return 2
@@ -76,10 +85,14 @@ async def main() -> int:
     if not postgres_configured():
         print("DATABASE_URL is not set", file=sys.stderr)
         return 2
-    if settings.embedding_provider == "local_e5":   # local-only; refuses unless flagged in a local environment
-        from search.local_e5 import local_provider
+    if settings.embedding_provider in {"local_e5", "local_embeddinggemma2"}:   # local-only; refuses unless flagged in a local environment
+        # Both local adapters enforce the same opt-in, offline, revision/digest and
+        # lexical-fallback/error semantics used by the query path. Keep provider
+        # selection explicit so existing fake/other providers remain unchanged.
+        from search import local_e5, local_gemma
 
-        provider = local_provider("passage")
+        local = local_e5 if settings.embedding_provider == "local_e5" else local_gemma
+        provider = local.local_provider("passage")
     else:
         provider = provider_for(settings.embedding_provider, settings.embedding_dimensions)
     engine = make_engine()

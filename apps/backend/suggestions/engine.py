@@ -135,10 +135,10 @@ def _matching_facts(memory: MemoryFact, product: ProductFact) -> tuple[ReasonCod
             if _normalise(variant.size) == value:
                 return "explicit_size_match", "Matches your explicit size preference.", ProductEvidence(
                     product.id, product.slug, product.name, product.revision, variant.id, "variant.size", variant.size)
-    elif key == "category" and _normalise(product.category) == value:
+    elif key == "category" and variants and _normalise(product.category) == value:
         return "explicit_category_match", "Matches the category you explicitly selected.", ProductEvidence(
             product.id, product.slug, product.name, product.revision, None, "product.category", product.category)
-    elif key == "style" and (_normalise(product.slug) == value or _normalise(product.name) == value):
+    elif key == "style" and variants and (_normalise(product.slug) == value or _normalise(product.name) == value):
         return "explicit_style_match", "Matches the style you explicitly selected.", ProductEvidence(
             product.id, product.slug, product.name, product.revision, None, "product.name", product.name)
     return None
@@ -207,7 +207,8 @@ def build_suggestions(
                 code=code,
                 text=text,
                 source_memory_ids=(memory.id,),
-                source_provenance=(memory.source_ref or memory.source,),
+                # Opaque, typed reference only; never echo a client/message reference or value.
+                source_provenance=(f"memory:{memory.id}",),
                 product_evidence=evidence,
                 policy=decision,
                 generated_at=generated_at,

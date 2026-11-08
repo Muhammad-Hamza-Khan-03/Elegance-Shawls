@@ -46,6 +46,10 @@ The schema is managed only by Alembic (`apps/backend/migrations`, reversible, ap
 
 The backend trusts `X-Forwarded-For` (`FORWARDED_ALLOW_IPS=*`) because it is reachable only through Caddy, which replaces any client-supplied value. Do not publish the backend or frontend ports directly.
 
+`FORWARDED_ALLOW_IPS` is the only trusted-proxy switch: a specific proxy address keys limits by the forwarded client, an untrusted peer's `X-Forwarded-For` is ignored, and `*` trusts every peer, so use it only when nothing but the proxy can reach the backend (covered by `apps/backend/tests/test_staging_run_guard_and_limiter_proxy.py`). Without Redis the in-process limiter drops keys idle for a full minute.
+
+**Backend image defaults are production-safe** (`ENVIRONMENT=production`, seed, startup backfill and local semantic search all off). Staging is an explicit opt-in: set `ENVIRONMENT=staging`, `RUN_STAGING_SEED=true` and/or `RUN_E5_BACKFILL_ON_STARTUP=true` (plus the `EMBEDDING_*` and `LOCAL_SEMANTIC_SEARCH_ENABLED` settings you want) at deploy time. Both scripts refuse unless `ENVIRONMENT` is exactly `staging`, their flag is `true` and `DATABASE_URL` names a staging database.
+
 On a hosted backend (for example Render), the backend's per-client limits are only as accurate as the client address uvicorn sees. Unless `FORWARDED_ALLOW_IPS` trusts the platform's proxy, browser requests are keyed by proxy addresses and share limits. Set it only after confirming how the platform builds `X-Forwarded-For`, so clients cannot choose their own address.
 
 ### Local HTTPS acceptance stack

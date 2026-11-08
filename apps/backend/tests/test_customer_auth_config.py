@@ -47,6 +47,8 @@ def test_disabled_exchange_is_404_and_session_routes_401_without_touching_the_da
     assert c.post(f"{URL}/exchange", json={"id_token": "a.b.c"}).status_code == 404
     for path in ("logout", "logout-all"):
         assert c.post(f"{URL}/{path}", headers={SESSION_HEADER: "cs1.whatever"}).status_code == 401
+    assert c.post(f"{URL}/merge-anonymous", json={"consent": True},
+                  headers={SESSION_HEADER: "cs1.whatever", "X-Anonymous-Session": "v1.anything"}).status_code == 404
 
 
 @pytest.mark.parametrize("over", [
@@ -70,9 +72,26 @@ def test_complete_config_enables_both_verifiers_without_any_network_call(monkeyp
     assert get_session_verifier() is not None
 
 
+def test_identity_verifier_error_fails_before_database_or_identity_decision(monkeypatch):
+    configure(monkeypatch)
+    class BrokenVerifier:
+        async def verify(self, token, now):
+            raise RuntimeError("synthetic verifier failure")
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_identity_verifier] = lambda: BrokenVerifier()
+    async def no_db():
+        yield object()  # any attempted repository call would fail the assertion below
+    app.dependency_overrides[get_pg_session] = no_db
+    response = TestClient(app, raise_server_exceptions=False).post(f"{URL}/exchange", json={"id_token": "synthetic"})
+    assert response.status_code == 503 and "synthetic verifier failure" not in response.text
+
+
 @pytest.mark.parametrize("body", [
     {}, {"id_token": ""}, {"id_token": "x" * 4097}, {"id_token": 5}, {"id_token": "a.b.c", "customer_id": "00000000-0000-0000-0000-000000000001"},
     {"id_token": "a.b.c", "user_id": "x"}, {"customer_id": "x"},
+    {"id_token": "a.b.c", "idempotency_key": "short"},
 ])
 def test_exchange_body_is_strict_and_never_accepts_a_customer_id(monkeypatch, body):
     configure(monkeypatch)

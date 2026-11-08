@@ -158,6 +158,9 @@ const extractItems = (data: unknown): BackendProduct[] => {
   return [];
 };
 
+const MAX_CATALOG_PAGES = 100;
+const PRODUCT_TIMEOUT_MS = 8000;
+
 export const api = {
   // GET /products
   getProducts: async (signal?: AbortSignal): Promise<Product[]> => {
@@ -167,20 +170,38 @@ export const api = {
       .filter((p: Product) => p.status === 'active');
   },
 
-  // GET /products/slug/:slug
-  getProductBySlug: async (slug: string): Promise<Product | undefined> => {
-    try {
-      const data = await handleResponse(await fetch(`${getApiUrl()}/products/slug/${slug}`, { headers: apiHeaders() }));
-      return mapBackendProduct(data);
-    } catch (e) {
-      console.error(`Failed to fetch product by slug ${slug}:`, e);
-      try {
-        const products = await api.getProducts();
-        return products.find(p => p.slug === slug);
-      } catch {
-        return undefined;
-      }
+  // One keyset page (100 rows). nextCursor is null when the catalogue is exhausted; a page can be short while it is set.
+  getProductPage: async (cursor?: string | null, signal?: AbortSignal): Promise<{ items: Product[]; nextCursor: string | null }> => {
+    const query = `limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const data = await handleResponse(await fetch(`${getApiUrl()}/products/?${query}`, { signal, headers: apiHeaders() }));
+    const next: unknown = (data as { next_cursor?: unknown } | null)?.next_cursor;
+    return {
+      items: extractItems(data).map((p) => mapBackendProduct(p)).filter((p: Product) => p.status === 'active'),
+      nextCursor: typeof next === 'string' && next ? next : null,
+    };
+  },
+
+  // Walks every page; only for the sitemap (bounded by its timeout). The storefront browses with getProductPage.
+  // shortcut: capped at MAX_CATALOG_PAGES (10k products); raise it if the catalogue outgrows that.
+  getAllProducts: async (signal?: AbortSignal): Promise<Product[]> => {
+    const byId = new Map<string, Product>();
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
+      const result: { items: Product[]; nextCursor: string | null } = await api.getProductPage(cursor, signal);
+      for (const product of result.items) byId.set(product.id || product.slug, product);
+      if (!result.nextCursor) return [...byId.values()];
+      if (result.nextCursor === cursor) throw new Error('Catalogue pagination did not advance.');
+      cursor = result.nextCursor;
     }
+    throw new Error('Catalogue is larger than the page limit.');
+  },
+
+  // GET /products/slug/:slug. undefined only for a real 404; every other failure
+  // (429, 5xx, network, timeout) throws so the page can show a recoverable error.
+  getProductBySlug: async (slug: string): Promise<Product | undefined> => {
+    const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}`, { headers: apiHeaders(), signal: AbortSignal.timeout(PRODUCT_TIMEOUT_MS) });
+    if (response.status === 404) return undefined;
+    return mapBackendProduct(await handleResponse(response));
   },
 
   // Current published state for checkout: null when the product is not

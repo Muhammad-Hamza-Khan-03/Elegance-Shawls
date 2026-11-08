@@ -96,7 +96,7 @@ describe('proposal params for the confirmation step', () => {
   it('keeps params only for a validated executable proposal', () => {
     expect(parse(proposal(3, { params }))!.params).toEqual(params);
     expect(parse(proposal(3, { params }, { outcome: 'rejected', reason: 'stale_price' }))!.params).toBeUndefined();
-    expect(parse(proposal(3, { params, action_type: 'show_product' }))!.params).toBeUndefined();
+    expect(parse(proposal(3, { params, action_type: 'open_product' }))!.params).toBeUndefined();
     expect(parse(proposal(3, { params: 'x' }))!.params).toBeUndefined();
   });
 });

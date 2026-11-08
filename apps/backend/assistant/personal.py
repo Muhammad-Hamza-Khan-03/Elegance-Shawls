@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from memory import service
+from memory.provider import PostgresMemoryProvider
 from memory.policy import authorize_model_use
 from semantic.query_parser import parse_query
 from utils.colour_vocabulary import normalize
@@ -51,7 +52,7 @@ async def load(session, principal) -> Preferences:
     if principal is None:
         return Preferences("anonymous", {})
     try:
-        items = await service.list_items(session, principal.customer_id, datetime.now(timezone.utc))
+        items = await PostgresMemoryProvider(session).list_items(principal.customer_id, datetime.now(timezone.utc))
     except service.MemoryRejected:
         return Preferences("off", {})
     return Preferences("on", {i.key: i.value for i in items if i.key in KEYS}, tuple((i.key, i.value) for i in items))
