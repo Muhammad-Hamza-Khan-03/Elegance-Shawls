@@ -195,7 +195,7 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 
 #### Current M4 milestone status — 2026-11-08
 
-The provider-training policy and migration downgrade fixture are now present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`; current `origin/staging-integration` is `5a6ed21a5665d254ac345749811efa9dc63a8722`, while `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+The provider-training policy and migration downgrade fixture are now present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`; PR #191 → current `origin/staging-integration` `4675052b7b983c24b46b2d39fa18e4f1a8815124`, while `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
 
 Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis and arq verification passed: Redis was healthy at `127.0.0.1:6380`, readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq was exercised only through two bounded synthetic calls; no secrets or API keys are documented.
 
@@ -204,6 +204,12 @@ This remains a staging/non-production milestone. Deployment, production activati
 ### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
 
 The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+
+#### EmbeddingGemma 2 candidate — verified local-only boundary (2026-11-08)
+
+The staging-integration candidate contract additionally verifies `google/embeddinggemma-2` for the local search path: Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`; model-tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`; weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`; 768 dimensions; CPU-only. The candidate quality record reports recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, zero hard-constraint violations, and reproducibility Jaccard `1.0`.
+
+Independent QA is recorded as Gemma/contract `35 passed, 1 skipped`, evaluation `14 passed`, embedding integration `21 passed`, schema integration `6 passed`, compileall/diff-check passed, and disposable database backfill `8/8` with an idempotent rerun and semantic retrieval pass. This evidence verifies the pinned local candidate and its search/backfill contract only. It does **not** verify hosted staging acceptance, external OTLP/Langfuse, reviewed model/evaluation provenance beyond the recorded candidate evidence, deployment, production activation, memory extraction, or `release_ready`; the activation boundary remains local-only until those gates are separately cleared.
 
 **Model and configuration.** `intfloat/multilingual-e5-base`, 768 dimensions, CPU, offline, loaded from a pinned local snapshot (`embeddings/providers/local_e5.py`; the staging image bakes it in). Settings: `EMBEDDING_ENABLED`, `EMBEDDING_PROVIDER` (`local_e5`; `fake` for tests), `EMBEDDING_DIMENSIONS=768`, `EMBEDDING_INDEX_VERSION`, `LOCAL_SEMANTIC_SEARCH_ENABLED`, `LOCAL_E5_MODEL_PATH`, `LOCAL_E5_MODEL_REVISION` (tree digest). Unset or wrong means disabled; nothing blocks start-up or catalogue browsing.
 
