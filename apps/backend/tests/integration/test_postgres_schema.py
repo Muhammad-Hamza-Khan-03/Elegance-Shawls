@@ -36,7 +36,10 @@ def run(factory, work):
     return asyncio.run(go())
 
 
-def test_migration_is_reversible(pg_url, migrated_url):
+def test_migration_is_reversible(pg_url, migrated_url, pg_engine_factory):
+    # The migration contract intentionally refuses to erase memory/consent rows.
+    # Invoke the disposable integration fixture so synthetic rows from earlier
+    # tests are cleaned before this structural downgrade/upgrade check.
     config = alembic_config(pg_url)
     command.downgrade(config, "base")
     command.upgrade(config, "head")
