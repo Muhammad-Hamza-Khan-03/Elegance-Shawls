@@ -4,7 +4,7 @@
 
 The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md); ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md). Deployment identifiers and release SHAs belong in release records, not here. Statements under **Current state** are verifiable in this repository; **Target state**, **Planned**, **Deferred**, and **Blocked** describe decisions or work that is not yet complete.
 
-**Current high-level position (reviewed 2026-11-09).** The catalogue, PostgreSQL-backed ingestion/review flow, server search, validated assistant/enquiry seams, admin accounts, and provider-neutral customer-memory contract are implemented to varying levels of QA. Customer authentication is configuration-gated and disabled by default. Server-side cart, orders, payments, MCP/SDK connectors, HubSpot sync, and production memory activation are not implemented. AI release readiness remains `false` until the relevant evaluation and privacy gates pass.
+**Current high-level position (reviewed 2026-11-09).** The catalogue, PostgreSQL-backed ingestion/review flow, server search, validated assistant/enquiry seams, admin accounts, and provider-neutral customer-memory contract are implemented to varying levels of QA. Customer authentication is configuration-gated and disabled by default. Server-side cart, orders, payments, HubSpot sync, and production memory activation are not implemented. AI release readiness remains `false` until the relevant evaluation and privacy gates pass.
 
 ## 1. Current state
 
@@ -303,7 +303,7 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 | `docs/phase-1-one-source-ingestion.md` | Ingestion states, rules and security model. |
 | `README.md`, `DEPLOYMENT.md`, `OPERATIONS.md`, `LAUNCH_RUNBOOK.md`, `CLAUDE.md` | Setup, deploy and operations. Updated only when their commands, variables or procedures actually change. |
 
-## Appendix A. Product quality control pipeline and MCP connector (carried over)
+## Appendix A. Product quality control pipeline (carried over)
 
 > Carried over unchanged from branch `docs/staging-first-release-workflow` during the staging-integration consolidation. It was written against an older numbering of this document (it was section 9.1 there); the content is current, only its heading numbers are not.
 
@@ -342,60 +342,5 @@ AI may assist only where it adds value:
 
 AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
 
-### Controlled MCP business connector — future Phase 5/6
-
-An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
-
-```text
-Admin AI
-   -> MCP server
-   -> authenticated FastAPI business tool
-   -> authorization and validation
-   -> MongoDB/provider action
-   -> audit event
-```
-
-Start with read-only tools:
-
-```text
-list_failed_imports()
-find_missing_images()
-find_duplicate_candidates()
-get_import_job_summary()
-```
-
-Only later add approval-required proposal/mutation tools:
-
-```text
-propose_product_correction()
-propose_description_update()
-approve_staged_product()
-retry_failed_job()
-```
-
-Every mutation must follow:
-
-```text
-AI suggestion
-    -> human review
-    -> explicit approval
-    -> backend validation
-    -> state change
-    -> audit log
-```
-
-MCP requirements:
-
-- No direct database credentials or unrestricted queries.
-- Server-side authentication and per-tool authorization.
-- Read-only default and least-privilege scopes.
-- Idempotency for retryable actions.
-- Clear confirmation for every mutation.
-- Provider and database errors returned safely.
-- Full actor, tool, target, before/after, and timestamp audit data.
-- Separate admin/demo MCP credentials and environments.
-
 - Deterministic product quality checks.
 - Quality status, rule failures, and revalidation path.
-- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
-- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.

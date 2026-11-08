@@ -1,66 +1,65 @@
-# AI commerce connector feasibility
+# AI commerce feasibility
 
-**Purpose and audience.** Plain-language feasibility note for the product owner, maintainers, and reviewers. It translates the uploaded connector report into a repository-grounded decision. The original cached report is preserved outside the repository and is not overwritten.
+**Purpose and audience.** Plain-language feasibility note for the product owner, maintainers, and reviewers. It records repository-grounded scope, current capability status, and safe next steps. It is not an implementation or deployment instruction.
 
 **Reviewed against:** `origin/staging-integration` at `63f1730663114d31085967ae01a05687bd614979` (2026-11-09).
 
 ## Bottom line
 
-A connector is feasible, but a useful **ordering** connector is not ready to build yet. The repository already supports catalogue discovery, server search, stock-aware variants, a validated browser cart, and a WhatsApp enquiry handoff. It does **not** yet provide the server-side customer, cart, order, address, quote, payment, MCP, SDK, or HubSpot capabilities that an external AI would need to place and track an order safely.
+The repository can support AI-assisted catalogue discovery today. The approved near-term experience is catalogue/search, an AI assistant, a browser-local cart, and a WhatsApp enquiry handoff. Customer authentication is a foundation currently gated by configuration. Durable server-side cart and order capabilities are future domain work, not current functionality. HubSpot, payments, and hosting changes remain deferred.
 
-The sensible sequence is:
-
-1. keep the first connector read-only;
-2. finish and independently verify customer identity, server-side cart, quote/order state, and audit boundaries;
-3. add one authenticated connector surface (MCP or REST) over those backend services;
-4. treat each client (site assistant, WhatsApp automation, Claude/ChatGPT/OpenClaw, SDK) as an adapter, not a separate commerce implementation.
+The plan must preserve the distinction between what is implemented, partial, deferred, and missing. No external client or alternative integration track is required for this scope.
 
 ## Evidence-based capability map
 
 | Capability | Current status | Meaning |
 |---|---|---|
-| Browse products and product details | **Implemented** | Public catalogue and slug routes exist. |
-| Search and hard constraints | **Implemented / partial** | `/v1/search` and hybrid search exist; results remain subject to catalogue availability and provider configuration. |
-| Stock and variants | **Implemented** | Admin-managed catalogue data is read by the API; hard constraints are application-validated. |
-| Browser cart and WhatsApp handoff | **Implemented** | Cart is browser-local and the server can create a validated enquiry reference; a person still completes the WhatsApp handoff. |
-| Customer authentication | **Partial / disabled by default** | Customer session routes and principal boundaries exist behind configuration; this is not an enabled customer-facing login service. |
-| Customer memory | **Partial / gated** | Provider-neutral CRUD and privacy/tombstone controls exist; extraction remains disabled and provider approval is blocked. |
-| Server-side cart | **Not implemented** | External agents cannot share a durable cart with the site. |
-| Quotes, orders, addresses, order status | **Not implemented** | The current enquiry is not an order, does not reserve stock, and does not confirm a sale. |
-| MCP server or public connector API | **Not implemented** | No remote MCP endpoint or connector contract is in the repository. |
-| Python SDK / local MCP wrapper | **Not implemented** | Proposed future packaging only. |
-| HubSpot sync | **Not implemented** | The outbox/table shape is not evidence of a working HubSpot integration. |
+| Catalogue and product details | **Implemented** | Public catalogue and slug routes exist for published products. |
+| Catalogue search and hard constraints | **Implemented / partial** | `/v1/search` and hybrid search exist; results remain subject to catalogue availability and provider configuration. |
+| AI assistant | **Partial** | Validated assistant and enquiry seams exist, but the assistant is not a release-ready autonomous checkout flow. |
+| Browser cart | **Implemented** | The cart is maintained in the browser and is not yet a durable server-side commerce record. |
+| WhatsApp enquiry handoff | **Implemented / partial** | The server can create a validated enquiry reference; a person still completes the WhatsApp handoff. An enquiry is not an order. |
+| Customer authentication foundation | **Partial / disabled by default** | Customer session routes and principal boundaries exist behind configuration; this is not an enabled customer-facing login service. |
+| Server-side cart | **Missing** | No durable cart domain exists for cross-device or authenticated use. |
+| Orders, addresses, quotes, and order status | **Missing** | The current enquiry does not reserve stock, confirm a sale, or provide order lifecycle state. |
+| Customer memory | **Partial / gated** | Provider-neutral storage and privacy/tombstone controls exist; extraction remains disabled and approval is blocked. |
+| HubSpot integration | **Deferred** | The outbox/table shape is not evidence of a working HubSpot integration. |
 | Payments | **Deferred** | Payment processing is outside the current architecture and launch boundary. |
+| Hosting changes | **Deferred** | Hosting, deployment, and production activation remain approval-gated and are not part of this documentation change. |
 
-## What can be built now
+## What is usable now
 
-A read-only connector can expose catalogue search, product detail, availability checks, store policy text, and the existing WhatsApp handoff link. It must return live catalogue values from the backend, never invent prices or stock, and must not claim that an enquiry is an order.
+The current product can support catalogue browsing, search, product detail, availability-aware results, an AI-assisted discovery experience, a browser-local cart, and a WhatsApp enquiry handoff. It must return live catalogue values from the backend, never invent prices or stock, and must not claim that an enquiry is an order.
 
-This is useful for a site assistant or a controlled demo. It does not require customer login, payment credentials, a server-side cart, HubSpot, or an external AI client to access private data.
+The catalogue and enquiry flow must continue to work when AI or optional infrastructure is unavailable. The current evidence does not authorize deployment, production data access, provider spend, or `release_ready=true`.
 
-## What is deferred or blocked
+## What is partial, deferred, or missing
 
-Ordering through an external AI is deferred until the repository has a durable customer/session boundary, server-side cart, address handling, quote expiry, order state transitions, idempotency, audit evidence, and independent QA. Payment links and HubSpot mirroring are later integrations, not prerequisites for the read-only connector.
+- **Partial:** customer authentication foundation, AI assistant seams, and customer-memory controls remain gated or incomplete.
+- **Missing:** durable server-side cart, customer addresses, quote calculation/expiry, order creation, order state transitions, cancellation rules, reconciliation, and independent QA for that future domain.
+- **Deferred:** HubSpot, payments, hosting changes, production activation, and production customer-memory extraction.
 
-Production customer-memory extraction is a separate privacy gate. The current decision is `BLOCKED_PROVIDER_PRIVACY_DECISION`; `release_ready=false`; no provider is selected, no credentials are approved, and no production activation is authorized.
+The future server-side cart/order domain should be designed only after the customer-auth foundation and the required authorization, idempotency, audit, privacy, and independent-QA gates are satisfied. It must remain separate from the current browser cart and WhatsApp enquiry semantics until those boundaries are explicitly implemented and verified.
 
-## Safety constraints for any future connector
+## Safety constraints
 
-- The backend remains the system of record; an AI client never talks directly to PostgreSQL or HubSpot.
-- The model proposes; application code validates. Prices, stock, variant identity, totals, permissions, and order state come from server-side checks.
-- Hard constraints are never relaxed silently. A quote must be computed by the server and expire; order creation must be idempotent and begin in a non-confirmed state.
+- The backend remains the system of record; the browser and assistant do not access PostgreSQL directly.
+- The assistant proposes; application code validates. Prices, stock, variant identity, totals, permissions, and any future order state come from server-side checks.
+- Hard constraints are never relaxed silently. Any future quote must be computed by the server and expire; any future order creation must be idempotent and begin in a non-confirmed state.
 - Customer data is scoped to the authenticated principal. Anonymous conversation labels are not identity.
 - Product text and scraped content are data, not instructions.
-- Every tool call and mutation needs bounded scopes, rate limits, audit provenance, and a kill switch.
-- Read-only fallback must continue when AI, Redis, or an external provider is unavailable.
-- No connector work authorizes deployment, production data access, provider spend, issue closure, or `release_ready=true`.
+- Every future mutation needs bounded scopes, rate limits, audit provenance, and a kill switch.
+- Read-only catalogue/search and WhatsApp enquiry fallback must continue when AI or optional infrastructure is unavailable.
+- No documentation work authorizes deployment, production data access, provider spend, issue closure, or `release_ready=true`.
 
 ## Recommended future scope
 
-**Phase A — read-only connector.** Publish a narrow authenticated or public read-only contract for search, product detail, availability, policy, and WhatsApp handoff. Add connector-specific rate limits, event attribution, contract tests, and an abuse review.
+**Phase A — current product scope.** Keep catalogue/search, the AI assistant, the browser cart, and WhatsApp enquiry handoff accurate and independently verifiable. Treat the assistant as discovery and enquiry support; do not represent it as checkout.
 
-**Phase B — customer commerce primitives.** Implement and QA customer login, server cart, addresses, quote calculation, pending orders, cancellation rules, audit, idempotency, and reconciliation with the existing enquiry flow.
+**Phase B — customer-auth foundation.** Complete and independently QA the configuration-gated customer authentication boundary, session handling, authorization, privacy controls, and audit requirements without enabling production activation by implication.
 
-**Phase C — adapters and integrations.** Add one remote MCP surface, then thin adapters for the site assistant, WhatsApp automation, and SDK clients. Consider HubSpot as a one-way operational mirror only after order records are stable. Evaluate payment links separately.
+**Phase C — future server-side cart/order domain.** After Phase B gates pass, design and implement durable carts, addresses, quotes, pending orders, cancellation rules, idempotency, audit, and reconciliation as a separate approved workstream.
 
-This scope keeps the useful near-term demo honest: the repository can support AI-assisted discovery today, but it is not yet an AI checkout platform.
+**Deferred integrations and operations.** HubSpot, payments, hosting changes, and production activation remain deferred until the server-side domain is stable and separately approved.
+
+This scope keeps the near-term product honest: the repository supports AI-assisted discovery and enquiry handoff, but it does not yet provide a server-side checkout or order platform.
