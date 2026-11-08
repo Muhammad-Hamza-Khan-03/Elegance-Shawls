@@ -8,6 +8,8 @@ assistant proposes saving a value only on an explicit "remember ..." and never s
 """
 import hashlib
 import logging
+import re
+from contextvars import ContextVar
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,13 +22,15 @@ from fastapi import HTTPException, Request
 from datetime import datetime, timezone
 from llm.gateway import get_gateway
 from memory.principal import SESSION_HEADER, CustomerPrincipal, get_session_verifier, resolve_principal
-from repositories.enquiries import catalogue_snapshot
+from repositories.enquiries import catalogue_snapshot, stock_rows
 from repositories.hybrid import distance_cutoff, embed_query, hybrid_search
 from semantic.representation import _SCRUB
 from semantic.query_parser import handoff, parse_query
 from utils.colour_vocabulary import normalize
 from voice.bridge import bridge_voice_transcript
 
+# Set by channels whose customers have not passed the privacy gate (WhatsApp): wording stays deterministic, nothing reaches a model.
+llm_blocked: ContextVar[bool] = ContextVar("assistant_llm_blocked", default=False)
 MAX_CARDS = 3
 MAX_REPLY_CHARS = 600
 log = logging.getLogger(__name__)
@@ -125,7 +129,7 @@ async def _no_match(message: str, applied: str = "none", terms: str = "", kept: 
 
 async def _wording(message: str, facts: str, fallback: str, personal: bool = False) -> tuple[str, bool]:
     """(text, written_by_llm). LLM wording when ASSISTANT_LLM is on and a model answers; the fixed sentence otherwise (never an error)."""
-    if not settings.assistant_llm:
+    if not settings.assistant_llm or llm_blocked.get():
         return fallback, False
     # Customer text may hold personal details. Outside development it only goes to a no-training provider (LLM_PRODUCTION_CHAIN;
     # the gateway refuses free tiers and raises when none is configured, which lands in the fallback below), after scrubbing
@@ -152,7 +156,8 @@ async def _cards(message: str, products: list[dict], idempotency_key: str, appli
                  memory: tuple[list[str], bool] = ([], False), kept: list[str] | None = None,
                  close: list[str] | None = None) -> AsyncIterator[dict]:
     """memory = (labels of saved preferences applied, whether a cleared no-training chain may see them)."""
-    lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
+    # the colour is the matching variant's, not the product name's ("Fringed Red Stole" can be sold in blue): without it the model denies a match
+    lines = "\n".join(f"- {p['name']} ({p.get('category', 'item')}, colour {_buyable(p).get('color') or 'n/a'}): {_buyable(p)['currency']} {_buyable(p)['price']}" if _buyable(p)
                       else f"- {p['name']} ({p.get('category', 'item')}): out of stock" for p in products)
     facts = (f"Filters the customer asked for (every product below already satisfies them): {applied}.\n"
              f"What the customer is looking for, in English: {terms or 'not specified'}.\nMatching products:\n{lines}")
@@ -178,6 +183,39 @@ async def _cards(message: str, products: list[dict], idempotency_key: str, appli
                               "expected_unit_price": variant["price"], "currency": variant["currency"]}}
 
 
+# "how many shawls are in store", "kitni shawls hain", "کتنی شالیں ہیں". The spelling corrector would turn "store" into "stole" and "many"
+# is not a product word, so the question is answered from counts instead of being searched as keywords.
+_COUNT = re.compile(r"\b(how\s+many|number\s+of|count\s+of|total\s+number|kitn[aei]n?)\b|کتنی|کتنے|کتنا", re.IGNORECASE)
+_STORE_WORDS = re.compile(r"\b(stores?|shops?|stocks?|available|availability)\b", re.IGNORECASE)
+
+
+def is_count_question(message: str) -> bool:
+    # "i mean total" after a count question; a number in the message ("total 5000") is a price talk, not a count
+    return bool(_COUNT.search(message)) or bool(re.search(r"\b(total|overall)\b", message, re.IGNORECASE) and not re.search(r"\d", message))
+
+
+async def _count_answer(session: AsyncSession, message: str) -> str:
+    """Designs currently buyable, from the live database. Colour and budget in the question narrow the count; nothing is guessed."""
+    intent = parse_query(_STORE_WORDS.sub(" ", message))
+    wanted = sorted({personal.CATEGORIES[t] for t in intent.terms if t in personal.CATEGORIES})
+    rows = [r for r in await stock_rows(session, wanted or None)
+            if (intent.colour is None or normalize(r[2] or "") == normalize(intent.colour))
+            and (intent.min_price is None or r[3] >= intent.min_price) and (intent.max_price is None or r[3] <= intent.max_price)]
+    narrowed = ", ".join(p for p in ([f"in {intent.colour}"] if intent.colour else []) +
+                         ([f"at most PKR {intent.max_price:,}"] if intent.max_price is not None else []) +
+                         ([f"at least PKR {intent.min_price:,}"] if intent.min_price is not None else []))
+    suffix = f" ({narrowed})" if narrowed else ""
+    if not rows:
+        return f"I could not find any {' / '.join(wanted) or 'products'}{suffix} in stock right now. Try a different colour or budget, or browse the full collection. "
+    parts = []
+    for category in (wanted or sorted({r[1] for r in rows})):
+        n = len({r[0] for r in rows if r[1] == category})
+        if n:
+            parts.append(f"{n} {category if n != 1 else category.rstrip('s') if category != 'scarves' else 'scarf'}")
+    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f"We currently have {listed} in stock{suffix}. Tell me a colour or budget and I will show you the options. "
+
+
 async def ground(session: AsyncSession, message: str, idempotency_key: str, *, voice: bool = False,
                  principal: CustomerPrincipal | None = None, history: tuple[str, ...] = ()) -> tuple[AsyncIterator[dict], k.InMemoryCatalogue]:
     """voice=True: the text came from speech recognition, so it passes the voice bridge first (uncertain or negated = ask again)."""
@@ -186,6 +224,8 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
         return _remember(prefs, asked), k.InMemoryCatalogue({})
     if not voice and personal.is_recall(message):
         return _recall(prefs), k.InMemoryCatalogue({})
+    if not voice and is_count_question(message):
+        return _say(await _count_answer(session, message)), k.InMemoryCatalogue({})
     offer = [] if voice else personal.taste_offer(message, prefs)
     if voice:
         heard = bridge_voice_transcript(message, provenance="browser_speech")
@@ -196,7 +236,7 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
         intent = parse_query(message)
     intent, kept = conversation.with_history(history, message, intent)     # follow-ups keep what was already asked
     plan = handoff(intent)
-    if plan is None:
+    if plan is None or (plan.q is None and plan.variant is None):   # nothing to search for ("?", "hi"): ask, never list the newest items
         asks = tuple(f"{q} " for q in intent.clarifications) or ("Could you tell me a little more about what you are looking for?",)
         return _say(*asks), k.InMemoryCatalogue({})
     page = await hybrid_search(session, q=plan.q, limit=MAX_CARDS * 3 if prefs.values else MAX_CARDS, variant=plan.variant, embedding=await embed_query(plan.q),
@@ -221,7 +261,7 @@ async def ground(session: AsyncSession, message: str, idempotency_key: str, *, v
 
 def _may_share() -> bool:
     """Saved memory may enter an LLM prompt only if every model in the personal-data chain is declared no-training or self-hosted."""
-    if not settings.assistant_llm:
+    if not settings.assistant_llm or llm_blocked.get():
         return False
     try:
         return personal.llm_allowed(get_gateway().chain("default", personal=True))

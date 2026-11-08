@@ -93,6 +93,36 @@ class settings(BaseSettings):
     worker_job_timeout_seconds: int = 120
     worker_max_tries: int = 3
 
+    # WhatsApp bridge (optional, off by default = wa.me link mode). This is the only place the switch is parsed.
+    whatsapp_bridge_enabled: bool = False
+    whatsapp_bridge_token: str = ""
+    whatsapp_bridge_url: str = "http://whatsapp-bridge:3000"
+    whatsapp_bot_pause_hours: int = 12
+    # Rollout guard: comma-separated numbers. When set the bot replies only to them (it still records everywhere).
+    whatsapp_reply_allowlist: str = ""
+    # Voice notes (Phase 4): the bridge holds the audio in memory for minutes; the consumer transcribes it with a SELF-HOSTED or
+    # no-training OpenAI-compatible endpoint, then deletes it. Raw audio is never stored. Off unless the privacy class is declared.
+    whatsapp_voice_enabled: bool = False
+    whatsapp_asr_url: str = ""
+    whatsapp_asr_model: str = "whisper-1"
+    whatsapp_asr_api_key: str = ""
+    whatsapp_asr_privacy: str = ""      # self_hosted | no_training
+    # Customer photos -> similar catalogue products (Phase 4+). The photo is held in bridge memory, embedded by a LOCAL CLIP model
+    # (IMAGE_MATCH_MODEL_PATH = a directory you fetched yourself; nothing is downloaded or sent anywhere) and discarded.
+    whatsapp_image_enabled: bool = False
+    image_match_model_path: str = ""
+    image_match_model_revision: str = ""      # tree digest from `python -m embeddings.providers.local_e5 <dir>`; a swapped model fails closed
+    image_match_min_similarity: float = 0.8   # cosine, calibrated on the local catalogue: phone-style copies of a product score 0.92-0.97, other products 0.64-0.73, a flat unrelated colour 0.76
+    image_match_max_results: int = 3
+    # Catalogue assistant on WhatsApp (deterministic: parser + live catalogue search; never an LLM). Needs the storefront URL for links.
+    whatsapp_assistant_enabled: bool = False
+    # Operator opt-in: WhatsApp chat text may go to the LLM_PRODUCTION_CHAIN even when it contains training (free-tier) providers such as Groq/Gemini.
+    # Off keeps the strict no-training chain. Only this channel is affected; the web assistant's saved-memory gate is unchanged.
+    whatsapp_llm_allow_training: bool = False
+    whatsapp_site_url: str = ""
+    # A backlog replayed after downtime must never trigger replies to old messages.
+    whatsapp_reply_max_age_seconds: int = 900
+
     # Anonymous interaction events. The signing key is required to accept events.
     session_signing_key: str = ""
     events_max_batch: int = 20

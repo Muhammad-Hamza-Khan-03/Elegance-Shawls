@@ -104,3 +104,14 @@ async def catalogue_snapshot(session: AsyncSession, product_ids: list[uuid.UUID]
             entry["variants"].append({"id": str(variant.id), "is_active": variant.is_active, "price": variant.price,
                                       "currency": variant.currency, "stock": variant.stock, "color": variant.color, "image_url": variant.image_url})
     return out
+
+
+async def stock_rows(session: AsyncSession, categories: list[str] | None, limit: int = 5000) -> list[tuple]:
+    """(product_id, category, colour, price, stock) for every buyable variant (active product and variant, stock > 0, priced).
+    Read-only, for "how many do you have" answers; colour/price filters are applied by the caller with the catalogue's own rules."""
+    stmt = (select(Product.id, Product.category, Variant.color, Variant.price, Variant.stock)
+            .join(Variant, Variant.product_id == Product.id)
+            .where(Product.status == "active", Variant.is_active.is_(True), Variant.stock > 0, Variant.price.is_not(None)))
+    if categories:
+        stmt = stmt.where(Product.category.in_(categories))
+    return [tuple(r) for r in (await session.execute(stmt.limit(limit))).all()]

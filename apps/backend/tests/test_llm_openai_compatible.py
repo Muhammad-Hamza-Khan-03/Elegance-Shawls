@@ -163,3 +163,10 @@ def test_default_route_sends_builtin_providers_to_the_adapter_and_others_to_lite
     asyncio.run(gw._route_completion("groq/x", MESSAGES, 1))
     asyncio.run(gw._route_completion("mistral/x", MESSAGES, 1))
     assert calls == [("adapter", "groq/x"), ("litellm", "mistral/x")]
+
+
+def test_openai_is_a_built_in_paid_provider_and_never_a_free_tier(monkeypatch):
+    from llm.gateway import is_free_tier
+    from llm.openai_compatible import PROVIDERS
+    assert supports("openai/gpt-4.1-mini") and PROVIDERS["openai"] == ("https://api.openai.com/v1", "OPENAI_API_KEY")
+    assert not is_free_tier("openai/gpt-4.1-mini")   # the default free-tier list stays groq,gemini,openrouter

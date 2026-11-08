@@ -82,3 +82,19 @@ The API's `staging` target was rejected by automatic approval review; its litera
 - Render service previews inherit base-service environment variables on creation. Do not launch an inherited preview against production credentials as a shortcut. The connected Render tools do not expose service creation; provider setup is required for this isolated target.
 
 Vercel's branch-specific Git deployment control is documented at https://vercel.com/docs/project-configuration/git-configuration .
+
+## WhatsApp bridge manual staging checklist
+
+Run on staging with a throwaway WhatsApp number, never the shop number. No automated test touches real WhatsApp.
+
+1. `WHATSAPP_BRIDGE_ENABLED=false`: bridge and consumer exit 0, `/v1/admin/whatsapp/status` is 503 `whatsapp_disabled`, `/ready/` is 200 with `whatsapp: disabled`, Admin > WhatsApp shows the "automation is off" notice, the storefront cart still opens `wa.me` with `Ref:`.
+2. Enable with `WHATSAPP_REPLY_ALLOWLIST` set to the tester's number. Pair from Admin > WhatsApp as an owner (QR, then repeat with "Use a code instead"); the card shows the linked number. An editor sees the pairing buttons fail with 403.
+3. From a second phone, send a real cart message with a valid `Ref:`. Expect within seconds: a stored message, the enquiry linked (`link_source=reference`), an order summary reply that matches the cart, and a request for only the missing Name/City/Address.
+4. Reply with `Name:`/`City:`/`Address:` lines: details saved, "team will confirm" reply. Change a price in the catalogue and repeat with a new cart: the reply states the change and confirms nothing.
+5. Type a reply from the shop phone: the enquiry becomes `contacted` and the bot stays silent in that chat. Send "Show WhatsApp chat" > "Send order confirmed" from the admin: it arrives in the open chat.
+6. Message from a number not on the allowlist: recorded, no reply. A chat without a reference appears under Unlinked chats; link it by hand.
+7. Restart the bridge and consumer mid-conversation: no duplicate stored messages, no duplicate replies. Stop Redis for a minute: the bridge retries and nothing is lost.
+8. Kill the bridge for 11 minutes: `scripts/whatsapp_monitor.py --check` exits 2 with `disconnected`; remove the device on the phone: `needs_pairing` alert immediately.
+9. If enabled: send a voice note (transcribed, audio gone from the bridge after fetch), and a free-text product question (assistant reply with real prices and links, no LLM call in the logs).
+10. `scripts/whatsapp_retention.py delete-chat <tester number>` (dry run, then `--apply`) removes the chat and clears the saved details.
+11. Switch off again and confirm the shop is back in link mode with no data lost.

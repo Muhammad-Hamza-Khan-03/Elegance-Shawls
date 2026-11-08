@@ -39,6 +39,22 @@ jobs:
           NEXT_PUBLIC_SITE_URL: https://store.example.invalid
           NEXT_PUBLIC_WHATSAPP_NUMBER: "923001234567"
 
+  whatsapp-bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/whatsapp-bridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/whatsapp-bridge/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --audit-level=high
+
   backend:
     runs-on: ubuntu-latest
     defaults:

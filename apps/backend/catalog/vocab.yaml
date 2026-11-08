@@ -57,4 +57,7 @@ negation:
 # Carry no catalogue meaning: dropped, never matched as text.
 stopwords: [a, an, the, in, of, for, with, me, show, something, everything, anything, any, all, some, i, want, need,
   looking, find, get, please, or, ka, ki, ke, ko, mein, main, hai, dikhao, dikhayen, rang, color, colour, colors, colours,
-  price, rate, qeemat, چاہیے, دکھائیں, دکھاؤ, کا, کی, کے, کو, میں, ہے, رنگ, قیمت]
+  price, rate, qeemat, چاہیے, دکھائیں, دکھاؤ, کا, کی, کے, کو, میں, ہے, رنگ, قیمت,
+  # conversational filler ("do you have ...", "can I see ..."): "to" is left out, it is the range joiner in "5000 to 9000"
+  do, does, you, your, have, has, got, can, could, would, will, is, are, there, see, like, buy, tell, my,
+  kya, aap, paas, hain, chahiye, mujhe, koi, wala, wali, wale, کیا, آپ, پاس, ہیں, مجھے, کوئی, والا, والی, چاہئے]
