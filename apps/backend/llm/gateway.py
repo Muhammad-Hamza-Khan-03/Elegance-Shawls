@@ -18,6 +18,7 @@ from configuration.config import settings
 from database.redis_client import get_redis
 from llm.fake import FakeProvider, ProviderReply
 from llm.openai_compatible import openai_compatible_completion, supports
+from memory.policy import provider_gate
 from observability.langfuse_client import record_generation
 from observability.tracing import current_ids, set_attrs, span
 
@@ -31,7 +32,7 @@ class LLMError(RuntimeError):
 
 
 class PersonalDataPolicyError(LLMError):
-    """personal=True but no eligible (no-training / self-hosted) provider is configured."""
+    """personal=True but the production chain is absent or not cleared for its use case."""
 
 
 class BudgetExceededError(LLMError):
@@ -175,21 +176,25 @@ class LLMGateway:
         self.budget = budget or BudgetTracker(
             settings.llm_daily_budget_usd, settings.llm_environment_budget_usd, settings.llm_budget_warn_ratio)
 
-    def chain(self, logical: str = "default", personal: bool = False) -> list[str]:
-        """Logical name -> ordered models. personal=True forces the production chain, minus free tiers."""
+    def chain(self, logical: str = "default", personal: bool = False, use_case: str = "memory") -> list[str]:
+        """Logical name -> ordered models; personal chains must clear the use-case policy gate."""
         configured = settings.llm_production_chain if personal else (
             settings.llm_production_chain if logical == "production" else settings.llm_chain_default)
         models = _csv(configured)
         if personal:
             models = [m for m in models if not is_free_tier(m)]
             if not models:
-                raise PersonalDataPolicyError("No no-training provider is configured for personal data")
+                raise PersonalDataPolicyError("No production provider is configured for personal data")
+            decision = provider_gate(models, use_case=use_case)
+            if not decision.allowed:
+                raise PersonalDataPolicyError(f"Production provider chain is not cleared for {use_case}")
         if not models:
             raise LLMError(f"No models are configured for '{logical}'")
         return models[: max(1, settings.llm_max_attempts)]
 
-    async def complete(self, messages: list[dict], logical: str = "default", personal: bool = False) -> LLMResult:
-        models = self.chain(logical, personal)
+    async def complete(self, messages: list[dict], logical: str = "default", personal: bool = False,
+                       use_case: str = "memory") -> LLMResult:
+        models = self.chain(logical, personal, use_case)
         await self.budget.check()
         last_error: Exception | None = None
         for attempt, model in enumerate(models, start=1):

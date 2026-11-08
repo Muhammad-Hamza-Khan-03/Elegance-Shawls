@@ -16,7 +16,6 @@ DECLARED = "acme=no_training,selfhost=self_hosted,optout=opt_out,trainer=may_tra
 FREE = "groq,gemini,openrouter"
 IDEM = "idem_0123456789abcdef"
 
-
 # ---- provider gate -----------------------------------------------------------------------------
 @pytest.mark.parametrize("model,policy_", [
     ("acme/model-1", policy.TrainingPolicy.NO_TRAINING),
@@ -75,9 +74,20 @@ def test_model_use_needs_literal_consent_before_the_provider_gate(consented):
     assert (decision.allowed, decision.reason) == (False, "consent_required")
 
 
-def test_model_use_requires_consent_and_a_cleared_provider():
-    assert policy.authorize_model_use(True, ["acme/a"], DECLARED, FREE).allowed
-    assert policy.authorize_model_use(True, ["groq/a"], DECLARED, FREE).reason == "provider_not_cleared"
+def test_training_enabled_provider_requires_complete_controls_and_supports_each_use_case():
+    controls = {"trainer": {use: {field: True for field in policy.TRAINING_CONTROL_FIELDS}
+                              for use in ("assistant", "memory", "extraction")}}
+    for use in ("assistant", "memory", "extraction"):
+        assert policy.provider_gate(["trainer/model"], DECLARED, "", controls, use).allowed
+    assert not policy.provider_gate(["trainer/model"], DECLARED, "", {}, "memory").allowed
+    incomplete = {"trainer": {"memory": {field: True for field in policy.TRAINING_CONTROL_FIELDS if field != "audit_evidence"}}}
+    assert not policy.provider_gate(["trainer/model"], DECLARED, "", incomplete, "memory").allowed
+
+
+def test_training_enabled_provider_keeps_consent_and_free_tier_gates():
+    controls = {"trainer": {"memory": {field: True for field in policy.TRAINING_CONTROL_FIELDS}}}
+    assert policy.authorize_model_use(False, ["trainer/model"], DECLARED, "", controls, "memory").reason == "consent_required"
+    assert not policy.provider_gate(["trainer/model"], DECLARED, "trainer", controls, "memory").allowed
 
 
 # ---- minimization --------------------------------------------------------------------------------
