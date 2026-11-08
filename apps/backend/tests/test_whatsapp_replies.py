@@ -114,3 +114,10 @@ def test_unreadable_voice_notes_and_images_are_always_answered_but_stay_behind_t
     for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
         assert decide(facts(text=None, is_text=False, **over)) is None
     assert "voice note" in render(Decision("unsupported_media"), lang="en", reference="", items=[], total=0, currency="PKR")
+
+
+def test_a_matched_photo_is_answered_even_in_a_chat_with_an_enquiry_but_not_past_the_guards():
+    for over in ({}, {"summary_sent": True}, {"has_enquiry": False}, {"bot_recent": True}):
+        assert decide(facts(text=None, is_text=False, has_image_reply=True, **over)).kind == "image_match", over
+    for over in ({"paused": True}, {"allowlisted": False}, {"event_ts": NOW - timedelta(hours=1)}):
+        assert decide(facts(text=None, is_text=False, has_image_reply=True, **over)) is None

@@ -629,6 +629,21 @@ class WhatsAppAuthEntry(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class VariantImageEmbedding(Base):
+    """CLIP vector of a catalogue variant's image (WhatsApp image matching). Derived and rebuildable; customer photos are never stored."""
+    __tablename__ = "variant_image_embeddings"
+    __table_args__ = (
+        UniqueConstraint("variant_id", "model"),
+        CheckConstraint("image_hash ~ '^[0-9a-f]{64}$'", name="image_hash_format"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    variant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("variants.id", ondelete="CASCADE"), nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    image_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(512), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class ActionExecution(Base):
     """Cross-worker idempotency claim and fixed-shape audit record for one confirmed assistant action (M3-S4). Holds only the
     SHA-256 of the session id, never params, prices or customer details."""
