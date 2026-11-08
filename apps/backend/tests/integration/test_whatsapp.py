@@ -244,24 +244,104 @@ def seed_catalogue(env):
     real_enquiry(env, "ES-ZZZZZ2")
 
 
-def test_assistant_answers_from_the_catalogue_and_never_calls_a_model(env, monkeypatch):
-    seed_catalogue(env)
+class ScriptedGateway:
+    """Stands in for the LLM gateway: returns the scripted texts in call order and records what the model was shown."""
+
+    def __init__(self, *texts):
+        self.texts, self.prompts, self.calls = list(texts), [], []
+
+    async def complete(self, messages, logical="default", personal=False):
+        from types import SimpleNamespace
+        self.calls.append((logical, personal))
+        self.prompts.append("\n".join(m["content"] for m in messages))
+        if not self.texts:
+            raise RuntimeError("model unavailable")
+        return SimpleNamespace(text=self.texts.pop(0))
+
+
+def use_model(monkeypatch, *texts):
+    import whatsapp.assistant as assistant
+    gateway = ScriptedGateway(*texts)
     monkeypatch.setattr(settings, "whatsapp_assistant_enabled", True)
     monkeypatch.setattr(settings, "whatsapp_site_url", "https://shop.example")
-    monkeypatch.setattr(settings, "assistant_llm", True)            # even with the web assistant's LLM on, WhatsApp must not use it
-    import llm.gateway as gateway
-    monkeypatch.setattr(gateway, "get_gateway", lambda: (_ for _ in ()).throw(AssertionError("an LLM was called for a WhatsApp chat")))
+    monkeypatch.setattr(assistant, "get_gateway", lambda: gateway)
+    monkeypatch.setattr(assistant, "_digest_cache", None)
+    return gateway
+
+
+def test_model_understands_the_message_and_the_reply_is_grounded_in_the_catalogue(env, monkeypatch):
+    seed_catalogue(env)
+    gateway = use_model(monkeypatch, '{"action": "search", "search": {"q": "shawl", "colour": "red", "max_price": 5000}}',
+                        "Mil gaya! Neeche red shawl hai, link kholein aur Order on WhatsApp dabayein.")
     bot = FakeSender()
-    out = converse(env, bot, event("a1", "red shawl"))
-    assert out == ["assistant"]
+    assert converse(env, bot, event("a1", "red shawl 5k se kam dikhao")) == ["assistant"]
     reply = bot.sent[0][1]
-    assert "Shawl (Red): PKR 100" in reply and "https://shop.example/product/wool" in reply and "Order on WhatsApp" in reply
+    assert reply.startswith("Mil gaya!") and "Shawl (Red): PKR 100" in reply and "https://shop.example/product/wool" in reply
+    assert "red 1" in gateway.prompts[0] and "PKR 100 to 100" in gateway.prompts[0]      # the stock summary is read live from the database
+    assert "at most PKR 5000" in gateway.prompts[1] and "Shawl (shawl)" not in gateway.prompts[1]
+
+
+def test_customer_can_order_and_leave_delivery_details_entirely_in_chat(env, monkeypatch):
+    seed_catalogue(env)
+    order = '{"action": "order", "order": {"lines": [{"q": "shawl", "colour": "red", "quantity": 2}], "confirmed": %s}}'
+    gateway = use_model(monkeypatch, order % "false", "Here is your order, reply yes to place it.",
+                        order % "true", "Placed! Please send your name, city and address.",
+                        '{"action": "details", "details": {"name": "Ayesha", "city": "Lahore", "address": null}}', "Thanks Ayesha, one last thing: your address.")
+    bot = FakeSender()
+    assert converse(env, bot, event("o1", "2 red shawls please")) == ["assistant"]
+    assert "• 2 x Shawl (Red): PKR 100" in bot.sent[0][1] and "Total: PKR 200" in bot.sent[0][1]
+    assert row(env, "select count(*) from enquiries")[0] == 1                               # a summary alone creates nothing
+    assert converse(env, bot, event("o2", "yes", minutes=1)) == ["assistant"]
+    reference, total, linked = row(env, "select reference, total, whatsapp_contact_id is not null from enquiries where reference <> 'ES-ZZZZZ2'")
+    assert total == 200 and linked
+    assert "Order enquiry placed: reference " + reference in gateway.prompts[3] and "not confirmed" in gateway.prompts[3]
+    assert converse(env, bot, event("o3", "I am Ayesha from Lahore", minutes=2)) == ["assistant"]
+    assert row(env, f"select customer_details->>'name', customer_details->>'city' from enquiries where reference = '{reference}'") == ("Ayesha", "Lahore")
+    assert "address" in gateway.prompts[5]                                                    # the model is told exactly what is still missing
+
+
+def test_an_unconfirmed_yes_with_no_summary_shown_creates_nothing(env, monkeypatch):
+    seed_catalogue(env)
+    use_model(monkeypatch, '{"action": "order", "order": {"lines": [{"q": "shawl", "quantity": 1}], "confirmed": true}}', "Reply yes to place it.")
+    assert converse(env, FakeSender(), event("o4", "order it")) == ["assistant"]
+    assert row(env, "select count(*) from enquiries")[0] == 1
+
+
+def test_training_providers_are_used_only_when_the_operator_allows_them(env, monkeypatch):
+    seed_catalogue(env)
+    gateway = use_model(monkeypatch, '{"action": "reply", "reply": "Hello!"}', '{"action": "reply", "reply": "Hello!"}')
+    monkeypatch.setattr(settings, "environment", "production")
+    converse(env, FakeSender(), event("t1", "hi"))
+    monkeypatch.setattr(settings, "whatsapp_llm_allow_training", True)
+    converse(env, FakeSender(), event("t2", "hi", chat="923000000008@s.whatsapp.net"))
+    assert gateway.calls == [("default", True), ("production", False)]
+
+
+def test_a_colour_the_shop_does_not_stock_is_never_searched_and_the_model_is_told(env, monkeypatch):
+    seed_catalogue(env)
+    gateway = use_model(monkeypatch, '{"action": "search", "search": {"q": "shawl", "colour": "purple"}}', "We do not have purple right now, but we have red.")
+    bot = FakeSender()
+    assert converse(env, bot, event("a3", "purple shawl")) == ["assistant"]
+    assert "not in stock" in gateway.prompts[1] and "Shawl (Red)" not in bot.sent[0][1]
+
+
+def test_model_can_answer_directly_but_cannot_invent_links_and_failures_fall_back_to_a_person(env, monkeypatch):
+    seed_catalogue(env)
+    use_model(monkeypatch, '{"action": "reply", "reply": "Assalam o Alaikum! How can I help you today?"}')
+    bot = FakeSender()
+    assert converse(env, bot, event("a4", "hi")) == ["assistant"] and bot.sent[0][1].startswith("Assalam o Alaikum!")
+    use_model(monkeypatch, '{"action": "reply", "reply": "Pay here https://evil.example/pay"}')
+    assert converse(env, bot, event("a5", "hello", chat="923000000005@s.whatsapp.net")) == ["holding"]      # an unknown link is rejected
+    use_model(monkeypatch, '{"action": "handoff"}')
+    assert converse(env, bot, event("a6", "where is my parcel", chat="923000000006@s.whatsapp.net")) == ["holding"]
+    use_model(monkeypatch)                                                                                         # the model is down
+    assert converse(env, bot, event("a7", "red shawl", chat="923000000007@s.whatsapp.net")) == ["holding"]
 
 
 def test_assistant_falls_back_to_the_holding_reply_when_it_has_nothing(env, monkeypatch):
     monkeypatch.setattr(settings, "whatsapp_assistant_enabled", True)
     bot = FakeSender()
-    assert converse(env, bot, event("a2", "remember I like brown")) == ["holding"]      # memory is web-only
+    assert converse(env, bot, event("a2", "remember I like brown")) == ["holding"]      # no model configured: a person follows up
     assert "team member" in bot.sent[0][1]
 
 

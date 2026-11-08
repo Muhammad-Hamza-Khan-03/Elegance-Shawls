@@ -20,7 +20,7 @@ def misconfiguration() -> str | None:
     return None
 
 
-ASR_PRIVACY = ("self_hosted", "no_training")
+ASR_PRIVACY = ("self_hosted", "no_training", "provider_may_train")   # the last: operator accepts a hosted endpoint (e.g. Groq Whisper) that may train
 
 
 def voice_ready() -> bool:
