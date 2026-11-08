@@ -3,7 +3,8 @@
 **Task ID:** `t_m4c_promotion_packet`
 **Parent task:** `t_m4c_production_memory_privacy_gate`
 **Idempotency key:** `m4c-production-memory-privacy-gate/promotion-packet/v1`
-**Packet revision:** `2026-11-06-origin-staging-1544271`
+**Policy change key:** `m4c-provider-training-policy-relaxation/v1`
+**Packet revision:** `2026-11-08-staging-integration-provider-controls`
 **State:** `BLOCKED`
 **`release_ready`:** `false`
 **Production memory:** disabled; no activation is authorized.
@@ -12,15 +13,12 @@ Re-applying this packet updates the same task and idempotency key. It must not c
 
 ## Candidate identity and ancestry reconciliation
 
-The packet is reconciled to the current remote release-candidate ref:
+The packet is reconciled to the current integration ref:
 
-- `origin/staging`: `15442712fa4799cfc9e3bfb889f77b1769beaffa` (`feat(search): add gated local EmbeddingGemma2 provider`)
-- M4 Batch A QA-passed baseline: `dff5248e96911640c1b039481b0fd0a7464dc0d1` — ancestor of `origin/staging`
-- M4 Batch B QA-passed baseline: `6d4dcff6d2818f9b49c1d443248c0660fee14d98` — ancestor of `origin/staging`
-- M4 Batch C readiness implementation/evidence: `1641b683e15ee77f300a4f73f5af8a47600c82b7` — ancestor of `origin/staging`
-- M2 EmbeddingGemma2/search promotion: `15442712fa4799cfc9e3bfb889f77b1769beaffa` — current `origin/staging` tip, independently QA-passed and separate from memory extraction
+- `origin/staging-integration`: `897eb76ce8c4fa25416333b22eb702a381879604`
+- The prior staging-only M4 packet ancestry (`origin/staging` and `15442712...`) is historical evidence and is not this PR's base.
 
-The existing M4 acceptance artifact records QA at an earlier candidate (`f254e975a0b6ec3b3d1b7c3eeff25d3dcccb689a`). This packet does not rewrite that historical evidence or promote it to proof for later commits. The later M4 readiness commit and current M2 tip are explicitly listed above; the provider/privacy and production-activation gates remain open.
+The provider/privacy and production-activation gates remain open.
 
 ## Verified readiness evidence already available
 
@@ -41,7 +39,7 @@ The existing M4 acceptance artifact records QA at an earlier candidate (`f254e97
 
 | Gate | Required to clear | Current verdict |
 |---|---|---|
-| G1 Provider decision | Exact paid no-training contract/account or exact self-hosted snapshot/license; no free/opt-out/unverified evidence | **BLOCKED** — no option selected |
+| G1 Provider decision | Exact candidate terms or local isolation/license, or a complete independently verified control record for a training-enabled provider; no free/opt-out/unverified evidence | **BLOCKED** — no option selected and no control record approved |
 | G2 Retention/deletion | Provider/local-store schedule, logs/queues/caches/backups, deletion proof, legal-hold/incident terms | **PARTIAL** — application tombstones/retention exist; selected provider/model behavior absent |
 | G3 Residency/security | Regions, subprocessors/operators, access, encryption, keys, network isolation, incident response | **BLOCKED** — exact boundary absent |
 | G4 Extraction separation | Separate extraction artifact/config/cache and fail-closed model/provider chain; M2 search model excluded | **PASS for architecture boundary; BLOCKED for model approval** |
@@ -50,7 +48,7 @@ The existing M4 acceptance artifact records QA at an earlier candidate (`f254e97
 | G7 Customer controls | View/correct/delete/turn-off, ownership isolation, audit, retention, and no silent relaxation | **PASS for current implementation tests; activation still blocked** |
 | G8 Rollback/disable | Default-off flag, kill switch, stale queue rejection, rollback runbook and bounded synthetic drill | **PASS for disable boundary; rollback drill pending** |
 | G9 Independent QA | One independent reviewer signs the complete final packet and exact immutable artifact | **PASS for prior Batch C readiness artifact only; this provider-decision revision needs review if treated as a new QA artifact** |
-| G10 Named approvals | Provider/privacy, security, engineering, independent QA, and Hamza/product approval; separate activation approval | **BLOCKED** — absent |
+| G10 Named approvals | Provider/privacy, security, engineering, independent QA, and Hamza/product approval; separate activation approval | **BLOCKED** — absent; policy relaxation is not provider or activation approval |
 
 **Strict roll-up:** `BLOCKED_PROVIDER_PRIVACY_DECISION`; no promotion and no production-memory activation.
 
@@ -64,7 +62,7 @@ Neither option is selected here. This packet intentionally does not purchase an 
 
 ## Evidence required before any later promotion
 
-1. `t_m4c_provider_decision`: Hamza chooses one exact candidate for evaluation; named privacy/security owner attaches dated terms or local isolation/license evidence. The choice does not activate memory.
+1. `t_m4c_provider_decision`: the approved idempotent policy change permits training-enabled providers only with the complete, use-case-scoped control record; no provider is selected. Exact provider/account/model approval remains a later checkpoint.
 2. `t_m4c_memory_extraction_evals`: run the same reviewed synthetic English/Urdu/Roman Urdu cases through the pinned model, with save/do-not-save, correction, relevance, sensitive refusal, consent, and forgetting thresholds. Record model digest, runtime versions, network isolation, raw report, human review, and `provider_calls`/`database_writes` counters.
 3. `t_m4c_tombstone_queue_proof`: retain the current migration/guard evidence and add the exact worker boundary proof that `accept_result` is called immediately before any write; prove delete, disable, correction, replay, retry, and worker restart cannot recreate stale memory.
 4. `t_m4c_independent_qa`: exactly one independent read-only `qa-engineer` reviews the immutable candidate and packet, reruns applicable checks, and records `QA VERDICT: PASS|FAIL|PARTIAL`. A prior QA PASS for the readiness artifact does not approve an unselected provider or a new model-backed eval.
