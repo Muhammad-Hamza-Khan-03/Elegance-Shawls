@@ -15,7 +15,7 @@ Re-applying this packet updates the same task and idempotency key. It must not c
 
 The packet is reconciled to the current integration ref:
 
-- `origin/staging-integration`: `5a6ed21a5665d254ac345749811efa9dc63a8722`
+- `origin/staging-integration`: `4675052b7b983c24b46b2d39fa18e4f1a8815124` (PR #191)
 - `origin/staging`: `d020d521f2666726a2b82316785c8bf72669e83a` (PR #186)
 - `origin/main`: `283b27eee90533435ef3b2e28e6a3823ee1c5d23` (unchanged)
 - PR #179 provider-policy merge: `e04fb7470fb921032086f8c99217247458efec1d`; PR #184 staging promotion: `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`; PR #185 migration-fixture merge: `5a6ed21a5665d254ac345749811efa9dc63a8722`.
@@ -27,6 +27,12 @@ The provider/privacy and production-activation gates remain open.
 The provider policy and migration downgrade fixture are in staging. Independent evidence is `119 passed, 29 deselected` for M4, `23 passed, 2 warnings` for migration promotion, and `70 passed` for the targeted migration suites. Local disposable Redis `elegance-local-staging-redis-1` was healthy at `127.0.0.1:6380`; readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected; and the synthetic arq job traversed `queued → deferred → queued → complete` on attempt 2. Groq smoke was bounded synthetic-only at two calls. No secret, API-key value, customer data, deployment, provider activation, or production claim is included.
 
 This packet remains non-production. It does not prove a hosted deployment, frontend live proxy (a disposable backend URL is still needed), embeddings activation/backfill, complete evaluation provenance, or external observability. `release_ready` remains false.
+
+## Verified EmbeddingGemma 2 search candidate
+
+The exact candidate merged by PR #191 at `4675052b7b983c24b46b2d39fa18e4f1a8815124` is `google/embeddinggemma-2`, pinned to Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`, with model-tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b` and weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`. It is a 768-dimensional CPU/local-only search candidate; this record does not authorize hosted activation, memory extraction, deployment, or production use.
+
+Quality evidence: overall recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, hard-constraint violations `0`, and reproducibility Jaccard `1.0`. Independent QA: Gemma/contract `35 passed, 1 skipped`; eval `14 passed`; embedding integration `21 passed`; schema integration `6 passed`; compileall/diff-check passed; disposable DB backfill `8/8`, idempotent rerun, and retrieval passed. Remaining gates are hosted staging acceptance, external OTLP/Langfuse, reviewed evaluation/model provenance, and production activation/deployment; `release_ready` remains false.
 
 ## Verified readiness evidence already available
 

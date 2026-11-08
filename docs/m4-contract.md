@@ -9,7 +9,7 @@ The provider-training policy gate and migration downgrade fixture are present in
 
 | Evidence | Exact reference | Interpretation |
 |---|---|---|
-| Current integration tree | `origin/staging-integration` = `5a6ed21a5665d254ac345749811efa9dc63a8722` | Documentation and evidence are based on the current staging-integration tip. |
+| Current integration tree | `origin/staging-integration` = `4675052b7b983c24b46b2d39fa18e4f1a8815124` (PR #191) | Documentation and evidence are based on the current staging-integration tip. |
 | Provider policy | PR #179 merged as `e04fb7470fb921032086f8c99217247458efec1d` | Eight-control, use-case-scoped training-provider policy is in the integration tree; no provider is selected or activated. |
 | Provider policy promotion | PR #184 merged to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d` | The policy tree was promoted to staging without production/main changes. |
 | Migration downgrade fixture | PR #185 merged as `5a6ed21a5665d254ac345749811efa9dc63a8722` | Synthetic memory rows are isolated before the intentional downgrade guard is exercised. |
@@ -22,8 +22,9 @@ The provider-training policy gate and migration downgrade fixture are present in
 - Local disposable Redis `elegance-local-staging-redis-1` was healthy at `127.0.0.1:6380`. The local backend readiness probe at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected.
 - The arq synthetic job completed `queued → deferred → queued → complete` on attempt 2.
 - Groq smoke was bounded synthetic-only: two calls, no customer data, no credentials or API-key values recorded, and no activation.
+- **EmbeddingGemma 2 local candidate:** `google/embeddinggemma-2`, Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`, tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`, weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`, 768 dimensions, CPU-only. Quality: recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, hard constraints `0`, reproducibility Jaccard `1.0`. QA: Gemma/contract `35 passed, 1 skipped`; eval `14 passed`; embedding integration `21 passed`; schema integration `6 passed`; compileall/diff-check passed; backfill `8/8`, idempotent rerun, and retrieval passed. This verifies local search candidate behavior only.
 
-The evidence above does not claim deployment, production activation, provider selection/credentialing, live customer data, external observability, or `release_ready=true`.
+The evidence above does not claim deployment, production activation, provider selection/credentialing, live customer data, external observability, or `release_ready=true`. EmbeddingGemma activation remains local-only pending hosted staging acceptance, external OTLP/Langfuse, reviewed model/evaluation provenance, and production activation/deployment.
 **Baseline preserved:** M3 canonical action contracts and M4 Batch 1 commit `1823d47a071c713b6ca00348364260a93c8a584f` / task `t_2f755ea0`
 **Scope:** bounded staging-only batches; synthetic identities, provider mocks, and synthetic catalogue/events only
 

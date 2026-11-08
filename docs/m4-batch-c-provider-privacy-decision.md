@@ -18,18 +18,20 @@ The change does not select or purchase a provider. Customer memory extraction re
 
 ## Current staging evidence — 2026-11-08
 
-The policy record is present in the current staging lineage: PR #179 merged to `staging-integration` as `e04fb7470fb921032086f8c99217247458efec1d`, and PR #184 promoted that policy tree to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`. The current `origin/staging-integration` tip is `5a6ed21a5665d254ac345749811efa9dc63a8722`; the migration fixture was merged by PR #185 at that SHA and promoted by PR #186 to `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+The policy record is present in the current staging lineage: PR #179 merged to `staging-integration` as `e04fb7470fb921032086f8c99217247458efec1d`, and PR #184 promoted that policy tree to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`. The current `origin/staging-integration` tip is `4675052b7b983c24b46b2d39fa18e4f1a8815124` (PR #191); the migration fixture was merged by PR #185 at `5a6ed21a5665d254ac345749811efa9dc63a8722` and promoted by PR #186 to `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
 
 Independent evidence recorded for this staging-only milestone includes M4 QA (`119 passed, 29 deselected`), migration promotion QA (`23 passed, 2 warnings`), and targeted migration suites (`70 passed`). Local disposable Redis was healthy at `127.0.0.1:6380`; backend readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected; and the synthetic arq job completed `queued → deferred → queued → complete` on attempt 2. A bounded Groq synthetic smoke made two calls only. No API key, credential, customer data, deployment, or provider activation is claimed.
 
-Remaining blockers are the disposable backend URL needed for frontend live-proxy verification, unavailable embeddings activation/backfill, incomplete evaluation provenance, and unexercised external observability. These keep the decision blocked and `release_ready=false`.
+The separate M2 search candidate is verified on the current integration lineage: `google/embeddinggemma-2`, Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`, tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`, weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`, 768 dimensions, CPU/local-only. Quality was recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, zero hard-constraint violations, and reproducibility Jaccard `1.0`; QA was Gemma/contract `35 passed, 1 skipped`, eval `14 passed`, embedding integration `21 passed`, schema integration `6 passed`, compileall/diff-check passed, and disposable backfill `8/8` with idempotent rerun/retrieval pass. This candidate evidence is not provider/privacy approval or hosted activation.
+
+Remaining blockers are the disposable backend URL needed for frontend live-proxy verification, hosted staging acceptance, external OTLP/Langfuse, reviewed evaluation/model provenance, deployment/production activation, and `release_ready=false`.
 
 ## Current implementation boundary (verified against origin/staging)
 
 - `MemoryProvider` is a provider-neutral PostgreSQL CRUD/consent contract; it does not install or call an extraction model (`apps/backend/memory/provider.py`).
 - The current PostgreSQL provider receives only a server-verified customer principal and returns a public item shape without owner/fingerprint fields; it is not evidence that a model provider has been approved.
 - `memory/queue_guard.py` is a fail-closed pre-write guard. It rejects disabled extraction, mismatched `memory_version`, pre-tombstone source time, and future-dated work.
-- M2 local EmbeddingGemma2, promoted separately at `15442712fa4799cfc9e3bfb889f77b1769beaffa`, is a search/embedding path. It is **not** a memory-extraction model and must not be treated as model-backed memory evidence.
+- M2 local EmbeddingGemma2 candidate `google/embeddinggemma-2` is pinned to Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`, tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`, and weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`; it is 768-dimensional CPU/local-only search evidence. It is **not** a memory-extraction model or provider/privacy approval.
 - The M4 synthetic runner is a deterministic rule/fixture contract check. It makes no provider calls and no database writes; it is not a model-quality or production approval.
 
 ## Training-enabled provider control record
