@@ -37,3 +37,13 @@ def prepare_discovery_environment() -> None:
 
     load_dotenv()  # never overrides the environment
     assert_staging(database_name(os.environ.get("DATABASE_URL", "")))
+
+
+def assert_staging_run(optin_var: str, environ=None) -> None:
+    """Seed/backfill guard: ENVIRONMENT must be exactly "staging" (unset or unknown refuses), ``optin_var`` must be "true", and the database must be a staging one."""
+    environ = os.environ if environ is None else environ
+    if environ.get("ENVIRONMENT", "").strip().lower() != "staging":
+        raise StagingGuardError("Refusing to run: ENVIRONMENT must be explicitly set to staging")
+    if environ.get(optin_var, "").strip().lower() != "true":
+        raise StagingGuardError(f"Refusing to run: {optin_var}=true is required")
+    assert_staging(database_name(environ.get("DATABASE_URL", "")))

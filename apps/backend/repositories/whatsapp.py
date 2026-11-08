@@ -141,5 +141,14 @@ async def recent_customer_texts(session: AsyncSession, contact_id: uuid.UUID, ex
     return list(reversed(list(rows)))
 
 
+async def recent_turns(session: AsyncSession, contact_id: uuid.UUID, exclude_wa_id: str, since: datetime, limit: int = 8) -> list[tuple[str, str]]:
+    """Oldest-first (sent_by, text) for the last few messages in both directions: the model's conversation context."""
+    rows = (await session.execute(
+        select(WhatsAppMessage.sent_by, WhatsAppMessage.text).where(WhatsAppMessage.contact_id == contact_id, WhatsAppMessage.text.is_not(None),
+                                                                    WhatsAppMessage.wa_message_id != exclude_wa_id, WhatsAppMessage.sent_at > since)
+        .order_by(WhatsAppMessage.sent_at.desc()).limit(limit))).all()
+    return [(r[0], r[1]) for r in reversed(rows)]
+
+
 async def contact_chat(session: AsyncSession, contact_id: uuid.UUID) -> str:
     return (await session.execute(select(WhatsAppContact.chat_jid).where(WhatsAppContact.id == contact_id))).scalar_one()

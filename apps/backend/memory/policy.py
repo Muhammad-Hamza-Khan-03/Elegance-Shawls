@@ -113,9 +113,10 @@ def provider_of(model: str) -> str:
 
 
 def classify(model: object, declared: str, free_tier: str) -> TrainingPolicy:
-    if not isinstance(model, str) or "/" not in model.strip():
+    if (not isinstance(model, str) or model != model.strip() or "/" not in model
+            or not all(model.split("/", 1)) or any(ch.isspace() or unicodedata.category(ch).startswith("C") for ch in model)):
         return TrainingPolicy.UNKNOWN                     # a bare or non-string model name carries no provider to vouch for
-    provider = provider_of(model.strip())
+    provider = provider_of(model)
     if provider in {p.strip().lower() for p in (free_tier or "").split(",") if p.strip()}:
         return TrainingPolicy.MAY_TRAIN                   # a free-tier listing beats any allowing declaration
     return _declared(declared).get(provider, TrainingPolicy.UNKNOWN)

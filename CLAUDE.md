@@ -117,7 +117,7 @@ Audit every local/remote ref and every worktree by SHA, ancestry, tree/patch equ
 
 For a branch proven merged, superseded, or obsolete, create a durable `archive/reconciliation/<date>-<source>` ref first, verify that the archive SHA equals the source SHA and is reachable from the remote where possible, then remove only a clean inactive worktree and its source branch non-forcibly. Keep detached QA worktrees and untracked evidence until their owner confirms they are disposable. Record every archive/removal decision in a durable reconciliation artifact. Prune only stale worktree metadata; never use broad `git clean`.
 
-`staging-integration` is the canonical integration/development source of truth. If an exact `integration` ref cannot be created without colliding with an existing namespace or active ref, do not rename or delete that ref; use `staging-integration` as the integration tier and document the exception. The release hierarchy is always `feature/fix/ai -> integration (`staging-integration`) -> staging -> main`.
+If an exact `integration` ref cannot be created without colliding with an existing namespace or active ref, do not rename or delete that ref; use `staging-integration` as the integration tier and document the exception.
 
 `staging-integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
 

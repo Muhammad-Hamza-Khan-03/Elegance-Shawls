@@ -101,6 +101,16 @@ def test_status_templates_exist_in_both_languages_and_mention_the_reference():
             assert "{reference}" in t[lang][key]
 
 
+def test_assistant_checks_what_the_model_returns():
+    from whatsapp.assistant import _filters, _json, _safe
+    assert _json('Sure! {"action": "reply", "reply": "hi"} done') == {"action": "reply", "reply": "hi"} and _json("no json") is None
+    flt, applied, absent = _filters({"colour": "Black", "min_price": 5000, "max_price": 2000, "in_stock": True}, {"black"})
+    assert (flt.colour, flt.min_price, flt.max_price, flt.in_stock) == ("black", 2000, 5000, True) and absent is None   # swapped, not trusted
+    assert _filters({"colour": "purple", "max_price": "cheap"}, {"black"})[2] == "purple"      # unknown colour is reported, never a filter
+    assert _filters({"colour": "purple", "max_price": "cheap"}, {"black"})[0] is None
+    assert _safe("Here you go https://shop.example/a.", {"https://shop.example/a"}) and _safe("pay https://evil.example", set()) is None and _safe("  ", set()) is None
+
+
 def test_voice_notes_browse_but_negation_and_ambiguity_still_fail_closed():
     from whatsapp.assistant import voice_trusted
     assert voice_trusted("Kaali shawl") and voice_trusted("black shawl under 5000") and voice_trusted("کالی شال")

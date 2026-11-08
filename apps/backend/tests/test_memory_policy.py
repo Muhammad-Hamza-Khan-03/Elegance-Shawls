@@ -47,6 +47,15 @@ def test_one_bad_fallback_denies_the_whole_chain_and_an_empty_chain_denies():
     assert policy.provider_gate([], DECLARED, FREE).reason == "no_model"
 
 
+@pytest.mark.parametrize("model", ["acme/", "acme/   ", " acme/model", "acme/model\n", "acme/hidden\x00model"])
+def test_malformed_model_names_never_clear_the_privacy_gate(model):
+    assert not policy.provider_gate([model], DECLARED, FREE).allowed
+
+
+def test_missing_model_chain_fails_closed():
+    assert not policy.provider_gate(None, DECLARED, FREE).allowed
+
+
 def test_free_tier_listing_beats_an_allowing_declaration():
     assert not policy.provider_gate(["acme/a"], "acme=no_training", "acme").allowed
 

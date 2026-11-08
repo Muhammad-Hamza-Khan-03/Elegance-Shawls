@@ -25,7 +25,13 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: apps/frontend/coverage
+          retention-days: 7
       - run: npm audit --audit-level=high
       - run: npm run build
         env:
@@ -62,7 +68,15 @@ jobs:
           cache: pip
           cache-dependency-path: apps/backend/requirements*.txt
       - run: pip install -r requirements-dev.txt pip-audit
-      - run: pytest -q
+      - run: pytest -q --cov --cov-report=term-missing --cov-report=xml
+      - run: coverage report --include='utils/pagination.py,security/admin_auth.py' --fail-under=85
+      - run: coverage report --fail-under=55
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage.xml
+          retention-days: 7
       - run: python -m compileall -q .
       - run: pip-audit -r requirements.txt
 
@@ -91,8 +105,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install pyyaml==6.0.3
-      - run: python evals/run_evals.py --json evals-report.json
+      - run: pip install pyyaml==6.0.3 pytest==9.1.1
+      - name: Offline eval unit tests (deterministic, no network)
+        run: pytest -q apps/backend/tests/test_evals_runner.py
+      - name: Eval run (recorded responses; release readiness remains an explicit gate)
+        run: python evals/run_evals.py --json evals-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

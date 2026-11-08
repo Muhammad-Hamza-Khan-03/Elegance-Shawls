@@ -39,7 +39,7 @@ export async function confirmAction(req: ActionRequest, fetchImpl: typeof fetch 
   const items = body?.result?.items;
   if (!response.ok || body?.status !== 'executed' || !Array.isArray(items) || !items.length || !items.every(validItem)) return fail('unavailable');
   const reference = typeof body.result.reference === 'string' ? body.result.reference : null;
-  if (req.action_type === 'start_whatsapp_enquiry' && !reference) return fail('unavailable');
+  if (req.action_type === 'start_whatsapp_order' && !reference) return fail('unavailable');
   return { ok: true, replayed: body.replayed === true, items, reference };
 }
 

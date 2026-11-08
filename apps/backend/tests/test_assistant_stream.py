@@ -142,7 +142,7 @@ async def test_unknown_and_malformed_proposals_are_rejected_not_raised():
 
 @sync
 async def test_idempotency_replay_and_conflict_within_stream():
-    good = {"type": "proposal", "action_type": "show_product", "idempotency_key": KEY,
+    good = {"type": "proposal", "action_type": "open_product", "idempotency_key": KEY,
             "params": {"product_id": s.DEMO_PRODUCT, "expected_revision": 7}}
     other = {**good, "params": {"product_id": s.DEMO_PRODUCT, "expected_revision": 8}}
 
@@ -212,7 +212,7 @@ def test_frames_are_single_line_even_with_newlines_and_unicode():
 
 
 def test_modules_import_nothing_that_can_reach_out_or_mutate():
-    allowed = {"hashlib", "json", "typing", "actions", "re", "fastapi", "pydantic"}
+    allowed = {"hashlib", "json", "typing", "actions", "schemas", "re", "fastapi", "pydantic"}
     for mod in (s, r):
         roots = set(re.findall(r"^(?:from|import) ([\w]+)", open(mod.__file__).read(), re.M))
         assert roots - allowed - {"assistant"} == set(), (mod.__name__, roots)
