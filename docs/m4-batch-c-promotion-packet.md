@@ -1,5 +1,7 @@
 # M4 Batch C production-memory promotion packet (readiness, not activation)
 
+**Purpose and audience.** Evidence packet for the engineering owner, privacy/security reviewer, and independent QA reviewer. It records readiness gates only; it is not an activation or deployment instruction.
+
 **Task ID:** `t_m4c_promotion_packet`
 **Parent task:** `t_m4c_production_memory_privacy_gate`
 **Idempotency key:** `m4c-production-memory-privacy-gate/promotion-packet/v1`
@@ -15,10 +17,10 @@ Re-applying this packet updates the same task and idempotency key. It must not c
 
 The packet is reconciled to the current integration ref:
 
-- `origin/staging-integration`: `96baedfeef6578a38c7fddf8b446b39973cebd60` (PR #193, docs-only merge; candidate implementation is promoted through PR #192)
+- `origin/staging-integration`: `63f1730663114d31085967ae01a05687bd614979` (PR #194, docs-only reconciliation; candidate implementation is promoted through PR #192)
 - `origin/staging`: `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` (PR #192, protected promotion)
 - `origin/main`: `283b27eee90533435ef3b2e28e6a3823ee1c5d23` (unchanged)
-- PR #179 provider-policy merge: `e04fb7470fb921032086f8c99217247458efec1d`; PR #191 EmbeddingGemma contract merge: `4675052b7b983c24b46b2d39fa18e4f1a8815124`; PR #193 docs merge: `96baedfeef6578a38c7fddf8b446b39973cebd60`.
+- PR #179 provider-policy merge: `e04fb7470fb921032086f8c99217247458efec1d`; PR #191 EmbeddingGemma contract merge: `4675052b7b983c24b46b2d39fa18e4f1a8815124`; PR #194 docs merge: `63f1730663114d31085967ae01a05687bd614979`.
 
 The provider/privacy and production-activation gates remain open.
 

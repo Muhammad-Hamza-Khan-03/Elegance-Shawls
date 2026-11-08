@@ -1,8 +1,10 @@
 # Elegance Architecture
 
-The single authoritative architecture document for Elegance Shawls: what exists today, where the system is going, and which decisions and approvals govern the path. The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md) (v2.0); this document records the decisions, boundaries and gates, and does not duplicate that plan. Ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md).
+**Purpose and audience.** This is the authoritative architecture reference for maintainers, reviewers, operators, and future contributors. It records repository-backed facts, accepted boundaries, safety gates, and proposed phases. It is not a deployment log or a promise that target-state components are running.
 
-Deployment identifiers and release SHAs belong in release records, not here. Statements under "Current state" are verifiable in this repository; everything under "Target state" is a decision, not a fact about running software.
+The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md); ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md). Deployment identifiers and release SHAs belong in release records, not here. Statements under **Current state** are verifiable in this repository; **Target state**, **Planned**, **Deferred**, and **Blocked** describe decisions or work that is not yet complete.
+
+**Current high-level position (reviewed 2026-11-09).** The catalogue, PostgreSQL-backed ingestion/review flow, server search, validated assistant/enquiry seams, admin accounts, and provider-neutral customer-memory contract are implemented to varying levels of QA. Customer authentication is configuration-gated and disabled by default. Server-side cart, orders, payments, MCP/SDK connectors, HubSpot sync, and production memory activation are not implemented. AI release readiness remains `false` until the relevant evaluation and privacy gates pass.
 
 ## 1. Current state
 
@@ -195,7 +197,7 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 
 #### Current M4 milestone status — 2026-11-08
 
-The provider-training policy and migration downgrade fixture are now present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`; PR #191 → current `origin/staging-integration` `4675052b7b983c24b46b2d39fa18e4f1a8815124`, while `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+The provider-training policy and migration downgrade fixture are present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → historical staging promotion `d020d521f2666726a2b82316785c8bf72669e83a`; PR #194 is the current documentation reconciliation at `origin/staging-integration` `63f1730663114d31085967ae01a05687bd614979`, while `origin/staging` is `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` and `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
 
 Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis and arq verification passed: Redis was healthy at `127.0.0.1:6380`, readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq was exercised only through two bounded synthetic calls; no secrets or API keys are documented.
 
@@ -203,7 +205,7 @@ This remains a staging/non-production milestone. Deployment, production activati
 
 ### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
 
-The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+The consolidation briefly carried two embedding pipelines. The **canonical configured pipeline** is the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`. EmbeddingGemma is a separately verified local-only candidate for search; it is not the canonical E5 configuration and is not memory-extraction or production approval.
 
 #### EmbeddingGemma 2 candidate — verified local-only boundary (2026-11-08)
 
