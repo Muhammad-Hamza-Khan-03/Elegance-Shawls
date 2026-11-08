@@ -134,6 +134,7 @@ def test_all_providers_failing_raises_so_callers_can_degrade(monkeypatch):
 def test_personal_data_is_never_sent_to_free_tier_providers_even_when_misconfigured(monkeypatch):
     seen = []
     monkeypatch.setattr(settings, "llm_production_chain", "groq/a,gemini/b,ollama/private")
+    monkeypatch.setattr(settings, "llm_provider_training_policies", "ollama=self_hosted")
     asyncio.run(gateway_with(ok(), seen).complete(MESSAGES, personal=True))
     assert [str(r.url) for r in seen] == ["http://localhost:11434/v1/chat/completions"]   # self-hosted only
 
