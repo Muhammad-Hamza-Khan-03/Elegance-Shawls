@@ -81,6 +81,7 @@ def test_inference_and_dimension_failures_fall_back(monkeypatch):
 def test_identity_and_success_with_injected_model(monkeypatch):
     monkeypatch.setattr(local_gemma, "LocalGemmaProvider", lambda *a: Inner())
     provider, vec = qv()
+    assert local_gemma.MODEL_REVISION == REVISION
     assert (provider.name, provider.model, provider.model_revision) == ("local_embeddinggemma2", local_gemma.MODEL, REVISION)
     assert len(vec) == DIM
 

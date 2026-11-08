@@ -18,6 +18,7 @@ from search.local_e5 import LOCAL_ENVIRONMENTS, LocalE5Adapter
 from search.providers import EmbeddingProvider, NonRetryableEmbeddingError
 
 MODEL = "google/embeddinggemma-2"
+MODEL_REVISION = "f9972ac22e696a105c482202646979e33e4b5a1e"
 DIMENSION = 768
 PROMPTS = {"query": "query", "passage": "document"}   # prompt names defined in the model's config_sentence_transformers.json
 TREE_SHA = "8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b"
@@ -26,8 +27,8 @@ _loaded: dict[tuple[str, str], "LocalGemmaProvider"] = {}
 
 
 def _verify_revision(path: str, revision: str) -> None:
-    if not re.fullmatch(r"[0-9a-f]{40}", revision or ""):
-        raise ConfigError("a 40-hex model revision is required")
+    if revision != MODEL_REVISION or not re.fullmatch(r"[0-9a-f]{40}", revision or ""):
+        raise ConfigError("the approved EmbeddingGemma 2 revision is required")
     meta = list((Path(path) / ".cache/huggingface/download").glob("*.metadata")) if Path(path).is_dir() else []
     if not meta or any(m.read_text().split("\n", 1)[0].strip() != revision for m in meta):
         raise ConfigError("local model files do not match the pinned revision")
