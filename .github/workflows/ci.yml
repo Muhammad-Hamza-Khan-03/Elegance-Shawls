@@ -105,7 +105,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install pyyaml==6.0.3 pytest==9.1.1
+      - run: pip install -r apps/backend/requirements-dev.txt
       - name: Offline eval unit tests (deterministic, no network)
         run: pytest -q apps/backend/tests/test_evals_runner.py
       - name: Eval run (recorded responses; release readiness remains an explicit gate)
