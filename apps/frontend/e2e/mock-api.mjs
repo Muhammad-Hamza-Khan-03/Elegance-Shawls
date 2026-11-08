@@ -64,7 +64,7 @@ http.createServer((request, response) => {
       response.end(sse([
         ['start', { protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context }],
         ['text', { delta: 'Here is a shawl. ' }], ['product', { product_id: AP, name: 'Pashmina Shawl', revision: 1, price: 3500, currency: 'PKR', slug: assistantProduct.slug, image: 'https://placehold.co/600x800/d8c0a8/2f241f?text=Pashmina', color: 'Ivory' }],
-        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_enquiry', { items: [params] }), ['done', { events: 5 }],
+        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_order', { items: [params] }), ['done', { events: 5 }],
       ]));
     });
   }
@@ -84,7 +84,7 @@ http.createServer((request, response) => {
       actionLog.executions += 1;
       entry.executed = true;
       const items = rows.map((r) => ({ product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity, slug: assistantProduct.slug }));
-      const result = req.action_type === 'start_whatsapp_enquiry' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
+      const result = req.action_type === 'start_whatsapp_order' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
       done.set(key, result);
       response.end(JSON.stringify({ status: 'executed', action_type: req.action_type, replayed: false, result }));
     });
@@ -122,6 +122,10 @@ http.createServer((request, response) => {
     if (request.url === '/v1/admin/auth/logout') return response.end(JSON.stringify({ ok: true }));
   }
   if (request.url === '/health/' || request.url === '/ready/') return response.end(JSON.stringify({ status: 'ready' }));
+  if (request.url === '/products/slug/unavailable-product') {
+    response.statusCode = 503;
+    return response.end(JSON.stringify({ detail: 'Service unavailable' }));
+  }
   if (request.url?.startsWith('/products/slug/')) {
     const product = [...products, assistantProduct].find((item) => item.slug === decodeURIComponent(request.url.split('/').pop() || ''));
     response.statusCode = product ? 200 : 404;
@@ -130,4 +134,4 @@ http.createServer((request, response) => {
   if (request.url?.startsWith('/products/')) return response.end(JSON.stringify({ items: products, next_cursor: null }));
   response.statusCode = 404;
   response.end(JSON.stringify({ detail: 'Not found' }));
-}).listen(4100, '127.0.0.1');
+}).listen(Number(process.env.MOCK_API_PORT || 4100), '127.0.0.1');

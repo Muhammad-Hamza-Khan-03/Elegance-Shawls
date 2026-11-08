@@ -18,6 +18,7 @@ from routes.customer_auth_routes import router
 from routes.memory_routes import router as memory_router
 from security.customer_identity import ExternalIdentityVerifier, JwksCache
 from security.customer_session import DbSessionVerifier, get_identity_verifier
+from repositories.customer_auth import identity_subject_key
 from tests.customer_auth_support import AUDIENCE, ISSUER, claims, jwks, key, token
 from tests.integration.api_support import ApiEnv
 
@@ -86,7 +87,7 @@ def test_exchange_provisions_a_registered_customer_and_a_working_session(env):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     assert body["session_token"].startswith("cs1.") and set(body) == {"session_token", "expires_at"}
     assert env.sql("select c.status, i.provider, i.subject from customers c join customer_identities i on i.customer_id = c.id") \
-        == [("registered", "google", "subject-123")]
+        == [("registered", "google", identity_subject_key(ISSUER, "subject-123"))]
     expires = datetime.fromisoformat(body["expires_at"])
     assert timedelta(minutes=59) < expires - datetime.now(timezone.utc) <= timedelta(hours=1)
     assert env.client.get(MEMORY, headers=bearer(body["session_token"])).status_code == 200

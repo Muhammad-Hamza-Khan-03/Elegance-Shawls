@@ -38,7 +38,7 @@ def enquiries(env):
 
 def test_enquiry_executes_once_and_replay_returns_same_reference(env, caplog):
     p = make_product(env)
-    req = body("start_whatsapp_enquiry", {"items": [item(p, 2)]})
+    req = body("start_whatsapp_order", {"items": [item(p, 2)]})
     with caplog.at_level(logging.INFO, logger="elegance.actions"):
         first = env.client.post(URL, json=req)
         again = env.client.post(URL, json=req)
@@ -64,7 +64,7 @@ def test_add_to_cart_is_revalidated_and_creates_no_enquiry(env):
 ])
 def test_stale_or_unknown_state_is_409_and_nothing_is_created(env, over, reason):
     p = make_product(env)
-    r = env.client.post(URL, json=body("start_whatsapp_enquiry", {"items": [item(p, **over)]}))
+    r = env.client.post(URL, json=body("start_whatsapp_order", {"items": [item(p, **over)]}))
     assert r.status_code == 409 and r.json()["detail"] == {"status": "rejected", "reason": reason}
     assert enquiries(env) == 0
 
@@ -83,8 +83,8 @@ def test_draft_product_is_not_executable(env):
 
 def test_same_key_different_params_conflicts(env):
     p = make_product(env)
-    env.client.post(URL, json=body("start_whatsapp_enquiry", {"items": [item(p, 1)]}))
-    r = env.client.post(URL, json=body("start_whatsapp_enquiry", {"items": [item(p, 2)]}))
+    env.client.post(URL, json=body("start_whatsapp_order", {"items": [item(p, 1)]}))
+    r = env.client.post(URL, json=body("start_whatsapp_order", {"items": [item(p, 2)]}))
     assert r.status_code == 409 and r.json()["detail"]["reason"] == "idempotency_conflict" and enquiries(env) == 1
 
 
@@ -97,11 +97,11 @@ def test_unconfirmed_or_unknown_requests_are_422_and_do_nothing(env, bad):
 
 def test_replay_and_conflict_are_durable_across_independent_workers(env, migrated_url, monkeypatch):
     p = make_product(env)
-    req = body("start_whatsapp_enquiry", {"items": [item(p, 2)]})
+    req = body("start_whatsapp_order", {"items": [item(p, 2)]})
     first = env.client.post(URL, json=req).json()
     other = ApiEnv(migrated_url, monkeypatch)             # a second app instance: no shared process memory, same database
     again = other.client.post(URL, json=req)
-    clash = other.client.post(URL, json=body("start_whatsapp_enquiry", {"items": [item(p, 3)]}))
+    clash = other.client.post(URL, json=body("start_whatsapp_order", {"items": [item(p, 3)]}))
     assert again.json()["replayed"] is True and again.json()["result"] == first["result"] and enquiries(env) == 1
     assert clash.status_code == 409 and clash.json()["detail"]["reason"] == "idempotency_conflict"
     row = env.sql("select status, attempt, audit->>'enquiry_reference', replay_count from action_executions")
@@ -110,7 +110,7 @@ def test_replay_and_conflict_are_durable_across_independent_workers(env, migrate
 
 def test_simultaneous_requests_from_two_workers_create_one_enquiry(env, migrated_url, monkeypatch):
     p = make_product(env)
-    req = body("start_whatsapp_enquiry", {"items": [item(p, 2)]})
+    req = body("start_whatsapp_order", {"items": [item(p, 2)]})
     clients = [env.client, ApiEnv(migrated_url, monkeypatch).client]
     with ThreadPoolExecutor(8) as pool:
         replies = list(pool.map(lambda n: clients[n % 2].post(URL, json=req), range(8)))

@@ -60,7 +60,7 @@ test('streams text and a product, and shows a validated proposal as information 
 
 test('renders a rejected proposal safely', async ({ page }) => {
   await stubStream(page, (r) => start(r)
-    + frame(1, 'proposal', { session_id: r.session_id, action_type: 'start_whatsapp_enquiry', idempotency_key: r.idempotency_key, decision: { outcome: 'rejected', reason: 'out_of_stock', executed: false, idempotency_key: r.idempotency_key, replayed: false } })
+    + frame(1, 'proposal', { session_id: r.session_id, action_type: 'start_whatsapp_order', idempotency_key: r.idempotency_key, decision: { outcome: 'rejected', reason: 'out_of_stock', executed: false, idempotency_key: r.idempotency_key, replayed: false } })
     + frame(2, 'proposal', { session_id: r.session_id, action_type: 'drop_database', idempotency_key: null, decision: { outcome: 'validated', reason: 'ok', executed: false, idempotency_key: null, replayed: false } })
     + frame(3, 'done', {}));
   await ask(page);

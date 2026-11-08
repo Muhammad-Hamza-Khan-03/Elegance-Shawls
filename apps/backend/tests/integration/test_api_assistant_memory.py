@@ -47,7 +47,7 @@ def world(pg_engine_factory, migrated_url, monkeypatch):
 
     async def make(sessions):
         async with sessions() as s:
-            cid = await customers.customer_for_identity(s, "google", "sub-" + uuid.uuid4().hex[:8])
+            cid = await customers.customer_for_identity(s, "google", "https://idp.test.invalid", "sub-" + uuid.uuid4().hex[:8])
             await s.commit()
             return cid
     env.customer = env.run(make)

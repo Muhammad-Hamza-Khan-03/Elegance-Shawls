@@ -7,16 +7,19 @@ request, committed here. Rate-limited in its own bucket by security/rate_limit.p
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from configuration.config import settings
 from database.pg import get_pg_session
+from events.recorder import opted_out
+from events.session import verify_session_token
+from identity.merge import MergeRejected, merge_anonymous_events
 from memory.principal import CustomerPrincipal, current_principal
 from repositories import customer_auth as repo
-from schemas.customer_auth_schema import ExchangeRequest, SessionOut
-from security.customer_identity import ExternalIdentityVerifier, IdentityRejected, JwksUnavailable
+from schemas.customer_auth_schema import AnonymousMergeRequest, ExchangeRequest, SessionOut
+from security.customer_identity import ExternalIdentity, ExternalIdentityVerifier, IdentityRejected, JwksUnavailable
 from security.customer_session import get_identity_verifier
 
 router = APIRouter(prefix="/v1/customer/auth", tags=["Customer auth"])
@@ -32,6 +35,11 @@ def enabled_verifier(verifier: ExternalIdentityVerifier | None = Depends(get_ide
     return verifier
 
 
+def enabled_merge() -> None:
+    if settings.environment != "staging" or not settings.customer_anonymous_merge_enabled:
+        raise HTTPException(404, "Not found")
+
+
 @router.post("/exchange", response_model=SessionOut)
 async def exchange(body: ExchangeRequest, response: Response, verifier: ExternalIdentityVerifier = Depends(enabled_verifier),
                    session: AsyncSession = Depends(get_pg_session)):
@@ -42,11 +50,20 @@ async def exchange(body: ExchangeRequest, response: Response, verifier: External
         raise HTTPException(401, "Invalid identity token", headers={"WWW-Authenticate": "Session"}) from None
     except JwksUnavailable:
         raise HTTPException(503, "Sign-in is temporarily unavailable") from None
+    except Exception:
+        raise HTTPException(503, "Sign-in is temporarily unavailable") from None
+    if not isinstance(identity, ExternalIdentity) or identity.issuer != settings.customer_auth_issuer:
+        raise HTTPException(401, "Invalid identity token", headers={"WWW-Authenticate": "Session"})
     try:
-        customer_id = await repo.customer_for_identity(session, settings.customer_auth_provider, identity.subject)
+        customer_id = await repo.customer_for_identity(session, settings.customer_auth_provider, identity.issuer, identity.subject)
         token, _, expires_at = await repo.create_session(session, customer_id, now, settings.customer_session_ttl_seconds,
-                                                         settings.customer_session_max_active)
+                                                         settings.customer_session_max_active,
+                                                         repo.exchange_key_hash(identity.issuer, identity.subject, body.idempotency_key)
+                                                         if body.idempotency_key else None)
         await session.commit()
+    except repo.ExchangeReplay:
+        await session.rollback()
+        raise HTTPException(409, "Exchange already completed") from None
     except BaseException:
         await session.rollback()
         raise
@@ -79,3 +96,27 @@ async def logout(principal: CustomerPrincipal = Depends(current_principal), sess
 @router.post("/logout-all")
 async def logout_all(principal: CustomerPrincipal = Depends(current_principal), session: AsyncSession = Depends(get_pg_session)):
     return {"revoked": await _revoke(session, repo.revoke_all(session, principal.customer_id, "logout_all", _now()))}
+
+
+@router.post("/merge-anonymous")
+async def merge_anonymous(body: AnonymousMergeRequest, request: Request,
+                          _: None = Depends(enabled_merge), principal: CustomerPrincipal = Depends(current_principal),
+                          session: AsyncSession = Depends(get_pg_session)):
+    """Explicit one-way attribution of recent anonymous events. The source is a signed event token, never a supplied id."""
+    token = request.headers.get("X-Anonymous-Session")
+    source = verify_session_token(token) if token and len(token) <= 128 else None
+    if not body.consent or opted_out(request) or source is None:
+        raise HTTPException(403, "Anonymous merge refused")
+    try:
+        result = await merge_anonymous_events(session, principal.customer_id, source, _now())
+        await session.commit()
+        return result
+    except MergeRejected as exc:
+        await session.rollback()
+        raise HTTPException(409, {"status": "rejected", "reason": exc.reason}) from None
+    except Exception:
+        await session.rollback()
+        raise HTTPException(503, "Anonymous merge is temporarily unavailable") from None
+    except BaseException:
+        await session.rollback()
+        raise

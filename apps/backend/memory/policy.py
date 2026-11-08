@@ -81,19 +81,22 @@ def provider_of(model: str) -> str:
 
 
 def classify(model: object, declared: str, free_tier: str) -> TrainingPolicy:
-    if not isinstance(model, str) or "/" not in model.strip():
+    if (not isinstance(model, str) or model != model.strip() or "/" not in model
+            or not all(model.split("/", 1)) or any(ch.isspace() or unicodedata.category(ch).startswith("C") for ch in model)):
         return TrainingPolicy.UNKNOWN                     # a bare or non-string model name carries no provider to vouch for
-    provider = provider_of(model.strip())
+    provider = provider_of(model)
     if provider in {p.strip().lower() for p in (free_tier or "").split(",") if p.strip()}:
         return TrainingPolicy.MAY_TRAIN                   # a free-tier listing beats any allowing declaration
     return _declared(declared).get(provider, TrainingPolicy.UNKNOWN)
 
 
-def provider_gate(models: Iterable[object], declared: str | None = None, free_tier: str | None = None) -> GateDecision:
+def provider_gate(models: Iterable[object] | None, declared: str | None = None, free_tier: str | None = None) -> GateDecision:
     """Allowed only when there is at least one model and EVERY model in the chain (fallbacks included) is explicitly
     no-training or self-hosted. Same inputs, same answer."""
     declared = settings.llm_provider_training_policies if declared is None else declared
     free_tier = settings.llm_free_tier_providers if free_tier is None else free_tier
+    if models is None:
+        return GateDecision(False, "no_model")
     models = tuple(models)
     if not models:
         return GateDecision(False, "no_model")

@@ -22,6 +22,7 @@ class settings(BaseSettings):
     internal_api_token: str = ""
     public_rate_limit_per_minute: int = 120
     admin_rate_limit_per_minute: int = 60
+    local_rate_limit_max_keys: int = 10_000
 
     # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
     assistant_catalogue: bool = False
@@ -43,6 +44,12 @@ class settings(BaseSettings):
     customer_session_ttl_seconds: int = 7 * 86400
     customer_session_max_active: int = 5
     customer_auth_rate_limit_per_minute: int = 10
+    # Batch A only: explicit event attribution is off by default and limited to isolated staging.
+    customer_anonymous_merge_enabled: bool = False
+    # M4 Batch B: explicit opt-in to the synthetic staging path; never production memory.
+    recommendations_enabled: bool = False
+    recommendations_synthetic_only: bool = True
+    recommendations_experiment_enabled: bool = False
 
     # Phase 1 ingestion. Empty/unauthorized by default so nothing can fetch until an
     # operator deliberately configures one authorized source.
@@ -130,6 +137,8 @@ class settings(BaseSettings):
     # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
     # Empty = every provider unknown = no model may touch customer memory.
     llm_provider_training_policies: str = ""
+    # Privacy readiness only: extraction is permanently off until the M4-C promotion packet is approved.
+    memory_extraction_enabled: bool = False
     llm_daily_budget_usd: float = 1.0
     llm_environment_budget_usd: float = 10.0
     llm_budget_warn_ratio: float = 0.8
@@ -151,6 +160,8 @@ class settings(BaseSettings):
     local_semantic_search_enabled: bool = False
     local_e5_model_path: str = ""
     local_e5_model_revision: str = ""
+    local_gemma_model_path: str = ""      # EmbeddingGemma 2 (local_embeddinggemma2); see search/local_gemma.py
+    local_gemma_model_revision: str = ""
     embedding_max_jobs: int = 2
     embedding_job_timeout_seconds: int = 60
     embedding_max_attempts: int = 3

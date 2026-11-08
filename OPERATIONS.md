@@ -125,7 +125,7 @@ Not deployed by `compose.yaml`; they run from `compose.ai.yaml` for development 
 
 ## Product ingestion (Phase 1)
 
-Ingestion is off until an operator sets `INGESTION_SOURCE_DOMAIN` and `INGESTION_SOURCE_AUTHORIZED=true`; do this only for a source the business is authorized to use, and only on an isolated staging environment first. Staged products are never public; a reviewer approves and then publishes them in the admin UI (`/admin/staging`). The worker is a separate process (`python -m ingestion.worker`). Roll back by stopping the worker; staged and job collections are additive and can be left in place. See `docs/phase-1-one-source-ingestion.md`.
+Ingestion is off until an operator sets `INGESTION_SOURCE_DOMAIN` and `INGESTION_SOURCE_AUTHORIZED=true`; do this only for a source the business is authorized to use, and only on an isolated staging environment first. Staged products are never public; a reviewer approves and then publishes them in the admin UI (`/admin/staging`). The worker is a separate process (`python -m ingestion.worker`). Roll back by stopping the worker; staged and job tables are additive and can be left in place. See `docs/phase-1-one-source-ingestion.md`.
 
 ### Monthly one-shot refresh (local, no always-on worker)
 

@@ -3,6 +3,8 @@
 Only the SHA-256 of a session token is stored. Every read and write of a session is scoped by customer where the caller is a
 customer, so one customer's token can never touch another's rows.
 """
+import hashlib
+import json
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -17,31 +19,49 @@ from security.passwords import hash_session_token
 TOKEN_PREFIX = "cs1."
 
 
-async def customer_for_identity(session: AsyncSession, provider: str, subject: str) -> uuid.UUID:
-    """The customer owning (provider, subject), created on first sight. Safe under concurrent first logins."""
+class ExchangeReplay(Exception):
+    """The same explicit exchange idempotency key already issued a session."""
+
+
+def identity_subject_key(issuer: str, subject: str) -> str:
+    """Bind the subject to the verified issuer without storing a provider token or bare subject."""
+    return hashlib.sha256(json.dumps([issuer, subject], separators=(",", ":")).encode()).hexdigest()
+
+
+def exchange_key_hash(issuer: str, subject: str, key: str) -> str:
+    return hashlib.sha256(json.dumps([issuer, subject, key], separators=(",", ":")).encode()).hexdigest()
+
+
+async def customer_for_identity(session: AsyncSession, provider: str, issuer: str, subject: str) -> uuid.UUID:
+    """The customer owning the provider and verified (issuer, subject), safe under concurrent first logins."""
+    subject_key = identity_subject_key(issuer, subject)
     found = (await session.execute(select(CustomerIdentity.customer_id).where(
-        CustomerIdentity.provider == provider, CustomerIdentity.subject == subject))).scalar_one_or_none()
+        CustomerIdentity.provider == provider, CustomerIdentity.subject == subject_key))).scalar_one_or_none()
     if found is None:
         fresh = (await session.execute(pg_insert(Customer).values(status="registered").returning(Customer.id))).scalar_one()
         linked = (await session.execute(
-            pg_insert(CustomerIdentity).values(customer_id=fresh, provider=provider, subject=subject)
+            pg_insert(CustomerIdentity).values(customer_id=fresh, provider=provider, subject=subject_key)
             .on_conflict_do_nothing(index_elements=["provider", "subject"]).returning(CustomerIdentity.customer_id))).scalar_one_or_none()
         if linked is not None:
             return fresh
         await session.execute(delete(Customer).where(Customer.id == fresh))           # lost the race: use the winner's customer
         found = (await session.execute(select(CustomerIdentity.customer_id).where(
-            CustomerIdentity.provider == provider, CustomerIdentity.subject == subject))).scalar_one()
+            CustomerIdentity.provider == provider, CustomerIdentity.subject == subject_key))).scalar_one()
     await session.execute(update(Customer).where(Customer.id == found, Customer.status != "registered").values(status="registered"))
     return found
 
 
-async def create_session(session: AsyncSession, customer_id: uuid.UUID, now: datetime, ttl_seconds: int, max_active: int) -> tuple[str, uuid.UUID, datetime]:
+async def create_session(session: AsyncSession, customer_id: uuid.UUID, now: datetime, ttl_seconds: int, max_active: int,
+                         exchange_hash: str | None = None) -> tuple[str, uuid.UUID, datetime]:
     """(bearer token, session id, expiry). Keeps at most `max_active` live sessions: the oldest are revoked."""
     await session.execute(select(Customer.id).where(Customer.id == customer_id).with_for_update())   # serialise per customer
+    if exchange_hash is not None and (await session.execute(select(CustomerSession.id).where(
+            CustomerSession.exchange_hash == exchange_hash))).first() is not None:
+        raise ExchangeReplay()
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
     expires = now + timedelta(seconds=ttl_seconds)
     sid = (await session.execute(pg_insert(CustomerSession).values(
-        customer_id=customer_id, token_hash=hash_session_token(token), created_at=now, expires_at=expires)
+        customer_id=customer_id, token_hash=hash_session_token(token), exchange_hash=exchange_hash, created_at=now, expires_at=expires)
         .returning(CustomerSession.id))).scalar_one()
     newest = select(CustomerSession.id).where(
         CustomerSession.customer_id == customer_id, CustomerSession.revoked_at.is_(None), CustomerSession.expires_at > now
