@@ -1018,7 +1018,7 @@ Each milestone produces something usable even if work pauses there. Durations ar
 **Ship:** multilingual search and staff enrichment with measurable quality.
 
 - [ ] Labelled eval sets: constraint parsing (English, Urdu script, Roman Urdu), variant correctness, retrieval quality.
-- [ ] Embedding benchmark: EmbeddingGemma 2 (shared space) vs. separate models → ADR-008.
+- [ ] Embedding benchmark: EmbeddingGemma 2 (shared space) vs. separate models → ADR-008. **Status (2026-11-08):** the pinned `google/embeddinggemma-2` local CPU candidate and contract are verified on staging (`origin/staging` `e5c04c8d4097a46adf9fecf00baddd15cc860fc2`, PR #192; contract PR #191/QA evidence recorded), but the comparative benchmark, hosted activation, and release gate remain incomplete; keep `release_ready=false`.
 - [ ] Semantic ranking with pgvector; reciprocal rank fusion with lexical; `index_version`.
 - [ ] Natural-language query parsing into hard/soft constraints (also usable from the search box).
 - [ ] Staff enrichment: suggestions with provenance, no fabric from photos, approval and audit.
