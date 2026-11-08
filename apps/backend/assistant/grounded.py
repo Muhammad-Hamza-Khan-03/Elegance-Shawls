@@ -138,7 +138,8 @@ async def _wording(message: str, facts: str, fallback: str, personal: bool = Fal
     try:
         result = await get_gateway().complete([{"role": "system", "content": SYSTEM_PROMPT},
                                                {"role": "user", "content": f"FACTS:\n{facts}\n\nCUSTOMER MESSAGE:\n{clean}"}],
-                                              personal=personal or settings.environment != "development")  # saved memory in the prompt always means the personal chain
+                                              personal=personal or settings.environment != "development",
+                                              use_case="memory" if personal else "assistant")  # saved memory uses the memory gate; production wording uses assistant controls
     except Exception as exc:  # budget, privacy policy, timeouts, every provider down: degrade to the fixed sentence
         log.warning("assistant llm unavailable: %s", type(exc).__name__)
         return fallback, False

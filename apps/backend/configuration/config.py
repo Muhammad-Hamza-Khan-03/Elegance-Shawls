@@ -134,9 +134,10 @@ class settings(BaseSettings):
     llm_chain_default: str = ""
     llm_production_chain: str = ""
     llm_free_tier_providers: str = "groq,gemini,openrouter"
-    # Customer-memory privacy gate (M4-S1): "provider=policy" pairs, policy in no_training|self_hosted|opt_out|may_train.
-    # Empty = every provider unknown = no model may touch customer memory.
+    # M4 privacy gate: "provider=policy" pairs. Training-enabled providers also need a complete,
+    # use-case-scoped JSON control record in LLM_PROVIDER_CONTROL_RECORDS; empty = deny.
     llm_provider_training_policies: str = ""
+    llm_provider_control_records: str = ""
     # Privacy readiness only: extraction is permanently off until the M4-C promotion packet is approved.
     memory_extraction_enabled: bool = False
     llm_daily_budget_usd: float = 1.0
