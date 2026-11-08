@@ -121,6 +121,8 @@ def test_a_stale_env_file_with_retired_mongo_keys_does_not_break_settings(monkey
     from configuration.config import settings as settings_class
 
     env = tmp_path / ".env"
-    env.write_text("MONGODB_URI=ignored\nMONGO_DB_NAME=ignored\nADMIN_API_KEY=k\n")
+    env.write_text("MONGODB_URI=ignored\nMONGO_DB_NAME=ignored\n")
+    monkeypatch.delenv("ADMIN_API_KEY", raising=False)
+    monkeypatch.setenv("ADMIN_API_KEY", "k")
     loaded = type(settings_class)(_env_file=env)
     assert loaded.admin_api_key == "k" and not hasattr(loaded, "MONGODB_URI")
