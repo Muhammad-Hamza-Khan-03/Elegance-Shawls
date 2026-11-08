@@ -1,7 +1,29 @@
 # M4 contract expansion: staged returning-customer experience
 
 **Contract ID:** `t_aba73777` (expanded in place; do not create a second M4 contract)
-**Status:** `planned`, `release_ready=false`
+**Status:** `staging evidence recorded; activation deferred`, `release_ready=false`
+
+## Verified milestone state — 2026-11-08
+
+The provider-training policy gate and migration downgrade fixture are present in the staging tree. This is staging/integration evidence only; it is not deployment, provider activation, production readiness, or M4 completion.
+
+| Evidence | Exact reference | Interpretation |
+|---|---|---|
+| Current integration tree | `origin/staging-integration` = `5a6ed21a5665d254ac345749811efa9dc63a8722` | Documentation and evidence are based on the current staging-integration tip. |
+| Provider policy | PR #179 merged as `e04fb7470fb921032086f8c99217247458efec1d` | Eight-control, use-case-scoped training-provider policy is in the integration tree; no provider is selected or activated. |
+| Provider policy promotion | PR #184 merged to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d` | The policy tree was promoted to staging without production/main changes. |
+| Migration downgrade fixture | PR #185 merged as `5a6ed21a5665d254ac345749811efa9dc63a8722` | Synthetic memory rows are isolated before the intentional downgrade guard is exercised. |
+| Migration fixture promotion | PR #186 merged to staging as `d020d521f2666726a2b82316785c8bf72669e83a` | `origin/staging` is the staging release candidate; `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`. |
+
+### Verification boundaries
+
+- Independent M4 QA: `119 passed, 29 deselected`.
+- Migration promotion QA: `23 passed, 2 warnings`; targeted migration suites: `70 passed`.
+- Local disposable Redis `elegance-local-staging-redis-1` was healthy at `127.0.0.1:6380`. The local backend readiness probe at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected.
+- The arq synthetic job completed `queued → deferred → queued → complete` on attempt 2.
+- Groq smoke was bounded synthetic-only: two calls, no customer data, no credentials or API-key values recorded, and no activation.
+
+The evidence above does not claim deployment, production activation, provider selection/credentialing, live customer data, external observability, or `release_ready=true`.
 **Baseline preserved:** M3 canonical action contracts and M4 Batch 1 commit `1823d47a071c713b6ca00348364260a93c8a584f` / task `t_2f755ea0`
 **Scope:** bounded staging-only batches; synthetic identities, provider mocks, and synthetic catalogue/events only
 
@@ -95,7 +117,15 @@ The batches are strictly ordered. A later batch cannot start until the prior bat
 
 ## Current next action
 
-Batch A and Batch B gates are satisfied on the supplied staging SHAs. Batch C is now in **privacy-readiness only**: activate the idempotent task records `t_m4c_provider_decision`, `t_m4c_memory_extraction_evals`, `t_m4c_tombstone_queue_proof`, `t_m4c_promotion_packet`, `t_m4c_independent_qa`, and `t_m4c_push_staging`. Implement synthetic/local proof only; production memory remains disabled and `release_ready` remains false.
+Batch A and Batch B gates are satisfied on the recorded staging SHAs. Batch C remains **privacy-readiness only**: the policy and migration fixture are in staging, but provider activation and production-memory promotion are deferred. Continue the idempotent task records `t_m4c_provider_decision`, `t_m4c_memory_extraction_evals`, `t_m4c_tombstone_queue_proof`, `t_m4c_promotion_packet`, `t_m4c_independent_qa`, and `t_m4c_push_staging` with synthetic/local proof only; production memory remains disabled and `release_ready` remains false.
+
+### Remaining blockers
+
+- Frontend live proxy verification needs a disposable backend URL.
+- Embeddings activation/backfill is unavailable; the local embedding path is not an activation or backfill proof.
+- Evaluation provenance is incomplete; fixture/deterministic evidence is not model-backed release evidence.
+- External observability has not been exercised.
+- Deployment, production activation, provider selection/credentialing, and any `release_ready` transition remain separately deferred.
 
 ## Approvals required
 
