@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:real": "node e2e-real/prepare.mjs && playwright test -c playwright.real.config.ts",
+    "test:e2e:real:guard": "node --test e2e-real/isolation.test.mjs",
     "test:e2e:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {

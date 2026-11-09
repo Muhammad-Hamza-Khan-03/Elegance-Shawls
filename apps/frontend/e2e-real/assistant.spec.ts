@@ -12,13 +12,14 @@ async function ask(page: Page, text: string) {
   await page.getByLabel('Message the shopping assistant').press('Enter');
 }
 
-test('English request -> grounded in-stock card -> confirmed add-to-cart executes exactly once', async ({ page }) => {
+test('English request -> exactly one grounded in-stock card -> confirmed add-to-cart executes exactly once', async ({ page }) => {
   await ask(page, 'brown stole under 4000');
   const cards = page.getByTestId('assistant-product-card');
+  await expect(cards).toHaveCount(1);                                              // every card is checked, not just the first
   await expect(cards.first()).toContainText('Brown Pashmina Stole');
-  await expect(cards.filter({ hasText: 'Brown Wool Shawl' })).toHaveCount(0);     // over budget
-  await expect(cards.filter({ hasText: 'Maroon Silk Stole' })).toHaveCount(0);    // wrong colour and out of stock
-  await expect(cards.filter({ hasText: 'Draft Green Shawl' })).toHaveCount(0);    // never public
+  for (const excluded of ['Brown Jamawar Stole', 'Brown Wool Shawl', 'Maroon Silk Stole', 'Draft Green Shawl']) {
+    await expect(page.getByTestId('assistant-product-card').filter({ hasText: excluded })).toHaveCount(0);   // over budget / wrong kind / sold out / never public
+  }
   expect(await cart(page)).toEqual([]);                                            // asking changed nothing
 
   const card = cards.first();
@@ -30,13 +31,21 @@ test('English request -> grounded in-stock card -> confirmed add-to-cart execute
   expect(lines[0].quantity).toBe(1);
 });
 
-test('Roman Urdu and Urdu requests are understood by the real parser', async ({ page }) => {
-  await ask(page, 'bhoora stole 4000 se kam');
-  await expect(page.getByTestId('assistant-product-card').first()).toContainText('Brown Pashmina Stole');
-  await page.reload();
-  await ask(page, 'بھورا اسٹول 4000 سے کم');
-  await expect(page.getByTestId('assistant-product-card').first()).toContainText('Brown Pashmina Stole');
+test('a lower bound is honoured: "above 4000" shows only the 4500 brown stole', async ({ page }) => {
+  await ask(page, 'brown stole above 4000');
+  const cards = page.getByTestId('assistant-product-card');
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText('Brown Jamawar Stole');
 });
+
+for (const [language, text] of [['Roman Urdu', 'bhoora stole 4000 se kam'], ['Urdu', 'بھورا اسٹول 4000 سے کم']] as const) {
+  test(`${language} request is understood by the real parser (one card, within budget)`, async ({ page }) => {
+    await ask(page, text);
+    const cards = page.getByTestId('assistant-product-card');
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toContainText('Brown Pashmina Stole');
+  });
+}
 
 test('an impossible request is answered honestly: no invented products', async ({ page }) => {
   await ask(page, 'purple shawl under 100');

@@ -32,11 +32,21 @@ test('the server revalidates price, stock and availability (stale carts are refu
   const line = (p: typeof stole, over: Record<string, unknown> = {}) => ({ product_id: p._id, variant_id: p.variants[0]._id, quantity: 1, unit_price: p.variants[0].price, currency: 'PKR', ...over });
   const post = (items: unknown[]) => request.post(`${WEB}/api/enquiries`, { headers: { origin: WEB }, data: { items } });
 
-  expect((await post([line(stole, { unit_price: 100 })])).status()).toBe(409);    // client lies about the price
-  expect((await post([line(sold)])).status()).toBe(409);                           // out of stock
-  expect((await post([line(last, { quantity: 2 })])).status()).toBe(409);          // more than the single unit in stock
-  expect((await post([line(stole, { variant_id: '00000000-0000-4000-8000-000000000000' })])).status()).toBeGreaterThanOrEqual(400);
-  expect((await post([line(stole)])).status()).toBe(201);                          // control: a valid cart works
+  const refusal = async (items: unknown[], reason: string, extra: Record<string, unknown> = {}) => {
+    const response = await post(items);
+    expect(response.status()).toBe(409);
+    const detail = (await response.json()).detail;
+    expect(detail.code).toBe('cart_stale');
+    expect(detail.issues).toHaveLength(1);
+    expect(detail.issues[0]).toMatchObject({ reason, ...extra });
+  };
+  await refusal([line(stole, { unit_price: 100 })], 'price_changed', { current_price: 3500 });   // client lies about the price
+  await refusal([line(sold)], 'out_of_stock');
+  await refusal([line(last, { quantity: 2 })], 'insufficient_stock', { available: 1 });          // more than the single unit in stock
+  await refusal([line(stole, { variant_id: '00000000-0000-4000-8000-000000000000' })], 'unavailable');
+  const created = await post([line(stole)]);                                                       // control: a valid cart works
+  expect(created.status()).toBe(201);
+  expect((await created.json()).reference).toMatch(/^ES-[A-Z0-9]+$/);
 });
 
 test('an admin price change between adding and sending is caught', async ({ request }) => {
@@ -45,9 +55,11 @@ test('an admin price change between adding and sending is caught', async ({ requ
   expect((await request.post(`${API}/v1/enquiries`, { data: { items: [item] } })).status()).toBe(201);
   const owner = await backendSession(request);
   const changed = await request.put(`${API}/products/admin/${stole._id}`, { headers: owner, data: await updatePayload(request, stole._id, owner, 4300) });
-  expect(changed.status(), await changed.text()).toBeLessThan(300);
+  expect(changed.status(), await changed.text()).toBe(200);
   try {
-    expect((await request.post(`${API}/v1/enquiries`, { data: { items: [item] } })).status()).toBe(409);
+    const stale = await request.post(`${API}/v1/enquiries`, { data: { items: [item] } });
+    expect(stale.status()).toBe(409);
+    expect((await stale.json()).detail.issues[0]).toMatchObject({ reason: 'price_changed', current_price: 4300 });
   } finally {   // restore so the suite stays order-independent
     await request.put(`${API}/products/admin/${stole._id}`, { headers: owner, data: await updatePayload(request, stole._id, owner, 4200) });
   }
