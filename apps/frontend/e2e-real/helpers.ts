@@ -5,7 +5,7 @@ export const WEB = `http://127.0.0.1:${process.env.E2E_REAL_WEB_PORT || '3300'}`
 export const OWNER = { email: 'owner@e2e.test', password: 'e2e-owner-Passw0rd-fixture' };
 export const cartKey = 'elegance-shawls.cart.v1';
 
-export type Variant = { id: string; color?: string; price: number; stock: number };
+export type Variant = { _id: string; color?: string; price: number; stock: number };
 export type PublicProduct = { _id: string; slug: string; name: string; status: string; variants: Variant[] };
 
 /** Reads a product straight from the real backend (public route). */

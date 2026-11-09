@@ -9,7 +9,7 @@ const search = async (request: import('@playwright/test').APIRequestContext, q: 
     const response = await request.post(`${API}/v1/search`, { data: { q, limit: 50, ...(cursor ? { cursor } : {}) } });
     expect(response.status()).toBe(200);
     const body = await response.json();
-    names.push(...body.items.map((item: { name: string }) => item.name));
+    names.push(...body.items.map((item: { product: { name: string } }) => item.product.name));
     cursor = body.next_cursor;
   } while (cursor);
   return names;

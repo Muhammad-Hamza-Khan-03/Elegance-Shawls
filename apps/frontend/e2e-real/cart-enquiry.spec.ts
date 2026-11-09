@@ -29,7 +29,7 @@ test('the server revalidates price, stock and availability (stale carts are refu
   const stole = await product(request, 'e2e-brown-pashmina-stole');
   const sold = await product(request, 'e2e-maroon-silk-stole');
   const last = await product(request, 'e2e-last-piece-scarf');
-  const line = (p: typeof stole, over: Record<string, unknown> = {}) => ({ product_id: p._id, variant_id: p.variants[0].id, quantity: 1, unit_price: p.variants[0].price, currency: 'PKR', ...over });
+  const line = (p: typeof stole, over: Record<string, unknown> = {}) => ({ product_id: p._id, variant_id: p.variants[0]._id, quantity: 1, unit_price: p.variants[0].price, currency: 'PKR', ...over });
   const post = (items: unknown[]) => request.post(`${WEB}/api/enquiries`, { headers: { origin: WEB }, data: { items } });
 
   expect((await post([line(stole, { unit_price: 100 })])).status()).toBe(409);    // client lies about the price
@@ -41,7 +41,7 @@ test('the server revalidates price, stock and availability (stale carts are refu
 
 test('an admin price change between adding and sending is caught', async ({ request }) => {
   const stole = await product(request, 'e2e-ivory-merino-shawl');
-  const item = { product_id: stole._id, variant_id: stole.variants[0].id, quantity: 1, unit_price: stole.variants[0].price, currency: 'PKR' };
+  const item = { product_id: stole._id, variant_id: stole.variants[0]._id, quantity: 1, unit_price: stole.variants[0].price, currency: 'PKR' };
   expect((await request.post(`${API}/v1/enquiries`, { data: { items: [item] } })).status()).toBe(201);
   const owner = await backendSession(request);
   const changed = await request.put(`${API}/products/admin/${stole._id}`, { headers: owner, data: await updatePayload(request, stole._id, owner, 4300) });

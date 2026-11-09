@@ -10,7 +10,7 @@ test('admin proxy: no cookie, a forged cookie or a foreign origin never reaches 
 });
 
 test('backend admin routes refuse anonymous callers, a bogus session and the retired shared key', async ({ request }) => {
-  for (const path of ['/products/admin/', '/v1/admin/accounts', '/v1/admin/audit', '/v1/admin/enquiries?reference=ES-NOPE22', '/v1/admin/jobs']) {
+  for (const path of ['/products/admin/', '/v1/admin/accounts', '/v1/admin/audit', '/v1/admin/enquiries?reference=ES-NOPE22', '/v1/admin/jobs/00000000-0000-4000-8000-000000000000']) {
     expect((await request.get(`${API}${path}`)).status(), path).toBe(401);
   }
   expect((await request.get(`${API}/products/admin/`, { headers: { 'X-Admin-Session': 'es1.not-a-real-session' } })).status()).toBe(401);

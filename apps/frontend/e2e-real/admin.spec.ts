@@ -43,9 +43,12 @@ test('product lifecycle through the admin proxy: create -> public -> draft -> hi
   expect((await page.request.delete(`${WEB}/api/admin/products/${id}`, { headers: write })).status()).toBe(200);   // soft delete = archive
   expect((await request.get(`${API}/products/slug/${slug}`)).status()).toBe(404);
 
-  const audit = await request.get(`${API}/v1/admin/audit`, { headers: await backendSession(request) });   // mutations were attributed to the individual
+  const owner = await backendSession(request);   // mutations were attributed to the individual account, not a shared key
+  const me = await (await request.get(`${API}/v1/admin/auth/me`, { headers: owner })).json();
+  const audit = await request.get(`${API}/v1/admin/audit`, { headers: owner });
   expect(audit.status()).toBe(200);
-  expect(JSON.stringify(await audit.json())).toContain(OWNER.email);
+  const rows: { actor_type: string; actor_id: string }[] = (await audit.json()).items;
+  expect(rows.some((row) => row.actor_type === 'admin' && row.actor_id === me.account.id)).toBe(true);
 });
 
 test('RBAC: a viewer can read but is refused every write, and the refusal is audited', async ({ page, request }) => {
