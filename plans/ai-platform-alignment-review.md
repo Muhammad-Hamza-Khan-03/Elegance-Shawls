@@ -1,12 +1,14 @@
 # Plan alignment review
 
-> **HISTORICAL / SUPERSEDED — do not use as current instructions.** This review compares the plan with the repository as it was when the catalogue and ingestion jobs ran on MongoDB.
+> **Purpose and audience.** Historical comparison for maintainers and reviewers who need to understand why the original AI plan diverged from implementation. It is an audit record, not a current implementation or deployment guide.
+>
+> **HISTORICAL / SUPERSEDED — do not use as current instructions.** This review compares the plan with an earlier MongoDB-backed repository snapshot.
 > The current authoritative architecture is **PostgreSQL-only**: PostgreSQL is required at runtime (`DATABASE_URL`; the backend will not start without it). MongoDB removal was completed in S4 (code, dependencies, compose, CI and backup scripts). References below to MongoDB, Motor, Mongo-backed jobs or `MONGODB_URI`/`MONGO_DB_NAME` describe the earlier design and are kept only for audit and history.
 > For the current design see `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md`; for deployment see `DEPLOYMENT.md`. This document must not be used as a deployment guide.
 
 > **Admin authentication note.** Any shared `ADMIN_API_KEY` / HMAC-signed session-cookie description below is the retired flow. Current behaviour: individual admin accounts with opaque server-side `X-Admin-Session` sessions, a server-side Next.js proxy, audit attribution, and `ADMIN_API_KEY` only as an expiring legacy fallback (`docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` 3.9, `DEPLOYMENT.md`).
 
-Compares `elegance-shawls-ai-platform-plan.md` (v1.0, 2026-10-29) against the repository on branch `phase-1/one-source-ingestion`.
+Compares the historical plan (v1.0, 2026-10-29) with the then-current `phase-1/one-source-ingestion` branch. For present-day facts, use `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md` and the current QA/reconciliation records; the integration ref reviewed for this editorial pass is `63f1730663114d31085967ae01a05687bd614979`.
 
 Verdict: the plan matches the **foundation** very well. It diverges on **backend shape, queueing, and what "Phase 1" means**. It does not mention the ingestion pipeline that is already built.
 

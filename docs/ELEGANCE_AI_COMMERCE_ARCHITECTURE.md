@@ -1,8 +1,10 @@
 # Elegance Architecture
 
-The single authoritative architecture document for Elegance Shawls: what exists today, where the system is going, and which decisions and approvals govern the path. The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md) (v2.0); this document records the decisions, boundaries and gates, and does not duplicate that plan. Ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md).
+**Purpose and audience.** This is the authoritative architecture reference for maintainers, reviewers, operators, and future contributors. It records repository-backed facts, accepted boundaries, safety gates, and proposed phases. It is not a deployment log or a promise that target-state components are running.
 
-Deployment identifiers and release SHAs belong in release records, not here. Statements under "Current state" are verifiable in this repository; everything under "Target state" is a decision, not a fact about running software.
+The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md); ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md). Deployment identifiers and release SHAs belong in release records, not here. Statements under **Current state** are verifiable in this repository; **Target state**, **Planned**, **Deferred**, and **Blocked** describe decisions or work that is not yet complete.
+
+**Current high-level position (reviewed 2026-11-09).** The catalogue, PostgreSQL-backed ingestion/review flow, server search, validated assistant/enquiry seams, admin accounts, and provider-neutral customer-memory contract are implemented to varying levels of QA. Customer authentication is configuration-gated and disabled by default. Server-side cart, orders, payments, HubSpot sync, and production memory activation are not implemented. AI release readiness remains `false` until the relevant evaluation and privacy gates pass.
 
 ## 1. Current state
 
@@ -195,7 +197,7 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 
 #### Current M4 milestone status — 2026-11-08
 
-The provider-training policy and migration downgrade fixture are now present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`; PR #191 → current `origin/staging-integration` `4675052b7b983c24b46b2d39fa18e4f1a8815124`, while `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+The provider-training policy and migration downgrade fixture are present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → historical staging promotion `d020d521f2666726a2b82316785c8bf72669e83a`; PR #194 is the current documentation reconciliation at `origin/staging-integration` `63f1730663114d31085967ae01a05687bd614979`, while `origin/staging` is `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` and `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
 
 Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis and arq verification passed: Redis was healthy at `127.0.0.1:6380`, readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq was exercised only through two bounded synthetic calls; no secrets or API keys are documented.
 
@@ -203,7 +205,13 @@ This remains a staging/non-production milestone. Deployment, production activati
 
 ### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
 
-The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+The consolidation briefly carried two embedding pipelines. The **canonical configured pipeline** is the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`. EmbeddingGemma is a separately verified local-only candidate for search; it is not the canonical E5 configuration and is not memory-extraction or production approval.
+
+#### EmbeddingGemma 2 candidate — verified local-only boundary (2026-11-08)
+
+The staging-integration candidate contract additionally verifies `google/embeddinggemma-2` for the local search path: Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`; model-tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`; weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`; 768 dimensions; CPU-only. The candidate quality record reports recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, zero hard-constraint violations, and reproducibility Jaccard `1.0`.
+
+Independent QA is recorded as Gemma/contract `35 passed, 1 skipped`, evaluation `14 passed`, embedding integration `21 passed`, schema integration `6 passed`, compileall/diff-check passed, and disposable database backfill `8/8` with an idempotent rerun and semantic retrieval pass. This evidence verifies the pinned local candidate and its search/backfill contract only. It does **not** verify hosted staging acceptance, external OTLP/Langfuse, reviewed model/evaluation provenance beyond the recorded candidate evidence, deployment, production activation, memory extraction, or `release_ready`; the activation boundary remains local-only until those gates are separately cleared.
 
 #### EmbeddingGemma 2 candidate — verified local-only boundary (2026-11-08)
 
@@ -301,7 +309,7 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 | `docs/phase-1-one-source-ingestion.md` | Ingestion states, rules and security model. |
 | `README.md`, `DEPLOYMENT.md`, `OPERATIONS.md`, `LAUNCH_RUNBOOK.md`, `CLAUDE.md` | Setup, deploy and operations. Updated only when their commands, variables or procedures actually change. |
 
-## Appendix A. Product quality control pipeline and MCP connector (carried over)
+## Appendix A. Product quality control pipeline (carried over)
 
 > Carried over unchanged from branch `docs/staging-first-release-workflow` during the staging-integration consolidation. It was written against an older numbering of this document (it was section 9.1 there); the content is current, only its heading numbers are not.
 
@@ -340,60 +348,5 @@ AI may assist only where it adds value:
 
 AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
 
-### Controlled MCP business connector — future Phase 5/6
-
-An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
-
-```text
-Admin AI
-   -> MCP server
-   -> authenticated FastAPI business tool
-   -> authorization and validation
-   -> MongoDB/provider action
-   -> audit event
-```
-
-Start with read-only tools:
-
-```text
-list_failed_imports()
-find_missing_images()
-find_duplicate_candidates()
-get_import_job_summary()
-```
-
-Only later add approval-required proposal/mutation tools:
-
-```text
-propose_product_correction()
-propose_description_update()
-approve_staged_product()
-retry_failed_job()
-```
-
-Every mutation must follow:
-
-```text
-AI suggestion
-    -> human review
-    -> explicit approval
-    -> backend validation
-    -> state change
-    -> audit log
-```
-
-MCP requirements:
-
-- No direct database credentials or unrestricted queries.
-- Server-side authentication and per-tool authorization.
-- Read-only default and least-privilege scopes.
-- Idempotency for retryable actions.
-- Clear confirmation for every mutation.
-- Provider and database errors returned safely.
-- Full actor, tool, target, before/after, and timestamp audit data.
-- Separate admin/demo MCP credentials and environments.
-
 - Deterministic product quality checks.
 - Quality status, rule failures, and revalidation path.
-- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
-- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.
