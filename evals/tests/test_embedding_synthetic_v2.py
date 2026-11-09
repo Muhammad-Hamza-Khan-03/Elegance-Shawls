@@ -4,7 +4,6 @@ import hashlib
 import importlib.util
 import json
 import re
-import subprocess
 from pathlib import Path
 
 import yaml
@@ -13,6 +12,10 @@ EVALS = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("run_embedding_eval", EVALS / "run_embedding_eval.py")
 ev = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ev)
+
+manifest_spec = importlib.util.spec_from_file_location("artifact_manifest", EVALS / "artifact_manifest.py")
+artifact_manifest = importlib.util.module_from_spec(manifest_spec)
+manifest_spec.loader.exec_module(artifact_manifest)
 
 V1_SHA = "c5382437d5bad1ee823b9286fe163e4bc69b11162bdcbdb152ba4b283ab78b96"
 V2_SHA = "a8511afd90b58e0bb82d4c15de5081ab20de92268c0449138f9610fbf054bdac"
@@ -35,10 +38,8 @@ def test_v1_is_unchanged_and_checksums_are_deterministic():
     assert hashlib.sha256(V2_BYTES).hexdigest() == V2_SHA == THR2["fixture"]["sha256"]
     assert THR2["fixture"]["path"] == "datasets/embedding_synthetic_v2.jsonl"
     assert ROWS2[0]["provenance"]["v1_sha256"] == V1_SHA
-    # tracked v1 files are byte-identical to the base commit
-    out = subprocess.run(["git", "diff", "--stat", "c71ef03", "--", "evals/datasets/embedding_synthetic.jsonl",
-                          "evals/embedding_thresholds.yaml"], cwd=EVALS, capture_output=True, text=True)
-    assert out.returncode == 0 and out.stdout == ""
+    # the frozen v1 files are byte-identical to the pinned manifest (no git history needed)
+    assert [p for p in artifact_manifest.verify() if "embedding" in p] == []
 
 
 def test_exact_counts_unique_ids_and_corpus_preserved():

@@ -1,20 +1,26 @@
 """Evaluation runner. Usage (from the repo root):
 
-  python evals/run_evals.py                  # recorded responses, no network or LLM quota
-  python evals/run_evals.py --release-ready  # also fail while any suite is "not evaluated"
+  python evals/run_evals.py                  # recorded responses + deterministic code suites, no network or LLM quota
+  python evals/run_evals.py --release-ready  # also fail while the intended release is not evidence-complete
   python evals/run_evals.py --json out.json
 
-Statuses: pass | fail | not_evaluated. A missing or empty dataset is "not evaluated", and so is a
-suite whose recorded responses are not genuine model output (provenance other than "model", for
-example the reference-copy "fixture" rows): the metrics still run as a harness check and can fail,
-but they never count as evidence. "Not evaluated" does not fail an ordinary pull request, but it
-always blocks AI release readiness (--release-ready).
-Exit codes: 0 ok, 1 a threshold failed, 2 usage/live mode unavailable, 3 not release-ready.
+Suites (thresholds.yaml) guard features (release_profile.yaml). Statuses: pass | fail | not_evaluated.
+- source `code`: the production code (parser, matcher) is executed against the dataset now, so the result is real for that code;
+  source `recorded`: scored from recorded MODEL responses, and fixture rows (provenance other than "model") never count as evidence.
+- A missing/empty dataset or a suite without a scorer is "not evaluated" and never passes a release gate.
+- A suite is REQUIRED when its feature is scheduled in the release profile. A failing required suite exits 1. Failures in suites of
+  unscheduled features are reported as advisory and do not block unrelated development (--strict makes them block).
+- --release-ready (exit 3 while not ready) additionally needs: every required suite passing on `reviewed` evidence (synthetic data
+  never qualifies), every scheduled feature to have suites, and a recorded owner approval in the profile.
+Exit codes: 0 ok, 1 a required threshold failed, 2 usage/configuration error, 3 not release-ready.
 """
 import argparse
+import importlib.util
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -57,6 +63,33 @@ def filter_parsing_metrics(examples: list[dict], responses: dict[str, dict]) -> 
 SCORERS = {"filter_parsing": filter_parsing_metrics}
 
 
+def _backend_on_path() -> None:
+    backend = str(HERE.parent / "apps" / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+
+
+def code_filter_parsing(examples: list[dict], root: Path) -> dict[str, float]:
+    """Runs the PRODUCTION parser (catalog/query.py) on every query; nothing is recorded or mocked."""
+    _backend_on_path()
+    from catalog.query import parse_query
+    return filter_parsing_metrics(examples, {e["id"]: parse_query(e["query"]).filters() for e in examples})
+
+
+def code_variant_constraints(examples: list[dict], root: Path) -> dict[str, float]:
+    """Parser + matcher over the fixture catalogue, via the existing deterministic runner (run_retrieval_evals.py)."""
+    _backend_on_path()
+    spec = importlib.util.spec_from_file_location("run_retrieval_evals", HERE / "run_retrieval_evals.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    products = module.load_catalogue(root / "fixtures" / "retrieval_catalogue.json")
+    return module.run(examples, products)["metrics"]
+
+
+# Suites whose source is `code`. A code suite without a scorer here (retrieval, grounding, action_safety) is "not evaluated".
+CODE_SCORERS = {"filter_parsing": code_filter_parsing, "variant_constraints": code_variant_constraints}
+
+
 def _check(metrics: dict[str, float], limits: dict) -> list[str]:
     failures = []
     for name, limit in limits.items():
@@ -70,58 +103,123 @@ def _check(metrics: dict[str, float], limits: dict) -> list[str]:
     return failures
 
 
-def evaluate(root: Path, thresholds: dict) -> list[dict]:
+def evaluate(root: Path, thresholds: dict, profile: dict | None = None) -> list[dict]:
+    required = _required_suites(thresholds, profile)
     results = []
     for name, suite in thresholds["suites"].items():
+        base = {"suite": name, "feature": suite.get("feature"), "evidence": suite.get("evidence", "synthetic"),
+                "source": suite.get("source", "recorded"), "required": name in required}
         examples = load_jsonl(root / suite["dataset"])
         if not examples:
-            results.append({"suite": name, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": []})
+            results.append({**base, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": ["no dataset"]})
             continue
-        if name not in SCORERS:
-            results.append({"suite": name, "status": "not_evaluated", "examples": len(examples), "metrics": {},
-                            "failures": ["no scorer implemented for this suite"]})
-            continue
-        recorded = load_jsonl(root / "recorded" / f"{name}.jsonl")
-        responses = {r["id"]: r["response"] for r in recorded}
-        metrics = SCORERS[name](examples, responses)
+        if base["source"] == "code":
+            scorer = CODE_SCORERS.get(name)
+            if scorer is None:
+                results.append({**base, "status": "not_evaluated", "examples": len(examples), "metrics": {},
+                                "failures": ["no scorer implemented for this suite"]})
+                continue
+            metrics, genuine = scorer(examples, root), True
+        else:
+            if name not in SCORERS:
+                results.append({**base, "status": "not_evaluated", "examples": len(examples), "metrics": {},
+                                "failures": ["no scorer implemented for this suite"]})
+                continue
+            recorded = load_jsonl(root / "recorded" / f"{name}.jsonl")
+            metrics = SCORERS[name](examples, {r["id"]: r["response"] for r in recorded})
+            genuine = bool(recorded) and all(r.get("provenance") == "model" for r in recorded)
         failures = _check(metrics, suite["metrics"])
-        genuine = bool(recorded) and all(r.get("provenance") == "model" for r in recorded)
         status = "fail" if failures else "pass" if genuine else "not_evaluated"
         if status == "not_evaluated":
             failures = ["recorded responses are fixtures, not model output (harness check only)"]
-        results.append({"suite": name, "status": status, "examples": len(examples),
-                        "metrics": metrics, "failures": failures})
+        results.append({**base, "status": status, "examples": len(examples), "metrics": metrics, "failures": failures})
     return results
+
+
+def _required_suites(thresholds: dict, profile: dict | None) -> set[str]:
+    """Suites guarding a scheduled feature. Without a profile every suite is required (the pre-profile behaviour)."""
+    if profile is None:
+        return set(thresholds["suites"])
+    scheduled = {name for name, feature in profile["features"].items() if feature.get("scheduled")}
+    return {name for name, suite in thresholds["suites"].items() if suite.get("feature") in scheduled}
+
+
+def profile_problems(thresholds: dict, profile: dict) -> list[str]:
+    """Configuration errors: the profile and the thresholds must describe the same suites and features."""
+    problems, listed = [], set()
+    for fname, feature in profile["features"].items():
+        for suite in feature.get("suites", []):
+            listed.add(suite)
+            if suite not in thresholds["suites"]:
+                problems.append(f"feature {fname} lists unknown suite {suite}")
+            elif thresholds["suites"][suite].get("feature") != fname:
+                problems.append(f"suite {suite} says feature {thresholds['suites'][suite].get('feature')}, profile lists it under {fname}")
+    problems += [f"suite {n} is not listed under any feature" for n in thresholds["suites"] if n not in listed]
+    return problems
+
+
+def release_blockers(results: list[dict], profile: dict | None) -> list[str]:
+    """Why the intended release is not evidence-complete (empty list = ready). Never inferred from the environment."""
+    if profile is None:
+        return ["no release profile: the intended release configuration is unknown"]
+    blockers = []
+    for fname, feature in profile["features"].items():
+        if feature.get("scheduled") and not feature.get("suites"):
+            blockers.append(f"feature {fname} is scheduled but has no evaluation suite")
+    for r in results:
+        if not r["required"]:
+            continue
+        if r["status"] != "pass":
+            blockers.append(f"suite {r['suite']}: {r['status']}")
+        elif r["evidence"] != "reviewed":
+            blockers.append(f"suite {r['suite']}: dataset is {r['evidence']}, release needs reviewed evidence")
+    approval = profile.get("approval") or {}
+    if not (approval.get("recorded") and approval.get("reference")):
+        blockers.append("no recorded owner release approval (profile approval.recorded / reference)")
+    return blockers
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=HERE)
     parser.add_argument("--thresholds", type=Path)
+    parser.add_argument("--profile", type=Path)
     parser.add_argument("--mode", choices=["recorded", "live"], default="recorded")
     parser.add_argument("--release-ready", action="store_true")
+    parser.add_argument("--strict", action="store_true", help="advisory failures (unscheduled features) also fail")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.mode == "live":
         print("live mode is not available yet: no parser prompt exists. Pull requests use recorded responses.")
         return 2
     thresholds = yaml.safe_load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"))
-    results = evaluate(args.root, thresholds)
+    profile_path = args.profile or args.root / "release_profile.yaml"
+    if not profile_path.is_file():   # never lenient: deleting the profile must not weaken the gate
+        print(f"configuration error: release profile missing ({profile_path})")
+        return 2
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    if problems := profile_problems(thresholds, profile):
+        for problem in problems:
+            print("configuration error:", problem)
+        return 2
+    results = evaluate(args.root, thresholds, profile)
     for r in results:
         detail = ", ".join(f"{k}={v:.3f}" for k, v in r["metrics"].items()) or "-"
-        print(f"{r['suite']:<22} {r['status'].upper():<14} n={r['examples']:<4} {detail}")
+        tag = "REQUIRED" if r["required"] else "advisory"
+        print(f"{r['suite']:<22} {r['status'].upper():<14} {tag:<9} {r['evidence']:<10} n={r['examples']:<4} {detail}")
         for failure in r["failures"]:
             print(f"    - {failure}")
-    not_evaluated = [r["suite"] for r in results if r["status"] == "not_evaluated"]
-    failed = [r["suite"] for r in results if r["status"] == "fail"]
-    release_ready = not failed and not not_evaluated
-    print(f"\nrelease_ready={str(release_ready).lower()}"
-          + (f" (not evaluated: {', '.join(not_evaluated)})" if not_evaluated else ""))
+    failed = [r["suite"] for r in results if r["status"] == "fail" and (r["required"] or args.strict)]
+    blockers = release_blockers(results, profile)
+    release_ready = not failed and not blockers
+    print(f"\nrelease_ready={str(release_ready).lower()}")
+    for blocker in blockers:
+        print(f"  blocked: {blocker}")
     if args.json:
-        args.json.write_text(json.dumps({"release_ready": release_ready, "suites": results}, indent=2), encoding="utf-8")
+        args.json.write_text(json.dumps({"release_ready": release_ready, "blockers": blockers, "suites": results}, indent=2), encoding="utf-8")
     if failed:
         return 1
-    return 3 if args.release_ready and not_evaluated else 0
+    return 3 if args.release_ready and not release_ready else 0
 
 
 if __name__ == "__main__":

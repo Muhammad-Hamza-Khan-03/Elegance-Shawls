@@ -1,0 +1,38 @@
+# The INTENDED RELEASE CONFIGURATION for the AI gate (run_evals.py --release-ready). It is a reviewed file, not an environment guess.
+#
+# - A suite is REQUIRED when the feature it guards is scheduled here. Suites of unscheduled features still run and are reported
+#   (advisory) but cannot fail an ordinary pull request or block unrelated development.
+# - Scheduling a feature without evaluation suites, or with suites that are not evaluated / not passing / not reviewed, blocks
+#   release readiness. Turning a feature on is therefore only possible together with its evaluations.
+# - `settings` lists the backend settings that switch the feature on. tests/test_release_profile.py fails if a setting that is on
+#   by default (config defaults, Dockerfile, compose) belongs to an unscheduled feature, or if a new feature flag is not classified.
+# - release_ready also needs a recorded owner approval (docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md section 5). It stays false until
+#   `approval.recorded` is set, in a reviewed change, with the reference of the approval evidence.
+approval:
+  recorded: false
+  reference: null
+
+features:
+  catalogue_search:            # deterministic parser + matcher behind /v1/search; always on
+    scheduled: true
+    suites: [filter_parsing, variant_constraints]
+    settings: []
+  semantic_search:             # embeddings / hybrid ranking (canonical E5)
+    scheduled: false
+    suites: [retrieval]
+    settings: [embedding_enabled, local_semantic_search_enabled]
+  assistant:                   # grounded shopping assistant and its actions
+    scheduled: false
+    suites: [grounding, action_safety]
+    settings: [assistant_catalogue, assistant_llm, whatsapp_assistant_enabled, recommendations_enabled, recommendations_experiment_enabled]
+  customer_memory:             # identity and memory (privacy gate, M4)
+    scheduled: false
+    suites: []
+    settings: [customer_auth_enabled, customer_anonymous_merge_enabled, memory_extraction_enabled, whatsapp_llm_allow_training]
+  voice_and_image:             # WhatsApp voice notes and image matching
+    scheduled: false
+    suites: []
+    settings: [whatsapp_voice_enabled, whatsapp_image_enabled, whatsapp_bridge_enabled]
+
+# Boolean settings that are not AI features. Listed so a NEW flag cannot go unclassified.
+other_settings: [recommendations_synthetic_only, ingestion_source_authorized, otel_enabled]

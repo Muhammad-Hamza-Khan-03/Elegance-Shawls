@@ -97,19 +97,24 @@ jobs:
       - run: pytest -q -m integration
 
   evals:
-    # Recorded responses only: pull requests never spend live LLM quota. Suites without data report
-    # "not evaluated", which does not fail here but does block `--release-ready`.
+    # No live LLM quota is ever spent. Suites run the production parser/matcher or score recorded responses. Suites of features
+    # that are not scheduled in evals/release_profile.yaml are advisory; scheduled ones block. Release readiness stays an explicit
+    # gate (`run_evals.py --release-ready`) and is expected to be false until reviewed evidence and an owner approval are recorded.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7          # shallow on purpose: nothing may depend on git history
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r apps/backend/requirements-dev.txt
-      - name: Offline eval unit tests (deterministic, no network)
-        run: pytest -q apps/backend/tests/test_evals_runner.py
-      - name: Eval run (recorded responses; release readiness remains an explicit gate)
+      - name: Frozen evaluation artifacts match their SHA-256 manifest
+        run: python evals/artifact_manifest.py
+      - name: Offline eval tests (gate semantics, release profile consistency, runners; deterministic, no network)
+        run: pytest -q evals/tests apps/backend/tests/test_evals_runner.py
+      - name: Eval run (production parser and matcher; scheduled features block, others are advisory)
         run: python evals/run_evals.py --json evals-report.json
+      - name: Deterministic retrieval gate (fixture catalogue)
+        run: python evals/run_retrieval_evals.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

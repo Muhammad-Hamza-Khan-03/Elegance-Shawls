@@ -10,7 +10,9 @@ spec = importlib.util.spec_from_file_location("run_evals", EVALS / "run_evals.py
 run_evals = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_evals)
 
-THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "metrics": {
+PROFILE = {"approval": {"recorded": True, "reference": "owner-approval-test"},
+           "features": {"f": {"scheduled": True, "suites": ["filter_parsing"], "settings": []}}}
+THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "feature": "f", "evidence": "reviewed", "source": "recorded", "metrics": {
     "exact_match": {"min": 0.9}, "constraint_precision": {"min": 0.9}, "constraint_recall": {"min": 0.9}}}}}
 
 
@@ -21,6 +23,7 @@ def workspace(tmp_path, examples, recorded, thresholds=THRESHOLDS):
         (tmp_path / "datasets/filter_parsing.jsonl").write_text("\n".join(json.dumps(e) for e in examples))
     (tmp_path / "recorded/filter_parsing.jsonl").write_text("\n".join(json.dumps(r) for r in recorded))
     (tmp_path / "thresholds.yaml").write_text(yaml.safe_dump(thresholds))
+    (tmp_path / "release_profile.yaml").write_text(yaml.safe_dump(PROFILE))
     return tmp_path
 
 
@@ -30,18 +33,16 @@ GOOD = [{"id": "a", "provenance": "model", "response": {"category": "stoles", "c
         {"id": "b", "provenance": "model", "response": {"exclude_colors": ["red"]}}]
 
 
-def test_shipped_seed_is_a_harness_check_not_evidence():
+def test_shipped_filter_parsing_runs_the_real_parser_and_synthetic_data_is_not_release_evidence():
     thresholds = yaml.safe_load((EVALS / "thresholds.yaml").read_text())
-    results = {r["suite"]: r for r in run_evals.evaluate(EVALS, thresholds)}
+    profile = yaml.safe_load((EVALS / "release_profile.yaml").read_text())
+    results = {r["suite"]: r for r in run_evals.evaluate(EVALS, thresholds, profile)}
     result = results["filter_parsing"]
-    assert result["examples"] >= 10
-    assert result["metrics"]["exact_match"] == 1.0              # the harness itself works...
-    assert result["status"] == "not_evaluated"                  # ...but fixtures are not model output
-    assert "fixtures" in result["failures"][0]
-    recorded = run_evals.load_jsonl(EVALS / "recorded/filter_parsing.jsonl")
-    assert recorded and all(r["provenance"] == "fixture" for r in recorded)
-    scripts = {e["lang"] for e in run_evals.load_jsonl(EVALS / "datasets/filter_parsing.jsonl")}
-    assert scripts == {"en", "ur", "roman_ur"}
+    assert result["examples"] >= 10 and result["source"] == "code" and result["required"] is True
+    assert result["status"] == "pass" and result["metrics"]["exact_match"] >= 0.90   # the production parser, executed now
+    assert result["evidence"] == "synthetic"                                         # ...on data that cannot qualify for release
+    assert "dataset is synthetic" in " ".join(run_evals.release_blockers(list(results.values()), profile))
+
 
 
 def test_shipped_suites_without_data_are_not_evaluated_and_block_release():
