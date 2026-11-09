@@ -157,12 +157,14 @@ AI-suggested attributes, descriptions and SEO text are written as suggestions in
 
 AI releases are gated by evals. An empty or missing dataset reports "not evaluated", which blocks AI release readiness; it is never a pass. Normal pull requests use recorded responses, not live provider calls.
 
-**Current status (S5): NOT_EVALUATED, `release_ready=false`, by design.**
+**Current status: `release_ready=false`, by design (issue #138).**
 
-- S5 (final verification of the PostgreSQL consolidation) includes **no real provider call**; no provider key is used.
-- `python evals/run_evals.py` reports every suite as `NOT_EVALUATED`. `filter_parsing` has recorded fixtures only, which are a harness check and not model output; the other four suites have no data (`n=0`).
-- `--release-ready` therefore exits non-zero (3) with `release_ready=false`. That is intentional and is an **AI / Phase 1 release gate**, not a PostgreSQL migration failure: the database work does not depend on it.
-- No AI feature or provider is release-ready until a non-empty eval dataset exists and the required provider and privacy gates (3.5, 3.6) are met. These results are not to be edited or inferred into a pass.
+- **Suites and features.** `evals/thresholds.yaml` lists the suites; `evals/release_profile.yaml` is the reviewed, intended release configuration. A suite is *required* when the feature it guards is scheduled there; suites of unscheduled features still run and are reported as advisory, so disabled features never block unrelated development, while scheduling a feature cannot skip its evaluations.
+- **Real evidence only.** `filter_parsing` and `variant_constraints` run the production parser and matcher against `datasets/filter_parsing.jsonl` and `datasets/retrieval_constraints.jsonl` (source `code`). `retrieval`, `grounding` and `action_safety` have no scorer or no data and report `NOT_EVALUATED`. They are advisory until their features are scheduled.
+- **Release readiness** (`python evals/run_evals.py --release-ready`, exit 3 while blocked) needs every required suite passing on `reviewed` (independently human-reviewed) evidence, every scheduled feature to have suites, and a recorded owner approval in the profile. Today all datasets are synthetic, so the gate is blocked on evidence quality (issue #139) and on approval; nothing is inferred into a pass.
+- **No bypass by configuration.** `evals/tests/test_release_profile.py` fails when a backend boolean setting is unclassified, or is on by default (config, Dockerfile, compose) while its feature is unscheduled. A missing profile is a configuration error (exit 2), never a weaker gate.
+- **Deterministic artifacts.** Frozen gold data and thresholds are pinned by SHA-256 in `evals/artifact_manifest.json` (`python evals/artifact_manifest.py`); no test depends on git history.
+- No AI feature or provider is release-ready until required evidence exists and the provider and privacy gates (3.5, 3.6) are met. These results are not to be edited or inferred into a pass.
 
 ### 3.8 Phase naming and decision register
 

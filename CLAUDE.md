@@ -44,7 +44,8 @@ pytest -q -m integration                      # Testcontainers: PostgreSQL+pgvec
 alembic upgrade head | downgrade base         # needs DATABASE_URL; migrations live in apps/backend/migrations
 arq workers.settings.WorkerSettings           # Redis/arq worker for new AI workloads only
 python scripts/llm_smoke.py --fake            # LLM gateway smoke test, no keys
-python evals/run_evals.py [--release-ready]   # from the repo root; recorded responses, "not evaluated" blocks release
+python evals/run_evals.py [--release-ready]   # from the repo root; runs the production parser/matcher + recorded suites; required suites come from evals/release_profile.yaml; synthetic data and "not evaluated" block release
+pytest -q evals/tests apps/backend/tests/test_evals_runner.py   # gate semantics, profile consistency, frozen-artifact manifest (CI `evals` job)
 python evals/run_retrieval_evals.py           # Phase 1 deterministic retrieval/constraint gate (offline; not model evidence, does not change release_ready)
 docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait   # local Postgres + Redis (internal network)
 ```
