@@ -138,6 +138,48 @@ jobs:
           path: apps/frontend/playwright-report
           retention-days: 7
 
+  e2e-real-stack:
+    # Next.js -> FastAPI -> disposable PostgreSQL (pgvector). No mock API: this is the genuine end-to-end evidence.
+    # Synthetic fixtures only (apps/backend/scripts/seed_e2e.py); wa.me is intercepted, no model/provider/Redis is used.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg17
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e-throwaway
+          POSTGRES_DB: elegance_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U e2e -d elegance_e2e" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      E2E_DATABASE_URL: postgresql+asyncpg://e2e:e2e-throwaway@127.0.0.1:5432/elegance_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements*.txt
+      - run: pip install -r apps/backend/requirements.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: npm ci
+        working-directory: apps/frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/frontend
+      - run: npm run test:e2e:real
+        working-directory: apps/frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-real-stack
+          path: apps/frontend/playwright-report-real
+          retention-days: 7
+
   containers:
     runs-on: ubuntu-latest
     steps:
