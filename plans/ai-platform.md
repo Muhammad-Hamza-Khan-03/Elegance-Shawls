@@ -1,5 +1,7 @@
 # Elegance Shawls: AI Commerce Platform Plan
 
+> **Purpose and audience.** Historical planning record for the product owner and engineering contributors. Use it to understand intent and deferred scope; use the architecture and runbooks for current behavior or operational instructions.
+>
 > **Status: HISTORICAL / SUPERSEDED for the database architecture — do not use as current instructions.**
 > - PostgreSQL is now the **sole runtime database** (`DATABASE_URL` is required).
 > - MongoDB removal was **completed in S4** (code, dependencies, compose, CI and backup scripts).
@@ -14,8 +16,8 @@
 | | |
 |---|---|
 | **Owner** | Muhammad Hamza Khan |
-| **Repository** | `Muhammad-Hamza-Khan-03/Elegance-Shawls` (reviewed at `23e33e2`) |
-| **Document status** | **v2.0, final baseline for development.** Changes from here go through ADRs ([section 27](#27-architecture-decision-records)) and the version history ([section 2](#2-version-history)) |
+| **Repository evidence** | Current repository tip reviewed for this editorial pass: `origin/staging-integration` (`63f1730663114d31085967ae01a05687bd614979`) |
+| **Document status** | **v2.0 historical baseline.** It is not a current implementation or deployment checklist. New decisions belong in the architecture reference and current issue/QA records. |
 | **Last updated** | 2026-10-29 |
 | **Budget** | **Stage 1: ~$0/month** (current hosts + free tiers). **Stage 2: ~$8–16/month VPS** + optional serverless GPU, when affordable ([section 23](#23-budget)) |
 
@@ -210,7 +212,7 @@ Previous Next.js + FastAPI projects worked but didn't scale and didn't follow de
 
 ## 6. Current state of the repository
 
-Reviewed at commit `23e33e2` on 2026-10-29.
+Historical snapshot reviewed at commit `23e33e2` on 2026-10-29. Do not interpret the snapshot as current repository evidence; the current integration reference for this pass is `63f1730663114d31085967ae01a05687bd614979`.
 
 ### 6.1 Strengths to preserve
 
@@ -1018,7 +1020,7 @@ Each milestone produces something usable even if work pauses there. Durations ar
 **Ship:** multilingual search and staff enrichment with measurable quality.
 
 - [ ] Labelled eval sets: constraint parsing (English, Urdu script, Roman Urdu), variant correctness, retrieval quality.
-- [ ] Embedding benchmark: EmbeddingGemma 2 (shared space) vs. separate models → ADR-008.
+- [ ] Embedding benchmark: EmbeddingGemma 2 (shared space) vs. separate models → ADR-008. **Status (2026-11-08):** the pinned `google/embeddinggemma-2` local CPU candidate and contract are verified on staging (`origin/staging` `e5c04c8d4097a46adf9fecf00baddd15cc860fc2`, PR #192; contract PR #191/QA evidence recorded), but the comparative benchmark, hosted activation, and release gate remain incomplete; keep `release_ready=false`.
 - [ ] Semantic ranking with pgvector; reciprocal rank fusion with lexical; `index_version`.
 - [ ] Natural-language query parsing into hard/soft constraints (also usable from the search box).
 - [ ] Staff enrichment: suggestions with provenance, no fabric from photos, approval and audit.

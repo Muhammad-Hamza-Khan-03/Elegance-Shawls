@@ -1,5 +1,7 @@
 # Elegance Shawls Production Launch Plan
 
+> **Purpose and audience.** Historical launch-scope record for maintainers and product owners. It explains the original WhatsApp-first launch definition and preserves audit context; it must not be used as the current deployment procedure.
+>
 > **HISTORICAL / SUPERSEDED — do not use as current instructions.** This launch plan was written for the MongoDB-backed stack.
 > The current authoritative architecture is **PostgreSQL-only**: PostgreSQL is required at runtime (`DATABASE_URL`; the backend will not start without it). MongoDB removal was completed in S4 (code, dependencies, compose, CI and backup scripts). References below to MongoDB, Motor, Mongo-backed jobs or `MONGODB_URI`/`MONGO_DB_NAME` describe the earlier design and are kept only for audit and history.
 > For the current design see `docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md`; for deployment see `DEPLOYMENT.md`. This document must not be used as a deployment guide.

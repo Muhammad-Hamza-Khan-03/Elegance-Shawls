@@ -1,5 +1,7 @@
 # M4 Batch C provider decision record (idempotent, privacy gate only)
 
+**Purpose and audience.** Privacy/security decision record for the owner and independent QA reviewer. It compares future memory-extraction options without selecting, purchasing, credentialing, or activating one.
+
 **Task ID:** `t_m4c_provider_decision`
 **Parent:** `t_m4c_production_memory_privacy_gate`
 **Idempotency key:** `m4c-production-memory-privacy-gate/provider-decision/v1`
@@ -18,7 +20,7 @@ The change does not select or purchase a provider. Customer memory extraction re
 
 ## Current staging evidence — 2026-11-08
 
-The policy record is present in the current staging lineage: PR #179 merged to `staging-integration` as `e04fb7470fb921032086f8c99217247458efec1d`, and PR #184 promoted that policy tree to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`. The current `origin/staging-integration` tip is `4675052b7b983c24b46b2d39fa18e4f1a8815124` (PR #191); the migration fixture was merged by PR #185 at `5a6ed21a5665d254ac345749811efa9dc63a8722` and promoted by PR #186 to `origin/staging` `d020d521f2666726a2b82316785c8bf72669e83a`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+The policy record is present in the current staging lineage: PR #179 merged to `staging-integration` as `e04fb7470fb921032086f8c99217247458efec1d`, and PR #184 promoted that policy tree to staging as `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`. The current `origin/staging-integration` tip for this pass is `63f1730663114d31085967ae01a05687bd614979` (PR #194); the migration fixture was merged by PR #185 at `5a6ed21a5665d254ac345749811efa9dc63a8722` and the current `origin/staging` is `e5c04c8d4097a46adf9fecf00baddd15cc860fc2`. `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
 
 Independent evidence recorded for this staging-only milestone includes M4 QA (`119 passed, 29 deselected`), migration promotion QA (`23 passed, 2 warnings`), and targeted migration suites (`70 passed`). Local disposable Redis was healthy at `127.0.0.1:6380`; backend readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected; and the synthetic arq job completed `queued → deferred → queued → complete` on attempt 2. A bounded Groq synthetic smoke made two calls only. No API key, credential, customer data, deployment, or provider activation is claimed.
 
