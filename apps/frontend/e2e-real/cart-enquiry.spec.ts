@@ -56,5 +56,7 @@ test('an admin price change between adding and sending is caught', async ({ requ
 async function updatePayload(request: import('@playwright/test').APIRequestContext, id: string, owner: Record<string, string>, price: number) {
   const current = await (await request.get(`${API}/products/admin/${id}`, { headers: owner })).json();
   const { _id, id: _ignore, is_active, created_at, updated_at, ...rest } = current;   // eslint-disable-line @typescript-eslint/no-unused-vars
-  return { ...rest, price, variants: current.variants.map((v: Record<string, unknown>) => ({ ...v, price })) };
+  const variants = current.variants.map((v: Record<string, unknown>) =>
+    ({ id: v._id, name: v.name, color: v.color, size: v.size, image_url: v.image_url, price, currency: v.currency, stock: v.stock, stock_status: v.stock_status, description: v.description }));
+  return { ...rest, price, variants };
 }
