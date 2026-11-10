@@ -1,0 +1,12 @@
+{
+  "note": "SHA-256 of frozen evaluation artifacts; regenerate only with a stated reason (python evals/artifact_manifest.py --write)",
+  "sha256": {
+    "datasets/embedding_synthetic.jsonl": "c5382437d5bad1ee823b9286fe163e4bc69b11162bdcbdb152ba4b283ab78b96",
+    "embedding_thresholds.yaml": "4909c861dda3bb9d99394dda8dc0e608956778094fa62cadabbb9d350489de93",
+    "datasets/filter_parsing.jsonl": "d021ab12244f78ff56d8fe7685e01334e857ad2b30369e72af213cbe38cb78de",
+    "datasets/retrieval_constraints.jsonl": "b12fbddb401a4a387a0e61dfa58f4466e009329fa437641680848beacfd10c2a",
+    "datasets/retrieval_hybrid.jsonl": "2e6f421f66c9fd923738cb758df243b17693096d4dd8d353837a5605f59a040e",
+    "thresholds.yaml": "adc1a1a9f3566fe7285741adce0ceedde19cfc89a0de6105158fec9a9d26a620",
+    "release_profile.yaml": "9bffeb02cfd1519bc31187e7bf96678d96103a65d3c8eaa6145ad8f6ee478fe1"
+  }
+}
