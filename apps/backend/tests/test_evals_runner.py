@@ -26,6 +26,12 @@ def workspace(tmp_path, examples, recorded, thresholds=THRESHOLDS):
     return tmp_path
 
 
+def not_ready(root):
+    """--release-ready refuses non-canonical roots (exit 2); the readiness of a scratch root is judged through the blockers instead."""
+    assert run_evals.main(["--root", str(root), "--release-ready"]) == 2
+    return run_evals.release_blockers(run_evals.evaluate(root, THRESHOLDS, PROFILE, env={}), PROFILE, root, env={})
+
+
 EX = [{"id": "a", "query": "brown stole", "expected": {"category": "stoles", "colors": ["brown"]}},
       {"id": "b", "query": "not red", "expected": {"exclude_colors": ["red"]}}]
 GOOD = [{"id": "a", "provenance": "model", "response": {"category": "stoles", "colors": ["brown"]}},
@@ -53,7 +59,7 @@ def test_missing_dataset_is_not_evaluated_not_pass(tmp_path):
     root = workspace(tmp_path, None, GOOD)
     [result] = run_evals.evaluate(root, THRESHOLDS)
     assert result["status"] == "not_evaluated"
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
+    assert not_ready(root)
 
 
 def test_empty_dataset_is_not_evaluated(tmp_path):
@@ -64,7 +70,7 @@ def test_empty_dataset_is_not_evaluated(tmp_path):
 def test_passing_suite_alone_is_not_release_ready(tmp_path):
     root = workspace(tmp_path, EX, GOOD)       # passes, but nothing signs its dataset or approves the candidate (see test_attestation.py)
     assert run_evals.main(["--root", str(root)]) == 0
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
+    assert not_ready(root)
 
 
 def test_metric_below_threshold_turns_the_run_red(tmp_path):
@@ -112,7 +118,7 @@ def test_fixture_responses_never_count_as_evaluated_even_when_perfect(tmp_path):
     [result] = run_evals.evaluate(root, THRESHOLDS)
     assert result["status"] == "not_evaluated" and result["metrics"]["exact_match"] == 1.0
     assert run_evals.main(["--root", str(root)]) == 0
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
+    assert not_ready(root)
 
 
 def test_responses_without_provenance_are_not_trusted(tmp_path):

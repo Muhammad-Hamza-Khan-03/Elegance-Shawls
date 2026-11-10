@@ -105,3 +105,9 @@ def test_configuration_drift_is_an_error():
 def test_missing_profile_is_an_error_not_a_weaker_gate(tmp_path):
     (tmp_path / "thresholds.yaml").write_text(yaml.safe_dump(THRESHOLDS))
     assert run_evals.main(["--root", str(tmp_path)]) == 2
+
+
+def test_limits_must_be_exactly_one_numeric_bound():
+    assert not run_evals._is_limit({"min": 0.9, "max": 1})                  # two bounds
+    assert not run_evals._is_limit({}) and not run_evals._is_limit({"min": True}) and not run_evals._is_limit({"avg": 1})
+    assert run_evals._is_limit({"min": 0}) and run_evals._is_limit({"max": 0.5})

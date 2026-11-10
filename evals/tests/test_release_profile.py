@@ -63,6 +63,12 @@ def assignments(path: Path) -> list[tuple[str, str]]:
     return [(k, _value(v)) for k, v in re.findall(r"(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=(\S*)", text, re.M)]
 
 
+def test_truthy_spellings_match_what_the_settings_loader_accepts():
+    from pydantic import TypeAdapter
+    accepted = {v for v in ("true", "1", "yes", "on", "y", "t", "false", "0", "no", "off", "n", "f") if TypeAdapter(bool).validate_python(v)}
+    assert TRUTHY == accepted, "scanner and pydantic disagree on what enables a flag"
+
+
 def deployment_sources() -> list[Path]:
     return [p for p in [ROOT / "apps/backend/Dockerfile", *ROOT.glob("compose*.yaml"), ROOT / "apps/backend/.env.example", *ROOT.glob(".env*example")] if p.is_file()]
 

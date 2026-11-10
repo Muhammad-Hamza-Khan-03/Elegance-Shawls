@@ -14,6 +14,8 @@ Suites (thresholds.yaml) guard features (release_profile.yaml). Statuses: pass |
   suite passing on a dataset with a signed independent held-out review record and no leakage, every scheduled feature to have suites,
   an unchanged artifact manifest (thresholds and profile included) and a signed owner approval of exactly this candidate. The
   verification keys come from EVAL_REVIEWER_KEY / EVAL_OWNER_KEY in the environment; without them the gate stays closed.
+- --release-ready judges ONLY the canonical files next to this script: it refuses --thresholds, --profile and any other --root (exit 2),
+  because an override would be judged by a policy nobody approved.
 Exit codes: 0 ok, 1 a required threshold failed, 2 usage/configuration error (including manifest drift), 3 not release-ready.
 """
 import argparse
@@ -117,7 +119,14 @@ def evaluate(root: Path, thresholds: dict, profile: dict | None = None, env: dic
         review = attestation.review_problems(root, name, suite, env)   # derived, never declared in configuration
         base = {"suite": name, "feature": suite.get("feature"), "evidence": "reviewed" if not review else "unverified",
                 "evidence_problems": review, "source": suite.get("source", "recorded"), "required": name in required}
-        examples = load_jsonl(root / suite["dataset"])
+        try:
+            examples = load_jsonl(root / suite["dataset"])
+            malformed = not all(isinstance(e, dict) for e in examples)
+        except (ValueError, OSError):
+            examples, malformed = [], True
+        if malformed:
+            results.append({**base, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": ["dataset is malformed (every line must be a JSON object)"]})
+            continue
         if not examples:
             results.append({**base, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": ["no dataset"]})
             continue
@@ -220,6 +229,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true", help="advisory failures (unscheduled features) also fail")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
+    if args.release_ready and (args.thresholds or args.profile or args.root.resolve() != HERE):
+        print("configuration error: --release-ready judges the canonical thresholds, profile and root only; --thresholds, --profile and --root are refused")
+        return 2
     if args.mode == "live":
         print("live mode is not available yet: no parser prompt exists. Pull requests use recorded responses.")
         return 2
@@ -233,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print("configuration error:", problem)
         return 2
-    if args.root == HERE and (drift := artifact_manifest.verify(HERE)):
+    if args.root.resolve() == HERE and (drift := artifact_manifest.verify(HERE)):
         for problem in drift:
             print("configuration error: frozen artifact:", problem)
         return 2
