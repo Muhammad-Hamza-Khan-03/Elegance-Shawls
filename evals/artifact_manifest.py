@@ -25,7 +25,12 @@ def verify(root: Path = HERE) -> list[str]:
     """Problems found (empty = every frozen artifact matches the manifest)."""
     if not (root / "artifact_manifest.json").is_file():
         return ["artifact_manifest.json: missing"]
-    recorded = json.loads((root / "artifact_manifest.json").read_text(encoding="utf-8"))["sha256"]
+    try:
+        recorded = json.loads((root / "artifact_manifest.json").read_text(encoding="utf-8"))["sha256"]
+        if not isinstance(recorded, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in recorded.items()):
+            raise ValueError
+    except Exception:    # noqa: BLE001 - a malformed manifest is a problem to report, not a crash
+        return ["artifact_manifest.json: malformed"]
     problems = [f"{rel}: not in the manifest" for rel in FROZEN if rel not in recorded]
     for rel, expected in recorded.items():
         path = root / rel

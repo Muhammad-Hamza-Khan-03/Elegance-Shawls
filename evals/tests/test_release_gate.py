@@ -86,7 +86,7 @@ def test_feature_configuration_cannot_hide_an_activation():
 
 def test_loosened_thresholds_are_malformed_or_caught_by_the_manifest():
     loosened = {"suites": {**THRESHOLDS["suites"], "variant_constraints": {**THRESHOLDS["suites"]["variant_constraints"], "metrics": {"recall": {"min": "0.1"}}}}}
-    assert any("exactly one numeric" in p for p in run_evals.profile_problems(loosened, PROFILE))
+    assert any("exactly one finite" in p for p in run_evals.profile_problems(loosened, PROFILE))
     import artifact_manifest
     assert {"thresholds.yaml", "release_profile.yaml"} <= set(artifact_manifest.FROZEN)
 

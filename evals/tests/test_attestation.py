@@ -278,3 +278,80 @@ def test_manifest_verify_reports_missing_manifest_missing_files_and_unlisted_art
     assert "b.txt: not in the manifest" in found and "gone.txt: missing" in found
     (tmp_path / "a.txt").write_text("changed")
     assert "a.txt: content changed" in " ".join(artifact_manifest.verify(tmp_path))
+
+
+# ---- round 2 QA: every hostile input is a controlled failure; leakage-test gaps ----
+
+def test_lone_surrogate_signature_or_field_fails_closed(root):
+    (root / "attestations").mkdir()
+    (root / "attestations/s.json").write_text('{"payload": {"suite": "\\ud800"}, "signature": "\\ud800"}')
+    assert "malformed record" in attestation.review_problems(root, "s", SUITE, ENV)[0]
+    (root / "approval.json").write_text('{"payload": {"owner": "\\ud800"}, "signature": "\\ud800"}')
+    assert attestation.approval_problems(root, ENV)
+
+
+def test_deeply_nested_or_looping_dataset_inputs_fail_closed(root):
+    write_record(root / "attestations/s.json", review_payload(root), REVIEWER)
+    (root / "datasets/train.jsonl").write_text("[" * 20000 + "]" * 20000 + "\n")
+    assert "could not be checked" in " ".join(attestation.review_problems(root, "s", SUITE, ENV))
+    (root / "datasets/train.jsonl").unlink()
+    (root / "datasets/loop.jsonl").symlink_to(root / "datasets/loop.jsonl")
+    assert attestation.review_problems(root, "s", SUITE, ENV)                 # a controlled problem, not a RuntimeError
+
+
+@pytest.mark.parametrize("raw", ["{", "[]", "null", '{"sha256": []}', '{"sha256": {"a.txt": 5}}'])
+def test_malformed_manifest_is_a_problem_not_a_crash(tmp_path, raw):
+    (tmp_path / "artifact_manifest.json").write_text(raw)
+    assert artifact_manifest.verify(tmp_path) == ["artifact_manifest.json: malformed"]
+
+
+@pytest.mark.parametrize("rows", ['{"id": "x"}\n', '{"id": "x", "query": 5}\n', '{"id": "x", "query": "q", "expected": 7}\n'])
+def test_scored_rows_with_missing_or_wrong_typed_fields_fail_the_suite(tmp_path, rows):
+    (tmp_path / "datasets").mkdir()
+    (tmp_path / "datasets/filter_parsing.jsonl").write_text(rows)
+    thresholds = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "source": "code", "feature": "f", "metrics": {"exact_match": {"min": 0.5}}}}}
+    [result] = run_evals.evaluate(tmp_path, thresholds, None, env={})
+    assert result["status"] == "fail" and "scorer error" in result["failures"][0]
+
+
+@pytest.mark.parametrize("thresholds_text", ["", "[]", "suites: []", "{", "suites: {s: 1}"])
+def test_empty_or_hostile_yaml_is_exit_2_not_a_traceback(tmp_path, thresholds_text):
+    (tmp_path / "thresholds.yaml").write_text(thresholds_text)
+    (tmp_path / "release_profile.yaml").write_text("features: {}\n")
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+    (tmp_path / "thresholds.yaml").write_text("suites: {}\n")
+    (tmp_path / "release_profile.yaml").write_text("features: [1]\n")
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1, -0.5])
+def test_nan_infinite_and_negative_limits_are_configuration_errors(bad):
+    assert not run_evals._is_limit({"min": bad}) and not run_evals._is_limit({"max": bad})
+    assert run_evals._is_limit({"min": 0}) and run_evals._is_limit({"max": 0})        # zero stays legal (violations max 0)
+
+
+@pytest.mark.parametrize("field", ["prompt", "question", "input", "utterance"])
+def test_every_listed_query_key_is_scanned_at_the_top_level_and_nested(root, field):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    for row in ({field: "brown stole"}, {"wrapper": {field: "brown stole"}}, {"wrapper": {"query": {field: ["brown stole"]}}}):
+        (root / "datasets/train.jsonl").write_text(json.dumps(row) + "\n")
+        assert attestation.leakage(root, "datasets/held.jsonl"), row
+
+
+def test_a_same_named_file_in_a_subdirectory_is_not_mistaken_for_the_attested_one(root):
+    (root / "datasets/sub").mkdir()
+    (root / "datasets/sub/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    assert [x.split(":")[0] for x in attestation.leakage(root, "datasets/held.jsonl")] == ["datasets/sub/held.jsonl"]
+
+
+def test_documented_leakage_gaps_are_real_and_stay_documented(root):
+    """If one of these starts being detected, tighten the docs; if the docs stop listing them, this test says what is still undetected."""
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    for row in ('{"id": "t", "query": "bro\\u200bwn stole"}',            # zero-width space inside a word
+                '{"id": "t", "query": "br\\u043ewn stole"}',             # Cyrillic o
+                '{"id": "t", "sentence": "brown stole"}'):               # unlisted key
+        (root / "datasets/train.jsonl").write_text(row + "\n")
+        assert attestation.leakage(root, "datasets/held.jsonl") == [], row
+    doc = (EVALS.parent / "docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md").read_text()
+    for gap in ("invisible characters inside a word", "look-alike letters", "symlinked directories", "other keys"):
+        assert gap in doc

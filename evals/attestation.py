@@ -21,7 +21,13 @@ in QUERY_FIELDS, at any nesting depth and inside lists, in every `*.jsonl` file 
 does not look at other directories (recorded/, fixtures/, code, vocabularies), at paraphrases, or at other keys. It is a best-effort
 guard against accidental reuse, not proof of independence.
 
-Malformed input (bad JSON, wrong shapes, non-ASCII signatures, rows that are not objects) is a verification failure, never an exception.
+Not covered by the leakage check: invisible characters inside a word (zero-width space, soft hyphen), look-alike letters from other
+scripts, other digit scripts, files that are not lowercase `*.jsonl` (.json, .csv, .yaml, uppercase extensions), symlinked
+directories, and strings under keys not in QUERY_FIELDS.
+
+Any error while verifying a record or checking datasets (bad JSON, wrong shapes, odd characters, unreadable or hostile files) is
+caught and reported as a verification failure: the gate fails closed. The catch is deliberately broad (Exception); it is a safety net,
+not a reason to feed the verifier hostile files.
 """
 import hashlib
 import hmac
@@ -58,11 +64,12 @@ def _load_signed(path: Path, key: str | None, key_env: str, fields: set[str]) ->
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
         payload, signature = record["payload"], record["signature"]
-    except (ValueError, KeyError, TypeError):
+        # bytes comparison: str arguments to compare_digest must be ASCII and raise otherwise
+        verified = isinstance(payload, dict) and isinstance(signature, str) \
+            and hmac.compare_digest(sign(payload, key).encode("ascii"), signature.encode("utf-8"))
+    except Exception:    # noqa: BLE001 - hostile or malformed record of any kind (bad JSON, lone surrogates, deep nesting): fail closed
         return None, f"{path.name}: malformed record"
-    # bytes comparison: str arguments to compare_digest must be ASCII and raise otherwise
-    if not isinstance(payload, dict) or not isinstance(signature, str) \
-            or not hmac.compare_digest(sign(payload, key).encode("ascii"), signature.encode("utf-8")):
+    if not verified:
         return None, f"{path.name}: signature does not verify"
     if set(payload) != fields or any(not isinstance(payload[f], str) or not payload[f].strip() for f in fields):
         return None, f"{path.name}: payload must have exactly {sorted(fields)}, all non-empty text"
@@ -121,7 +128,11 @@ def review_problems(root: Path, suite: str, suite_cfg: dict, env: dict) -> list[
     problems = []
     if payload["suite"] != suite or payload["dataset"] != suite_cfg["dataset"]:
         problems.append("attestation is for a different suite or dataset")
-    if not dataset.is_file() or payload["dataset_sha256"] != sha256_file(dataset):
+    try:
+        same_hash = dataset.is_file() and payload["dataset_sha256"] == sha256_file(dataset)
+    except OSError:
+        same_hash = False
+    if not same_hash:
         problems.append("dataset content differs from the attested sha256")
     if payload["split"] != "held_out":
         problems.append(f"split is {payload['split']!r}, release evidence must be held_out")
@@ -130,7 +141,7 @@ def review_problems(root: Path, suite: str, suite_cfg: dict, env: dict) -> list[
     if not problems:
         try:
             problems += [f"held-out leakage, {leak}" for leak in leakage(root, suite_cfg["dataset"])]
-        except (ValueError, OSError) as error:           # unreadable or malformed dataset: fail closed, never raise
+        except Exception as error:   # noqa: BLE001 - unreadable, malformed or hostile dataset (symlink loop, deep nesting...): fail closed
             problems.append(f"dataset could not be checked for leakage ({error})")
     return problems
 
@@ -148,6 +159,10 @@ def approval_problems(root: Path, env: dict) -> list[str]:
         return [problem]
     if env.get(OWNER_KEY_ENV) == env.get(REVIEWER_KEY_ENV):
         return ["approval.json: owner and reviewer keys must differ"]
-    if payload["candidate_digest"] != candidate_digest(root):
+    try:
+        current = candidate_digest(root)
+    except OSError:
+        return ["approval.json: candidate files could not be read"]
+    if payload["candidate_digest"] != current:
         return ["approval.json: approved a different candidate (thresholds, profile, manifest or attestations changed)"]
     return []

@@ -21,6 +21,7 @@ Exit codes: 0 ok, 1 a required threshold failed, 2 usage/configuration error (in
 import argparse
 import importlib.util
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -136,7 +137,12 @@ def evaluate(root: Path, thresholds: dict, profile: dict | None = None, env: dic
                 results.append({**base, "status": "not_evaluated", "examples": len(examples), "metrics": {},
                                 "failures": ["no scorer implemented for this suite"]})
                 continue
-            metrics, genuine = scorer(examples, root), True
+            try:
+                metrics, genuine = scorer(examples, root), True
+            except Exception as error:   # noqa: BLE001 - a scorer that cannot handle its dataset is a failed suite, never a skipped one
+                results.append({**base, "status": "fail", "examples": len(examples), "metrics": {},
+                                "failures": [f"scorer error on this dataset ({type(error).__name__}); check the rows"]})
+                continue
         else:
             if name not in SCORERS:
                 results.append({**base, "status": "not_evaluated", "examples": len(examples), "metrics": {},
@@ -163,7 +169,7 @@ def _required_suites(thresholds: dict, profile: dict | None) -> set[str]:
 
 def _is_limit(limit) -> bool:
     return isinstance(limit, dict) and len(limit) == 1 and set(limit) <= {"min", "max"} \
-        and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in limit.values())
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0 for v in limit.values())
 
 
 def profile_problems(thresholds: dict, profile: dict) -> list[str]:
@@ -195,7 +201,7 @@ def profile_problems(thresholds: dict, profile: dict) -> list[str]:
         if suite.get("source") not in {"code", "recorded"}:
             problems.append(f"suite {name}: source must be code or recorded")
         if not isinstance(suite.get("metrics"), dict) or not suite["metrics"] or not all(_is_limit(v) for v in suite["metrics"].values()):
-            problems.append(f"suite {name}: metrics must map names to exactly one numeric min or max")
+            problems.append(f"suite {name}: metrics must map names to exactly one finite, non-negative numeric min or max")
     return problems
 
 
@@ -235,12 +241,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "live":
         print("live mode is not available yet: no parser prompt exists. Pull requests use recorded responses.")
         return 2
-    thresholds = yaml.safe_load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"))
     profile_path = args.profile or args.root / "release_profile.yaml"
     if not profile_path.is_file():   # never lenient: deleting the profile must not weaken the gate
         print(f"configuration error: release profile missing ({profile_path})")
         return 2
-    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    try:
+        thresholds = yaml.safe_load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"))
+        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+        if not (isinstance(thresholds, dict) and isinstance(thresholds.get("suites"), dict)
+                and all(isinstance(x, dict) for x in thresholds["suites"].values())
+                and isinstance(profile, dict) and isinstance(profile.get("features"), dict)
+                and all(isinstance(f, dict) for f in profile["features"].values())):
+            raise ValueError("wrong top-level shape")
+    except Exception as error:   # noqa: BLE001 - empty, invalid or hostile YAML is a configuration error, not a traceback
+        print(f"configuration error: thresholds or profile unreadable ({type(error).__name__}: {error})")
+        return 2
     if problems := profile_problems(thresholds, profile):
         for problem in problems:
             print("configuration error:", problem)
