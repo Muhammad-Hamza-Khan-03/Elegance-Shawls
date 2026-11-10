@@ -12,18 +12,17 @@ issue #139), nor protect against a leaked or shared key. The keys are symmetric:
 stay with the reviewer and the owner and must differ. There is no key rotation or revocation; change the key to invalidate all records.
 
 Identity limits: `author` and `reviewer` are free text INSIDE the signed payload. The signature proves a holder of the reviewer key
-wrote them, not that they name different people, nor that either name is real. The independence check only compares the two
-strings after Unicode NFKC, case folding and whitespace collapsing; "Alice" and "Alice B." pass as different. Real independence
-rests on who holds the reviewer key and on the human review workflow (#139), not on this code.
+wrote them, not that they name different people, nor that either name is real. The independence check compares the two strings as
+skeletons (NFKD, invisible and combining characters dropped, case folded, listed look-alike letters mapped to Latin, punctuation and
+whitespace collapsed), so "Alice" and "Alice." or "Alіce" (Cyrillic i) are the same; "Alice" and "Alice B." pass as different.
+Real independence rests on who holds the reviewer key and on the human review workflow (#139), not on this code.
 
-Leakage limits: the check normalises (NFKC, case folding, punctuation and whitespace collapsed) every string found under the keys
-in QUERY_FIELDS, at any nesting depth and inside lists, in every `*.jsonl` file below datasets/ other than the attested one. It
-does not look at other directories (recorded/, fixtures/, code, vocabularies), at paraphrases, or at other keys. It is a best-effort
-guard against accidental reuse, not proof of independence.
-
-Not covered by the leakage check: invisible characters inside a word (zero-width space, soft hyphen), look-alike letters from other
-scripts, other digit scripts, files that are not lowercase `*.jsonl` (.json, .csv, .yaml, uppercase extensions), symlinked
-directories, and strings under keys not in QUERY_FIELDS.
+Leakage limits: every string under the keys in QUERY_FIELDS (any depth, lists included), and any other string of three or more
+words, is reduced to the same skeleton and compared with the attested dataset's, across every `.jsonl`, `.ndjson` and `.json` file
+below datasets/ (symlinked directories followed once) and, by whole-word containment, every `.txt .csv .tsv .yaml .yml .md` file.
+NOT detected: paraphrases and translations/transliterations; one- or two-word strings under keys outside QUERY_FIELDS; look-alike
+letters outside the small built-in table; files with other extensions; anything outside datasets/ (recorded/, fixtures/, code,
+vocabularies). It is a best-effort guard against accidental reuse, not proof of independence.
 
 Any error while verifying a record or checking datasets (bad JSON, wrong shapes, odd characters, unreadable or hostile files) is
 caught and reported as a verification failure: the gate fails closed. The catch is deliberately broad (Exception); it is a safety net,
@@ -32,6 +31,7 @@ not a reason to feed the verifier hostile files.
 import hashlib
 import hmac
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -76,17 +76,27 @@ def _load_signed(path: Path, key: str | None, key_env: str, fields: set[str]) ->
     return payload, None
 
 
-def _norm(text: str) -> str:
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip().casefold()
+# Look-alike letters (Cyrillic/Greek/other) mapped to the Latin letter they imitate. A small, best-effort table, NOT the full Unicode
+# confusables list; extend it if a real case turns up.
+_LOOKALIKES = str.maketrans({"а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y", "і": "i", "ј": "j", "ѕ": "s",
+                             "ԁ": "d", "һ": "h", "ο": "o", "α": "a", "ν": "v", "ρ": "p", "ι": "i", "κ": "k", "τ": "t", "υ": "u",
+                             "ɡ": "g", "ⅼ": "l", "ӏ": "l", "ԍ": "g", "ɑ": "a", "ɩ": "i"})
+JSON_SUFFIXES = {".jsonl", ".ndjson", ".json"}
+TEXT_SUFFIXES = {".txt", ".csv", ".tsv", ".yaml", ".yml", ".md"}
 
 
-def _norm_query(text: str) -> str:
-    return re.sub(r"[\W_]+", " ", _norm(text)).strip()      # punctuation and spacing differences do not make a query "new"
+def _skeleton(text: str) -> str:
+    """Comparison form of a query or a person's name: NFKD, invisible (Cf) and combining (Mn/Me) characters dropped, all decimal
+    digits as ASCII, case folded, listed look-alike letters mapped to Latin, punctuation and whitespace collapsed."""
+    text = "".join(c for c in unicodedata.normalize("NFKD", text) if unicodedata.category(c) not in {"Cf", "Mn", "Me"})
+    text = "".join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in text)
+    return re.sub(r"[\W_]+", " ", text.casefold().translate(_LOOKALIKES)).strip()
 
 
 def _walk(value, found: set[str], in_field: bool = False) -> None:
+    """Collect skeletons of strings under a QUERY_FIELDS key (any depth, lists included) and of any other string with 3+ words."""
     if isinstance(value, str):
-        if in_field and (q := _norm_query(value)):
+        if (q := _skeleton(value)) and (in_field or len(q.split()) >= 3):
             found.add(q)
     elif isinstance(value, list):
         for item in value:
@@ -97,9 +107,13 @@ def _walk(value, found: set[str], in_field: bool = False) -> None:
 
 
 def queries(path: Path) -> set[str]:
-    """Normalised query strings of a JSONL file. Raises ValueError on anything that is not one JSON object per line."""
+    """Query skeletons of a JSON-lines or JSON file. Raises ValueError on anything that is not one JSON object per line (or valid JSON)."""
     out: set[str] = set()
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        _walk(json.loads(text), out)
+        return out
+    for number, line in enumerate(text.splitlines(), 1):
         if line.strip():
             row = json.loads(line)
             if not isinstance(row, dict):
@@ -108,13 +122,35 @@ def queries(path: Path) -> set[str]:
     return out
 
 
+def _dataset_files(directory: Path) -> list[Path]:
+    """Every file below `directory`, following symlinked directories once each (loops are pruned by real path)."""
+    seen, files = set(), []
+    for base, dirs, names in os.walk(directory, followlinks=True):
+        real = os.path.realpath(base)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
+        files += [Path(base) / name for name in names]
+    return sorted(files)
+
+
 def leakage(root: Path, dataset: str) -> list[str]:
-    """Normalised queries of `dataset` that also occur in any OTHER dataset under datasets/ (train/dev/other eval data)."""
+    """Held-out queries that also occur in any OTHER file under datasets/: JSON-like files by parsed value, text files
+    (.txt .csv .tsv .yaml .yml .md) by whole-word containment. Other file types are not read."""
     held = queries(root / dataset)
+    own = (root / dataset).resolve()
     leaked = []
-    for other in sorted((root / "datasets").rglob("*.jsonl")):
-        if other.resolve() != (root / dataset).resolve():
-            leaked += [f"{other.relative_to(root)}: {q!r}" for q in sorted(held & queries(other))]
+    for other in _dataset_files(root / "datasets"):
+        suffix = other.suffix.lower()
+        if suffix not in JSON_SUFFIXES | TEXT_SUFFIXES or other.resolve() == own:
+            continue
+        if suffix in JSON_SUFFIXES:
+            hits = held & queries(other)
+        else:
+            body = f" {_skeleton(other.read_text(encoding='utf-8'))} "
+            hits = {q for q in held if f" {q} " in body}
+        leaked += [f"{other.relative_to(root)}: {q!r}" for q in sorted(hits)]
     return leaked
 
 
@@ -136,7 +172,7 @@ def review_problems(root: Path, suite: str, suite_cfg: dict, env: dict) -> list[
         problems.append("dataset content differs from the attested sha256")
     if payload["split"] != "held_out":
         problems.append(f"split is {payload['split']!r}, release evidence must be held_out")
-    if _norm(payload["author"]) == _norm(payload["reviewer"]):
+    if _skeleton(payload["author"]) == _skeleton(payload["reviewer"]):
         problems.append("reviewer is the dataset author, review is not independent")
     if not problems:
         try:

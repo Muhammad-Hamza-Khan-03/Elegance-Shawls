@@ -344,14 +344,69 @@ def test_a_same_named_file_in_a_subdirectory_is_not_mistaken_for_the_attested_on
     assert [x.split(":")[0] for x in attestation.leakage(root, "datasets/held.jsonl")] == ["datasets/sub/held.jsonl"]
 
 
-def test_documented_leakage_gaps_are_real_and_stay_documented(root):
-    """If one of these starts being detected, tighten the docs; if the docs stop listing them, this test says what is still undetected."""
+def test_invisible_characters_lookalikes_digits_and_unlisted_long_strings_are_detected(root):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole 2024 under budget"}\n')
+    for row in ('{"query": "bro\\u200bwn st\\u00adole 2024 under budget"}',      # zero-width space / soft hyphen inside words
+                '{"query": "br\\u043ewn stole 2024 under budget"}',               # Cyrillic o
+                '{"query": "brown stole \\u0662\\u0660\\u0662\\u0664 under budget"}',   # Arabic-Indic digits
+                '{"query": "br\\u006f\\u0301wn stole 2024 under budget"}',      # combining mark
+                '{"sentence": "brown stole 2024 under budget", "id": "t"}',     # unlisted key, 3+ words
+                '{"id": "t", "Query": "Brown stole, 2024 under budget."}'):
+        (root / "datasets/train.jsonl").write_text(row + "\n")
+        assert attestation.leakage(root, "datasets/held.jsonl"), row
+
+
+def test_other_file_types_uppercase_extensions_and_symlinked_directories_are_scanned(root):
     (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
-    for row in ('{"id": "t", "query": "bro\\u200bwn stole"}',            # zero-width space inside a word
-                '{"id": "t", "query": "br\\u043ewn stole"}',             # Cyrillic o
-                '{"id": "t", "sentence": "brown stole"}'):               # unlisted key
+    other = root / "elsewhere"
+    other.mkdir()
+    (other / "x.ndjson").write_text('{"q": "brown stole"}\n')
+    (root / "datasets/linked").symlink_to(other, target_is_directory=True)
+    (root / "datasets/UPPER.JSONL").write_text('{"q": "brown stole"}\n')
+    (root / "datasets/notes.csv").write_text("id,text\n1,I want a Brown   Stole please\n")
+    (root / "datasets/data.json").write_text('{"rows": [{"query": "brown stole"}]}')
+    found = {x.split(":")[0] for x in attestation.leakage(root, "datasets/held.jsonl")}
+    assert found >= {"datasets/linked/x.ndjson", "datasets/UPPER.JSONL", "datasets/notes.csv", "datasets/data.json"}
+    (root / "datasets/linked2").symlink_to(root / "datasets", target_is_directory=True)     # a directory loop must not hang
+    attestation.leakage(root, "datasets/held.jsonl")
+
+
+def test_documented_leakage_limits_are_real_and_stay_documented(root):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    for row in ('{"id": "t", "sentence": "brown stole"}',                 # 2 words under an unlisted key
+                '{"id": "t", "query": "a brown stole"}',                  # paraphrase
+                '{"id": "t", "query": "bro\\u0432n stole"}'):              # Cyrillic v: not in the small look-alike table
         (root / "datasets/train.jsonl").write_text(row + "\n")
         assert attestation.leakage(root, "datasets/held.jsonl") == [], row
+    (root / "datasets/other.bin").write_bytes(b"brown stole")             # file type that is not read
+    assert attestation.leakage(root, "datasets/held.jsonl") == []
     doc = (EVALS.parent / "docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md").read_text()
-    for gap in ("invisible characters inside a word", "look-alike letters", "symlinked directories", "other keys"):
+    for gap in ("paraphrases or translations", "one- and two-word strings under other keys", "look-alike letters outside the small table", "files with other extensions"):
         assert gap in doc
+
+
+@pytest.mark.parametrize("reviewer", ["author\u200b-a", "Autho\u0433-a", "author-a.", "author\u0301-a", "ａｕｔｈｏｒ－ａ"])
+def test_reviewer_equal_to_author_up_to_invisible_lookalike_and_punctuation_is_not_independent(root, reviewer):
+    write_record(root / "attestations/s.json", review_payload(root, reviewer=reviewer.replace("\u0433", "r")), REVIEWER)
+    assert "not independent" in " ".join(attestation.review_problems(root, "s", SUITE, ENV)), reviewer
+
+
+def test_duplicate_yaml_keys_are_configuration_errors(tmp_path):
+    (tmp_path / "thresholds.yaml").write_text("suites:\n  s: {dataset: d, source: code, feature: f, metrics: {m: {min: 1}}}\n  s: {dataset: d, source: code, feature: f, metrics: {m: {min: 0}}}\n")
+    (tmp_path / "release_profile.yaml").write_text("features: {f: {scheduled: true, suites: [s], settings: []}}\n")
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+    (tmp_path / "thresholds.yaml").write_text("suites: {s: {dataset: d, source: code, feature: f, metrics: {m: {min: 1}}}}\n")
+    (tmp_path / "release_profile.yaml").write_text("features:\n  f: {scheduled: true, suites: [s], settings: []}\n  f: {scheduled: false, suites: [s], settings: []}\n")
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+
+
+def test_scratch_roots_and_overrides_never_report_release_ready_true(tmp_path, monkeypatch):
+    monkeypatch.setattr(run_evals, "release_blockers", lambda *a, **k: [])      # pretend every blocker is cleared
+    out = tmp_path / "r.json"
+    assert run_evals.main(["--json", str(out)]) == 0
+    assert json.loads(out.read_text())["release_ready"] is True                  # canonical inputs: the report follows the blockers
+    for name in ("thresholds.yaml", "release_profile.yaml"):
+        (tmp_path / name).write_text((EVALS / name).read_text())
+    for args in (["--root", str(tmp_path)], ["--thresholds", str(EVALS / "thresholds.yaml")], ["--profile", str(EVALS / "release_profile.yaml")]):
+        assert run_evals.main([*args, "--json", str(out)]) in (0, 1)
+        assert json.loads(out.read_text())["release_ready"] is False, args

@@ -31,6 +31,20 @@ from types import SimpleNamespace
 import yaml
 
 HERE = Path(__file__).resolve().parent
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys instead of silently keeping the last one."""
+
+
+def _reject_duplicates(loader, node, deep=False):
+    keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
+    if duplicate := next((k for k in keys if keys.count(k) > 1), None):
+        raise yaml.constructor.ConstructorError(None, None, f"duplicate key {duplicate!r}", node.start_mark)
+    return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+
+_StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _reject_duplicates)
 sys.path.insert(0, str(HERE))
 import artifact_manifest  # noqa: E402
 import attestation  # noqa: E402
@@ -246,8 +260,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"configuration error: release profile missing ({profile_path})")
         return 2
     try:
-        thresholds = yaml.safe_load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"))
-        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+        thresholds = yaml.load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"), Loader=_StrictLoader)
+        profile = yaml.load(profile_path.read_text(encoding="utf-8"), Loader=_StrictLoader)
         if not (isinstance(thresholds, dict) and isinstance(thresholds.get("suites"), dict)
                 and all(isinstance(x, dict) for x in thresholds["suites"].values())
                 and isinstance(profile, dict) and isinstance(profile.get("features"), dict)
@@ -273,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    - {failure}")
     failed = [r["suite"] for r in results if r["status"] == "fail" and (r["required"] or args.strict)]
     blockers = release_blockers(results, profile, args.root)
-    release_ready = not failed and not blockers
+    canonical = args.root.resolve() == HERE and not (args.thresholds or args.profile)
+    release_ready = canonical and not failed and not blockers    # a scratch root or override is never reported as release-ready
     print(f"\nrelease_ready={str(release_ready).lower()}")
     for blocker in blockers:
         print(f"  blocked: {blocker}")
