@@ -50,6 +50,11 @@ import artifact_manifest  # noqa: E402
 import attestation  # noqa: E402
 
 
+def _printable(text: str) -> str:
+    """Odd characters in a file name or value (lone surrogates) must not crash the report."""
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
 def load_jsonl(path: Path) -> list[dict]:
     if not path.is_file():
         return []
@@ -137,7 +142,7 @@ def evaluate(root: Path, thresholds: dict, profile: dict | None = None, env: dic
         try:
             examples = load_jsonl(root / suite["dataset"])
             malformed = not all(isinstance(e, dict) for e in examples)
-        except (ValueError, OSError):
+        except Exception:    # noqa: BLE001 - bad JSON, deep nesting, unreadable file: a malformed dataset, never a traceback
             examples, malformed = [], True
         if malformed:
             results.append({**base, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": ["dataset is malformed (every line must be a JSON object)"]})
@@ -162,9 +167,14 @@ def evaluate(root: Path, thresholds: dict, profile: dict | None = None, env: dic
                 results.append({**base, "status": "not_evaluated", "examples": len(examples), "metrics": {},
                                 "failures": ["no scorer implemented for this suite"]})
                 continue
-            recorded = load_jsonl(root / "recorded" / f"{name}.jsonl")
-            metrics = SCORERS[name](examples, {r["id"]: r["response"] for r in recorded})
-            genuine = bool(recorded) and all(r.get("provenance") == "model" for r in recorded)
+            try:
+                recorded = load_jsonl(root / "recorded" / f"{name}.jsonl")
+                metrics = SCORERS[name](examples, {r["id"]: r["response"] for r in recorded})
+                genuine = bool(recorded) and all(r.get("provenance") == "model" for r in recorded)
+            except Exception as error:   # noqa: BLE001 - malformed recorded rows fail the suite instead of crashing the run
+                results.append({**base, "status": "fail", "examples": len(examples), "metrics": {},
+                                "failures": [f"recorded responses or scorer error ({type(error).__name__}); check the rows"]})
+                continue
         failures = _check(metrics, suite["metrics"])
         status = "fail" if failures else "pass" if genuine else "not_evaluated"
         if status == "not_evaluated":
@@ -212,6 +222,9 @@ def profile_problems(thresholds: dict, profile: dict) -> list[str]:
     for name, suite in thresholds["suites"].items():
         problems += [f"suite {name}: unknown key {k}" + (" (evidence is derived from signed attestations, not declared)" if k == "evidence" else "")
                      for k in suite if k not in {"dataset", "source", "feature", "metrics"}]
+        dataset = suite.get("dataset")
+        if not isinstance(dataset, str) or not dataset or Path(dataset).is_absolute() or ".." in Path(dataset).parts:
+            problems.append(f"suite {name}: dataset must be a relative path inside the evals directory")
         if suite.get("source") not in {"code", "recorded"}:
             problems.append(f"suite {name}: source must be code or recorded")
         if not isinstance(suite.get("metrics"), dict) or not suite["metrics"] or not all(_is_limit(v) for v in suite["metrics"].values()):
@@ -276,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.root.resolve() == HERE and (drift := artifact_manifest.verify(HERE)):
         for problem in drift:
-            print("configuration error: frozen artifact:", problem)
+            print("configuration error: frozen artifact:", _printable(problem))
         return 2
     results = evaluate(args.root, thresholds, profile)
     for r in results:
@@ -291,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     release_ready = canonical and not failed and not blockers    # a scratch root or override is never reported as release-ready
     print(f"\nrelease_ready={str(release_ready).lower()}")
     for blocker in blockers:
-        print(f"  blocked: {blocker}")
+        print(f"  blocked: {_printable(blocker)}")
     if args.json:
         args.json.write_text(json.dumps({"release_ready": release_ready, "blockers": blockers, "suites": results}, indent=2), encoding="utf-8")
     if failed:

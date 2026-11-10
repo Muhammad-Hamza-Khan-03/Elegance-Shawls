@@ -410,3 +410,60 @@ def test_scratch_roots_and_overrides_never_report_release_ready_true(tmp_path, m
     for args in (["--root", str(tmp_path)], ["--thresholds", str(EVALS / "thresholds.yaml")], ["--profile", str(EVALS / "release_profile.yaml")]):
         assert run_evals.main([*args, "--json", str(out)]) in (0, 1)
         assert json.loads(out.read_text())["release_ready"] is False, args
+
+
+# ---- round 3 QA: remaining crash classes ----
+
+def test_deeply_nested_scored_dataset_is_not_evaluated_not_a_traceback(tmp_path):
+    (tmp_path / "datasets").mkdir()
+    (tmp_path / "datasets/d.jsonl").write_text('{"id": "a", "query": ' + "[" * 20000 + "]" * 20000 + "}\n")
+    thresholds = {"suites": {"s": {"dataset": "datasets/d.jsonl", "source": "code", "feature": "f", "metrics": {"m": {"min": 1}}}}}
+    [result] = run_evals.evaluate(tmp_path, thresholds, None, env={})
+    assert result["status"] == "not_evaluated" and "malformed" in result["failures"][0]
+
+
+def test_malformed_recorded_rows_fail_the_suite(tmp_path):
+    (tmp_path / "datasets").mkdir()
+    (tmp_path / "recorded").mkdir()
+    (tmp_path / "datasets/filter_parsing.jsonl").write_text('{"id": "a", "query": "x", "expected": {}}\n')
+    (tmp_path / "recorded/filter_parsing.jsonl").write_text('{"nope": 1}\n')
+    thresholds = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "source": "recorded", "feature": "f", "metrics": {"exact_match": {"min": 0.5}}}}}
+    [result] = run_evals.evaluate(tmp_path, thresholds, None, env={})
+    assert result["status"] == "fail" and "recorded responses or scorer error" in result["failures"][0]
+
+
+@pytest.mark.parametrize("dataset", [[1], None, "", "/etc/passwd", "../outside.jsonl", "datasets/../../x"])
+def test_dataset_path_must_be_a_relative_path_inside_the_evals_directory(dataset):
+    thresholds = {"suites": {"s": {"dataset": dataset, "source": "code", "feature": "f", "metrics": {"m": {"min": 1}}}}}
+    profile = {"features": {"f": {"scheduled": True, "suites": ["s"], "settings": []}}}
+    assert any("relative path" in p for p in run_evals.profile_problems(thresholds, profile))
+
+
+def test_report_survives_odd_characters_in_manifest_problems(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(artifact_manifest, "verify", lambda root=None: ["bad\ud800name: content changed"])
+    assert run_evals.main([]) == 2
+    assert "bad\\ud800name" in capsys.readouterr().out
+
+
+def test_unreadable_frozen_file_is_a_problem(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifact_manifest, "FROZEN", ["a.txt"])
+    (tmp_path / "a.txt").write_text("a")
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps({"sha256": {"a.txt": "0"}}))
+    monkeypatch.setattr(artifact_manifest, "digest", lambda path: (_ for _ in ()).throw(PermissionError()))
+    assert artifact_manifest.verify(tmp_path) == ["a.txt: unreadable"]
+
+
+@pytest.mark.parametrize("kind", ["fifo", "loop", "broken"])
+def test_special_files_named_like_datasets_are_refused_unread(root, kind):
+    import os
+    write_record(root / "attestations/s.json", review_payload(root), REVIEWER)
+    target = root / "datasets/x.jsonl"
+    {"fifo": lambda: os.mkfifo(target), "loop": lambda: target.symlink_to(target),
+     "broken": lambda: target.symlink_to(root / "nowhere")}[kind]()
+    assert "could not be checked" in " ".join(attestation.review_problems(root, "s", SUITE, ENV))      # a FIFO would hang if it were opened
+
+
+def test_blocker_report_survives_odd_characters(monkeypatch, capsys):
+    monkeypatch.setattr(attestation, "approval_problems", lambda root, env: ["approval.json: bad\ud800name"])
+    assert run_evals.main(["--release-ready"]) == 3
+    assert "bad\\ud800name" in capsys.readouterr().out

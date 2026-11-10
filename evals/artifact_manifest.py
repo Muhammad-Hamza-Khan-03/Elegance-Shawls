@@ -36,8 +36,14 @@ def verify(root: Path = HERE) -> list[str]:
         path = root / rel
         if not path.is_file():
             problems.append(f"{rel}: missing")
-        elif digest(path) != expected:
-            problems.append(f"{rel}: content changed (sha256 {digest(path)[:12]} != {expected[:12]})")
+        else:
+            try:
+                actual = digest(path)
+            except OSError:
+                problems.append(f"{rel}: unreadable")
+                continue
+            if actual != expected:
+                problems.append(f"{rel}: content changed (sha256 {actual[:12]} != {expected[:12]})")
     return problems
 
 

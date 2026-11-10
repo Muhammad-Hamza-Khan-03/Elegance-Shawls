@@ -24,9 +24,10 @@ NOT detected: paraphrases and translations/transliterations; one- or two-word st
 letters outside the small built-in table; files with other extensions; anything outside datasets/ (recorded/, fixtures/, code,
 vocabularies). It is a best-effort guard against accidental reuse, not proof of independence.
 
-Any error while verifying a record or checking datasets (bad JSON, wrong shapes, odd characters, unreadable or hostile files) is
-caught and reported as a verification failure: the gate fails closed. The catch is deliberately broad (Exception); it is a safety net,
-not a reason to feed the verifier hostile files.
+Errors while verifying a record, the manifest, the YAML configuration, scored rows or datasets (bad JSON, wrong shapes, odd characters,
+deep nesting, unreadable files; devices, FIFOs and loops named like a dataset are refused unread) are caught and reported as a
+verification failure or configuration error: the gate fails closed. The catches are deliberately broad (Exception); they are a safety
+net. Exotic inputs nobody tested may still raise, and any such crash exits non-zero, never ready; do not feed the verifier hostile files.
 """
 import hashlib
 import hmac
@@ -143,7 +144,11 @@ def leakage(root: Path, dataset: str) -> list[str]:
     leaked = []
     for other in _dataset_files(root / "datasets"):
         suffix = other.suffix.lower()
-        if suffix not in JSON_SUFFIXES | TEXT_SUFFIXES or other.resolve() == own:
+        if suffix not in JSON_SUFFIXES | TEXT_SUFFIXES:
+            continue
+        if not other.is_file():     # device, FIFO, directory or broken/looping symlink named like a dataset: refuse, never open it
+            raise ValueError(f"{other.relative_to(root)}: not a regular file")
+        if other.resolve() == own:
             continue
         if suffix in JSON_SUFFIXES:
             hits = held & queries(other)
