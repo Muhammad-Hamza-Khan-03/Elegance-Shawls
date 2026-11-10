@@ -12,7 +12,7 @@ Set, then run `npm run test:e2e:real`:
 | `E2E_PYTHON` | the backend virtualenv's python (default `python`) |
 
 ## Isolation (enforced in `e2e-real/isolation.cjs`, tested by `npm run test:e2e:real:guard`)
-- Both conditions are required: a loopback/socket host **and** a database explicitly designated as disposable (name token plus the acknowledgement variable). Anything else is refused by `prepare.mjs`, `launch.mjs` and `playwright.real.config.ts`; `hostaddr` is rejected.
+- Both conditions are required: a loopback/socket host **and** a database explicitly designated as disposable (name token plus the acknowledgement variable). Anything else is refused by `prepare.mjs`, `launch.mjs` and `playwright.real.config.ts`; every connection-URL query parameter except one lowercase `host=<absolute socket dir>` (and only when the URL has no hostname) is rejected, as are repeated or comma-listed `host`, and whitespace anywhere in the URL (libpq lets query parameters override the URL host).
 - The servers and the migration/seed commands start with an **allowlisted environment** (PATH, HOME, locale/temp basics plus explicit test values). Provider keys, `DATABASE_URL`, `ADMIN_API_KEY`, Redis settings and every other inherited variable are not forwarded.
 - Fixtures are synthetic (`apps/backend/scripts/seed_e2e.py`, development only); `wa.me` is intercepted; no model, provider, Redis or customer data is used.
 

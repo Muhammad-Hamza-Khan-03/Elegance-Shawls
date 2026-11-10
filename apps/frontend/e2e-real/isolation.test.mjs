@@ -24,6 +24,18 @@ test('refuses query parameters that could redirect the connection', () => {
   refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&dbname=postgres');
   refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&HOST=/tmp/other');
 });
+test('refuses repeated or comma-listed hosts and whitespace the URL parser would strip', () => {
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&host=evil.com');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=evil.com&host=/tmp/pg');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&host=/tmp/pg');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg,10.0.0.5');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg/,evil.com');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=');
+  refused(' postgresql+asyncpg://u:p@127.0.0.1/elegance_e2e');
+  refused('postgresql+asyncpg://u:p@127.0.0.1/elegance_e2e\n');
+  refused('postgresql+asyncpg://u:p@127.0.0.1/ele\tgance_e2e');
+  assert.equal(ok('postgresql+asyncpg://u:p@/elegance_e2e?host=%2Ftmp%2Fpg').host, '/tmp/pg');     // encoded single socket dir stays valid
+});
 test('refuses databases that are not designated or not acknowledged', () => {
   refused('postgresql+asyncpg://u:p@127.0.0.1/postgres', { E2E_DISPOSABLE_DATABASE: 'postgres' });
   refused('postgresql+asyncpg://u:p@127.0.0.1/elegance_shawls', { E2E_DISPOSABLE_DATABASE: 'elegance_shawls' });
