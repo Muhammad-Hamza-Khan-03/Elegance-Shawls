@@ -17,6 +17,13 @@ test('refuses non-loopback hosts, even with a designated name', () => {
   refused('postgresql+asyncpg://u:p@127.0.0.1/elegance_e2e?hostaddr=10.0.0.5');
   refused('postgresql+asyncpg://u:p@/elegance_e2e?host=relative/dir');
 });
+test('refuses query parameters that could redirect the connection', () => {
+  for (const q of ['host=db.example.com', 'host=/tmp/pg', 'HostAddr=10.0.0.5', 'HOSTADDR=10.0.0.5', 'dbname=postgres', 'Host=/tmp/pg', 'port=6543', 'service=prod', 'options=-c%20x=1', 'sslmode=require']) {
+    refused(`postgresql+asyncpg://u:p@127.0.0.1/elegance_e2e?${q}`);
+  }
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&dbname=postgres');
+  refused('postgresql+asyncpg://u:p@/elegance_e2e?host=/tmp/pg&HOST=/tmp/other');
+});
 test('refuses databases that are not designated or not acknowledged', () => {
   refused('postgresql+asyncpg://u:p@127.0.0.1/postgres', { E2E_DISPOSABLE_DATABASE: 'postgres' });
   refused('postgresql+asyncpg://u:p@127.0.0.1/elegance_shawls', { E2E_DISPOSABLE_DATABASE: 'elegance_shawls' });
