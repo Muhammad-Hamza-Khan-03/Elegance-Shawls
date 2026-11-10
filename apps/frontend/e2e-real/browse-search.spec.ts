@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { API } from './helpers';
 
-// Real FastAPI + PostgreSQL. Fixtures: e2e/seed_e2e.py. Nothing here is mocked.
+// Real FastAPI + PostgreSQL. Fixtures: apps/backend/scripts/seed_e2e.py. Nothing here is mocked.
 const search = async (request: import('@playwright/test').APIRequestContext, q: string) => {
   const names: string[] = [];
   let cursor: string | null = null;
@@ -74,4 +74,39 @@ test('hybrid search with semantic search off answers lexically and says so', asy
   expect(body.semantic).toBe(false);   // no vector branch ran: order is lexical-only
   expect(body.items.map((item: { product: { name: string } }) => item.product.name)).toEqual(['Brown Pashmina Stole']);   // hard constraints still apply
   expect(body.unsupported).toEqual([]);
+});
+
+// Public `/products/` variant filters, tested directly (not only through search): each assertion is discriminating against the seed
+// (prices 1800..5200, one out-of-stock product at 2900, one draft at 3900 that must never appear).
+const listNames = async (request: import('@playwright/test').APIRequestContext, query: string) => {
+  const response = await request.get(`${API}/products/?limit=100&${query}`);
+  expect(response.status(), query).toBe(200);
+  return ((await response.json()).items as { name: string }[]).map((p) => p.name).sort();
+};
+
+test('public list: max_price is an inclusive upper bound and never shows drafts', async ({ request }) => {
+  expect(await listNames(request, 'max_price=3500')).toEqual(['Brown Pashmina Stole', 'Last Piece Scarf', 'Maroon Silk Stole']);   // 3500 included; 3900 draft, 4200+ excluded
+  expect(await listNames(request, 'max_price=1799')).toEqual([]);
+});
+
+test('public list: min_price is an inclusive lower bound', async ({ request }) => {
+  expect(await listNames(request, 'min_price=4500')).toEqual(['Brown Jamawar Stole', 'Brown Wool Shawl']);                       // 4500 included, 4200 excluded
+  expect(await listNames(request, 'min_price=4200&max_price=4500')).toEqual(['Brown Jamawar Stole', 'Ivory Merino Shawl']);
+});
+
+test('public list: in_stock drops products whose variants have no stock, and combines with price on one variant', async ({ request }) => {
+  const all = await listNames(request, '');
+  expect(all).toContain('Maroon Silk Stole');
+  const inStock = await listNames(request, 'in_stock=true');
+  expect(inStock).not.toContain('Maroon Silk Stole');                                   // stock 0
+  expect(inStock).toHaveLength(all.length - 1);
+  expect(await listNames(request, 'in_stock=true&max_price=3000')).toEqual(['Last Piece Scarf']);   // Maroon (2900) is cheap enough but out of stock
+});
+
+test('public list: colour filter is exact and combines with other filters; bad filters are 422', async ({ request }) => {
+  expect(await listNames(request, 'colour=brown')).toEqual(['Brown Jamawar Stole', 'Brown Pashmina Stole', 'Brown Wool Shawl']);
+  expect(await listNames(request, 'colour=brown&max_price=4000')).toEqual(['Brown Pashmina Stole']);
+  expect(await listNames(request, 'colour=ivory&in_stock=true')).toEqual(['Ivory Merino Shawl']);
+  expect((await request.get(`${API}/products/?colour=not-a-colour`)).status()).toBe(422);
+  expect((await request.get(`${API}/products/?min_price=5000&max_price=1000`)).status()).toBe(422);
 });

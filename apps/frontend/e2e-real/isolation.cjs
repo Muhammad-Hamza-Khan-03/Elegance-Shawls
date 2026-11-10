@@ -17,7 +17,9 @@ function assertDisposableDatabase(raw, env = process.env) {
   let url;
   try { url = new URL(emptyHost ? raw.replace(/^([^:]+:\/\/(?:[^@/]*@)?)\//, '$1socket.invalid/') : raw); } catch { fail('E2E_DATABASE_URL is not a valid URL.'); }
   if (!url.protocol.startsWith('postgres')) fail('E2E_DATABASE_URL must be a PostgreSQL URL.');
-  if (url.searchParams.has('hostaddr')) fail('hostaddr is not allowed.');
+  // libpq lets query parameters override the URL: only a lowercase `host` (unix socket dir, and only without a URL hostname) is allowed.
+  for (const key of url.searchParams.keys()) if (key !== 'host') fail(`query parameter "${key}" is not allowed.`);
+  if (!emptyHost && url.searchParams.has('host')) fail('host= may only be used in place of the URL hostname.');
   const host = emptyHost ? '' : url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   const socketDir = url.searchParams.get('host');
   // A unix-socket directory (host=/abs/path with no hostname) is local by construction; any network host must be loopback.
