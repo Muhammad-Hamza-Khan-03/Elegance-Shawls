@@ -94,13 +94,13 @@ test('search filters: min_price is an inclusive lower bound', async ({ request }
   expect(await listNames(request, 'min_price=4200&max_price=4500')).toEqual(['Brown Jamawar Stole', 'Ivory Merino Shawl']);
 });
 
-test('search filters: in_stock drops products whose variants have no stock, and combines with price on one variant', async ({ request }) => {
+test('search filters: in_stock drops products whose variants have no stock, and combines with a price bound', async ({ request }) => {
   const all = await listNames(request, '');
   expect(all).toContain('Maroon Silk Stole');
   const inStock = await listNames(request, 'in_stock=true');
   expect(inStock).not.toContain('Maroon Silk Stole');                                   // stock 0
   expect(inStock).toHaveLength(all.length - 1);
-  expect(await listNames(request, 'in_stock=true&max_price=3000')).toEqual(['Last Piece Scarf']);   // Maroon (2900) is cheap enough but out of stock
+  expect(await listNames(request, 'in_stock=true&max_price=3000')).toEqual(['Last Piece Scarf']);   // Maroon (2900) is cheap enough but out of stock. Every seed product has ONE variant, so same-variant AND semantics are not exercised here
 });
 
 test('search filters: colour filter is exact and combines with other filters; bad filters are 422', async ({ request }) => {

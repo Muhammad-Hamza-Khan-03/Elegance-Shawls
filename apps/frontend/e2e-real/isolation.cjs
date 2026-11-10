@@ -12,6 +12,7 @@ const INHERITED = ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TMPDIR', 'TERM', '
 function assertDisposableDatabase(raw, env = process.env) {
   const fail = (why) => { throw new Error(`Refusing to run the real-stack suite: ${why}`); };
   if (!raw) fail('E2E_DATABASE_URL is not set.');
+  if (/\s/.test(raw)) fail('E2E_DATABASE_URL must not contain whitespace (the URL parser would silently strip it).');
   // postgresql://user@/db?host=/dir (empty host = unix socket) is not parseable by URL: give it a placeholder host first.
   const emptyHost = /^[^:]+:\/\/(?:[^@/]*@)?\//.test(raw);
   let url;
@@ -20,8 +21,11 @@ function assertDisposableDatabase(raw, env = process.env) {
   // libpq lets query parameters override the URL: only a lowercase `host` (unix socket dir, and only without a URL hostname) is allowed.
   for (const key of url.searchParams.keys()) if (key !== 'host') fail(`query parameter "${key}" is not allowed.`);
   if (!emptyHost && url.searchParams.has('host')) fail('host= may only be used in place of the URL hostname.');
+  // Repeated host= (the driver may use the last) and comma lists (the driver falls through to later hosts) would smuggle in a second host.
+  if (url.searchParams.getAll('host').length > 1) fail('host= may be given only once.');
   const host = emptyHost ? '' : url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   const socketDir = url.searchParams.get('host');
+  if (socketDir !== null && !/^\/[^,;]*$/.test(socketDir)) fail('host= must be one absolute unix-socket directory (no list).');
   // A unix-socket directory (host=/abs/path with no hostname) is local by construction; any network host must be loopback.
   const loopback = host ? LOOPBACK.has(host) : Boolean(socketDir && path.isAbsolute(socketDir));
   if (!loopback) fail(`database host "${host || socketDir || ''}" is not loopback.`);
