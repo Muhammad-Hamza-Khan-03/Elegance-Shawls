@@ -10,7 +10,8 @@ spec = importlib.util.spec_from_file_location("run_evals", EVALS / "run_evals.py
 run_evals = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_evals)
 
-THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "metrics": {
+PROFILE = {"features": {"f": {"scheduled": True, "suites": ["filter_parsing"], "settings": []}}}
+THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "feature": "f", "source": "recorded", "metrics": {
     "exact_match": {"min": 0.9}, "constraint_precision": {"min": 0.9}, "constraint_recall": {"min": 0.9}}}}}
 
 
@@ -21,7 +22,14 @@ def workspace(tmp_path, examples, recorded, thresholds=THRESHOLDS):
         (tmp_path / "datasets/filter_parsing.jsonl").write_text("\n".join(json.dumps(e) for e in examples))
     (tmp_path / "recorded/filter_parsing.jsonl").write_text("\n".join(json.dumps(r) for r in recorded))
     (tmp_path / "thresholds.yaml").write_text(yaml.safe_dump(thresholds))
+    (tmp_path / "release_profile.yaml").write_text(yaml.safe_dump(PROFILE))
     return tmp_path
+
+
+def not_ready(root):
+    """--release-ready refuses non-canonical roots (exit 2); the readiness of a scratch root is judged through the blockers instead."""
+    assert run_evals.main(["--root", str(root), "--release-ready"]) == 2
+    return run_evals.release_blockers(run_evals.evaluate(root, THRESHOLDS, PROFILE, env={}), PROFILE, root, env={})
 
 
 EX = [{"id": "a", "query": "brown stole", "expected": {"category": "stoles", "colors": ["brown"]}},
@@ -30,18 +38,16 @@ GOOD = [{"id": "a", "provenance": "model", "response": {"category": "stoles", "c
         {"id": "b", "provenance": "model", "response": {"exclude_colors": ["red"]}}]
 
 
-def test_shipped_seed_is_a_harness_check_not_evidence():
+def test_shipped_filter_parsing_runs_the_real_parser_and_synthetic_data_is_not_release_evidence():
     thresholds = yaml.safe_load((EVALS / "thresholds.yaml").read_text())
-    results = {r["suite"]: r for r in run_evals.evaluate(EVALS, thresholds)}
+    profile = yaml.safe_load((EVALS / "release_profile.yaml").read_text())
+    results = {r["suite"]: r for r in run_evals.evaluate(EVALS, thresholds, profile)}
     result = results["filter_parsing"]
-    assert result["examples"] >= 10
-    assert result["metrics"]["exact_match"] == 1.0              # the harness itself works...
-    assert result["status"] == "not_evaluated"                  # ...but fixtures are not model output
-    assert "fixtures" in result["failures"][0]
-    recorded = run_evals.load_jsonl(EVALS / "recorded/filter_parsing.jsonl")
-    assert recorded and all(r["provenance"] == "fixture" for r in recorded)
-    scripts = {e["lang"] for e in run_evals.load_jsonl(EVALS / "datasets/filter_parsing.jsonl")}
-    assert scripts == {"en", "ur", "roman_ur"}
+    assert result["examples"] >= 10 and result["source"] == "code" and result["required"] is True
+    assert result["status"] == "pass" and result["metrics"]["exact_match"] >= 0.90   # the production parser, executed now
+    assert result["evidence"] == "unverified"                                        # ...on data with no signed independent review
+    assert "no verified independent held-out review" in " ".join(run_evals.release_blockers(list(results.values()), profile, EVALS))
+
 
 
 def test_shipped_suites_without_data_are_not_evaluated_and_block_release():
@@ -53,7 +59,7 @@ def test_missing_dataset_is_not_evaluated_not_pass(tmp_path):
     root = workspace(tmp_path, None, GOOD)
     [result] = run_evals.evaluate(root, THRESHOLDS)
     assert result["status"] == "not_evaluated"
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
+    assert not_ready(root)
 
 
 def test_empty_dataset_is_not_evaluated(tmp_path):
@@ -61,9 +67,10 @@ def test_empty_dataset_is_not_evaluated(tmp_path):
     assert run_evals.evaluate(root, THRESHOLDS)[0]["status"] == "not_evaluated"
 
 
-def test_passing_suite_is_release_ready(tmp_path):
-    root = workspace(tmp_path, EX, GOOD)
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 0
+def test_passing_suite_alone_is_not_release_ready(tmp_path):
+    root = workspace(tmp_path, EX, GOOD)       # passes, but nothing signs its dataset or approves the candidate (see test_attestation.py)
+    assert run_evals.main(["--root", str(root)]) == 0
+    assert not_ready(root)
 
 
 def test_metric_below_threshold_turns_the_run_red(tmp_path):
@@ -111,7 +118,7 @@ def test_fixture_responses_never_count_as_evaluated_even_when_perfect(tmp_path):
     [result] = run_evals.evaluate(root, THRESHOLDS)
     assert result["status"] == "not_evaluated" and result["metrics"]["exact_match"] == 1.0
     assert run_evals.main(["--root", str(root)]) == 0
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
+    assert not_ready(root)
 
 
 def test_responses_without_provenance_are_not_trusted(tmp_path):

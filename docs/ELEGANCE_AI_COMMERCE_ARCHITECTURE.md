@@ -1,8 +1,10 @@
 # Elegance Architecture
 
-The single authoritative architecture document for Elegance Shawls: what exists today, where the system is going, and which decisions and approvals govern the path. The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md) (v2.0); this document records the decisions, boundaries and gates, and does not duplicate that plan. Ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md).
+**Purpose and audience.** This is the authoritative architecture reference for maintainers, reviewers, operators, and future contributors. It records repository-backed facts, accepted boundaries, safety gates, and proposed phases. It is not a deployment log or a promise that target-state components are running.
 
-Deployment identifiers and release SHAs belong in release records, not here. Statements under "Current state" are verifiable in this repository; everything under "Target state" is a decision, not a fact about running software.
+The detailed roadmap lives in [`plans/ai-platform.md`](../plans/ai-platform.md); ingestion detail lives in [`phase-1-one-source-ingestion.md`](phase-1-one-source-ingestion.md). Deployment identifiers and release SHAs belong in release records, not here. Statements under **Current state** are verifiable in this repository; **Target state**, **Planned**, **Deferred**, and **Blocked** describe decisions or work that is not yet complete.
+
+**Current high-level position (reviewed 2026-11-09).** The catalogue, PostgreSQL-backed ingestion/review flow, server search, validated assistant/enquiry seams, admin accounts, and provider-neutral customer-memory contract are implemented to varying levels of QA. Customer authentication is configuration-gated and disabled by default. Server-side cart, orders, payments, HubSpot sync, and production memory activation are not implemented. AI release readiness remains `false` until the relevant evaluation and privacy gates pass.
 
 ## 1. Current state
 
@@ -147,6 +149,7 @@ AI-suggested attributes, descriptions and SEO text are written as suggestions in
 - Free-tier providers (Groq, Gemini free, OpenRouter free) are for development and anonymous product search only. A call flagged `personal=True` must never reach a provider that may train on inputs.
 - **Privacy gate:** customer memory and personal conversations are postponed until the agent and memory extraction run on a paid no-training or self-hosted model and the gate is explicitly passed.
 - Memory requires view, correct, delete and disable, tombstone protection, and protection against queued jobs recreating deleted items.
+- The explicit memory API uses the `MemoryProvider` contract with the current PostgreSQL adapter. Provider operations receive only the server-resolved customer id, return public memory fields, and keep consent, audit and content-scrubbing rules in one transaction. No extraction or alternate provider is enabled by this contract.
 - Raw audio is deleted after transcription by default.
 - Per-environment and daily budgets, warning at 80%.
 
@@ -154,12 +157,14 @@ AI-suggested attributes, descriptions and SEO text are written as suggestions in
 
 AI releases are gated by evals. An empty or missing dataset reports "not evaluated", which blocks AI release readiness; it is never a pass. Normal pull requests use recorded responses, not live provider calls.
 
-**Current status (S5): NOT_EVALUATED, `release_ready=false`, by design.**
+**Current status: `release_ready=false`, by design (issue #138).**
 
-- S5 (final verification of the PostgreSQL consolidation) includes **no real provider call**; no provider key is used.
-- `python evals/run_evals.py` reports every suite as `NOT_EVALUATED`. `filter_parsing` has recorded fixtures only, which are a harness check and not model output; the other four suites have no data (`n=0`).
-- `--release-ready` therefore exits non-zero (3) with `release_ready=false`. That is intentional and is an **AI / Phase 1 release gate**, not a PostgreSQL migration failure: the database work does not depend on it.
-- No AI feature or provider is release-ready until a non-empty eval dataset exists and the required provider and privacy gates (3.5, 3.6) are met. These results are not to be edited or inferred into a pass.
+- **Suites and features.** `evals/thresholds.yaml` lists the suites; `evals/release_profile.yaml` is the reviewed, intended release configuration. A suite is *required* when the feature it guards is scheduled there; suites of unscheduled features still run and are reported as advisory, so disabled features never block unrelated development, while scheduling a feature cannot skip its evaluations.
+- **Real evidence only.** `filter_parsing` and `variant_constraints` run the production parser and matcher against `datasets/filter_parsing.jsonl` and `datasets/retrieval_constraints.jsonl` (source `code`). `retrieval`, `grounding` and `action_safety` have no scorer or no data and report `NOT_EVALUATED`. They are advisory until their features are scheduled.
+- **Release readiness** (`python evals/run_evals.py --release-ready`, exit 3 while blocked) is VERIFIED, not declared, and judges only the canonical files next to the script: `--thresholds`, `--profile` and any other `--root` are refused (exit 2) with `--release-ready`. It needs every required suite passing, every scheduled feature to have suites, an unchanged `artifact_manifest.json` (which pins `thresholds.yaml` and `release_profile.yaml` too), a signed review record per required suite (`evals/attestations/<suite>.json`: exact dataset sha256, `held_out` split, reviewer string different from the author string, no query overlap with any other dataset) and a signed owner approval of the exact candidate (`evals/approval.json`, bound to a digest of thresholds, profile, manifest and attestations). Records are HMAC-signed with keys (`EVAL_REVIEWER_KEY`, `EVAL_OWNER_KEY`, at least 32 characters, different from each other) taken from the verifier's environment and never committed, so editing YAML or JSON in the repository cannot produce `release_ready=true`. Errors while verifying a record, the manifest, the YAML configuration, scored rows or datasets (bad JSON, odd characters, deep nesting, unreadable files) are caught and reported as a verification failure or configuration error, and devices, FIFOs and loops named like a dataset are refused unread: the gate fails closed. Exotic untested inputs may still raise; any such crash exits non-zero and is never ready. **Limits, stated plainly:** (1) the keys are symmetric: whoever can verify can sign, and there is no rotation or revocation; (2) a valid signature proves a key holder wrote the record, not that the labels were truly reviewed; (3) `author` and `reviewer` are free text inside the signed payload, compared as skeletons (Unicode NFKD, invisible and combining characters dropped, case folded, a small built-in table of look-alike letters mapped to Latin, punctuation and whitespace collapsed), so the code cannot tell apart two different names for one person ("Alice" vs "Alice B.") and real independence rests on who holds the reviewer key and on the review workflow (#139); (4) the leakage check reduces every string under the keys `query`, `q`, `text`, `transcript`, `utterance`, `input`, `prompt`, `question` (any depth, lists included) and every other string of three or more words to the same skeleton, and compares it with every `.jsonl`, `.ndjson` and `.json` file below `datasets/` (symlinked directories followed once) and, by whole-word containment, every `.txt .csv .tsv .yaml .yml .md` file there; it does not see paraphrases or translations, one- and two-word strings under other keys, look-alike letters outside the small table, files with other extensions, or anything outside `datasets/`. Limits must be finite and non-negative numbers (`NaN` and negatives are configuration errors) and duplicate YAML keys in thresholds or profile are configuration errors. A run on any non-canonical root or with overrides never reports `release_ready=true`. Today no record exists and no dataset qualifies as held-out (the two required datasets even share queries with each other and with other datasets, which is reported, not edited away), so the gate is closed. Issue #139 builds the review workflow; Urdu/Roman Urdu review needs a fluent human reviewer, an open blocker. `evidence` and `approval` are not configuration keys; unknown keys are configuration errors.
+- **Activation checks.** `evals/tests/test_release_profile.py` fails when a backend boolean setting is unclassified or listed under two features, `scheduled` is not a real boolean, or a setting is on by default or enabled in the Dockerfile (several `ENV` pairs per line, continuations), any compose `environment` (map or list, `${VAR:-default}`) or env example with any truthy spelling (`true/1/yes/on`) while its feature is unscheduled; a flag-shaped variable that is not a known setting also fails. These are CI tests: they raise the cost of an accidental activation, they do not stop someone who edits the tests, and runtime flags set outside the repository are not seen. A missing profile or manifest drift is a configuration error (exit 2), never a weaker gate. Known dataset defects (fp-005) are listed in `evals/KNOWN_DATASET_ISSUES.md`.
+- **Deterministic artifacts.** Frozen gold data and thresholds are pinned by SHA-256 in `evals/artifact_manifest.json` (`python evals/artifact_manifest.py`); no test depends on git history. `thresholds.yaml` and `release_profile.yaml` are in the manifest, so loosening a limit or scheduling a feature is a visible manifest change and also invalidates any owner approval.
+- No AI feature or provider is release-ready until required evidence exists and the provider and privacy gates (3.5, 3.6) are met. These results are not to be edited or inferred into a pass.
 
 ### 3.8 Phase naming and decision register
 
@@ -184,15 +189,31 @@ Phase 0.5 is the one-source ingestion implementation present in the repository; 
 - **Bootstrap:** no default credential. After `alembic upgrade head`, an operator runs `python scripts/admin_accounts.py bootstrap-owner --email <addr>` (idempotent; `reset-password` for recovery). Owners create further accounts.
 - **Legacy fallback:** `X-Admin-Key` with `ADMIN_API_KEY` is accepted only while `ADMIN_LEGACY_KEY_EXPIRES_AT` (ISO 8601 with offset) is in the future. It acts as `editor` plus `platform:operate`, cannot manage accounts or read audit, and is audited as `legacy-shared-key`. Retirement: empty both variables or let the instant pass; no code change or redeploy of code is needed.
 
-### 3.10 Customer principal/session for memory routes (M4-S2: seam only)
+### 3.10 Customer principal/session for memory routes (M4)
 
-- **What exists (verified in the repository):** only the admin identity of 3.9 (`admin_accounts`, `admin_sessions`, `X-Admin-Session`, `X-Admin-Key`). It authenticates staff for `/products/admin`, ingestion and `/v1/admin/*`; its trust boundary is the Next admin proxy plus server-side session rows, and it carries no customer identity, so it is **not** usable by `/v1/me/memory` (accepting it would let staff act as a customer). The `customers` and `customer_identities` tables exist (migration 0001) but nothing issues or verifies a customer credential. The public assistant and action routes take a client-chosen `session_id` that is only a conversation/idempotency label, never an identity.
-- **Decision:** customer memory routes depend on `memory.principal.current_principal`. A `CustomerSessionVerifier` must confirm a server-held live session for the opaque `X-Customer-Session` token and return a `CustomerPrincipal` (customer id, session id, SHA-256 of the presented token, timezone-aware expiry). The seam re-checks the binding (hash of the presented token), expiry and types, and answers an identical 401 for absent, invalid, expired, mismatched, oversized or erroring verification. No verifier is installed, so production stays 401. Client-supplied ids, headers, query, cookie or body fields are never an identity.
-- **Left for the authentication slice:** issuing and storing customer sessions (hash-only, as in 3.9), login (Google or phone OTP per the plan, needs separate approval), and installing the verifier in `get_session_verifier`. Consent, the provider gate, ownership isolation, audit and retention (M4-S1) are unchanged.
+- **What exists (verified in the repository):** admin identity from 3.9 remains separate. Customer identity verification and hash-only server sessions exist behind `CUSTOMER_AUTH_ENABLED` and complete provider configuration; they are disabled by default. The public assistant and action `session_id` is only a conversation/idempotency label, never a customer identity.
+- **Boundary:** customer memory routes depend on `memory.principal.current_principal`. A `CustomerSessionVerifier` confirms a server-held live session for the opaque `X-Customer-Session` token and returns a `CustomerPrincipal` (customer id, session id, SHA-256 of the presented token, timezone-aware expiry). The seam re-checks token binding, expiry and types, and answers an identical 401 for absent, invalid, expired, mismatched, oversized or erroring verification. Client-supplied ids, headers, query, cookie or body fields are never an identity.
+- **Activation:** the existing external-token exchange is a configuration-gated authentication primitive; this contract work does not enable customer memory or change the privacy gate, consent, ownership isolation, audit or retention requirements.
+- **Bounded expansion:** the idempotent work order, exact task IDs, synthetic-only Batch A login/merge gate, synthetic-only Batch B explainable recommendation gate, and blocked Batch C privacy gate are recorded in [`docs/m4-contract.md`](./m4-contract.md). Batch 1 (`t_2f755ea0`) and M3 remain preserved; no batch may set `release_ready=true` or promote to `main`.
+- **Batch A backend implementation (not independently QA-approved):** deterministic Google/phone OTP adapters live only under tests. Verified issuer and subject are bound in the stored identity key; optional exchange idempotency keys refuse replay without issuing a second session. The disabled-by-default staging-only merge API attributes at most 100 recent signed-session anonymous events to a live customer after explicit consent, with a unique ledger and same-transaction audit. It never writes memory. See [`M4_BATCH_A_BACKEND.md`](./M4_BATCH_A_BACKEND.md) for limits and migration notes.
+
+#### Current M4 milestone status — 2026-11-08
+
+The provider-training policy and migration downgrade fixture are present in staging. The evidence lineage is PR #179 → merge `e04fb7470fb921032086f8c99217247458efec1d`, PR #184 → staging promotion `3b4f7b10d953a5e30cde50a7b2c714f59f43bc8d`, PR #185 → migration fixture merge `5a6ed21a5665d254ac345749811efa9dc63a8722`, and PR #186 → historical staging promotion `d020d521f2666726a2b82316785c8bf72669e83a`; PR #194 is the current documentation reconciliation at `origin/staging-integration` `63f1730663114d31085967ae01a05687bd614979`, while `origin/staging` is `e5c04c8d4097a46adf9fecf00baddd15cc860fc2` and `origin/main` remains `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+
+Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis and arq verification passed: Redis was healthy at `127.0.0.1:6380`, readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq was exercised only through two bounded synthetic calls; no secrets or API keys are documented.
+
+This remains a staging/non-production milestone. Deployment, production activation, provider selection/credentialing, and `release_ready` remain deferred. Remaining blockers: frontend live proxy needs a disposable backend URL; embeddings activation/backfill is unavailable; evaluation provenance is incomplete; and external observability has not been exercised.
 
 ### 3.11 Canonical embedding and retrieval architecture (accepted; implemented on `staging-integration`)
 
-The consolidation briefly carried two embedding pipelines. There is now **one**: the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`.
+The consolidation briefly carried two embedding pipelines. The **canonical configured pipeline** is the evaluated multilingual E5 pipeline of `search/`, `embeddings/` and `repositories/embeddings.py`. EmbeddingGemma is a separately verified local-only candidate for search; it is not the canonical E5 configuration and is not memory-extraction or production approval.
+
+#### EmbeddingGemma 2 candidate — verified local-only boundary (2026-11-08)
+
+The staging-integration candidate contract additionally verifies `google/embeddinggemma-2` for the local search path: Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`; model-tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`; weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`; 768 dimensions; CPU-only. The candidate quality record reports recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, zero hard-constraint violations, and reproducibility Jaccard `1.0`.
+
+Independent QA is recorded as Gemma/contract `35 passed, 1 skipped`, evaluation `14 passed`, embedding integration `21 passed`, schema integration `6 passed`, compileall/diff-check passed, and disposable database backfill `8/8` with an idempotent rerun and semantic retrieval pass. This evidence verifies the pinned local candidate and its search/backfill contract only. It does **not** verify hosted staging acceptance, external OTLP/Langfuse, reviewed model/evaluation provenance beyond the recorded candidate evidence, deployment, production activation, memory extraction, or `release_ready`; the activation boundary remains local-only until those gates are separately cleared.
 
 **Model and configuration.** `intfloat/multilingual-e5-base`, 768 dimensions, CPU, offline, loaded from a pinned local snapshot (`embeddings/providers/local_e5.py`; the staging image bakes it in). Settings: `EMBEDDING_ENABLED`, `EMBEDDING_PROVIDER` (`local_e5`; `fake` for tests), `EMBEDDING_DIMENSIONS=768`, `EMBEDDING_INDEX_VERSION`, `LOCAL_SEMANTIC_SEARCH_ENABLED`, `LOCAL_E5_MODEL_PATH`, `LOCAL_E5_MODEL_REVISION` (tree digest). Unset or wrong means disabled; nothing blocks start-up or catalogue browsing.
 
@@ -218,15 +239,19 @@ The two RRF implementations are intentionally different strategies (weighted ove
 
 **Legacy tables.** `semantic_embeddings` and `semantic_embedding_jobs` (migration 0012) are no longer read or written by any code and are empty on every database created from this chain. They are kept deliberately: dropping persisted tables needs a separately approved migration (a future `0016`).
 
-**PostgreSQL schema and migrations.** One linear chain, single head `0015`: 0001 relational foundation, 0002 outbox, 0003 catalogue, 0004 ingestion, 0005 outbox uuid, 0006 job retryability, 0007 catalogue attributes, 0008 enrichment suggestions, 0009 embeddings + search (main's chain ends here), 0010 admin accounts (also adds `audit_log.outcome/detail` and the append-only guard), 0011 enquiries, 0012 semantic embeddings (legacy, see above), 0013 action executions, 0014 customer memory, 0015 customer sessions. 0010-0015 only add tables, apart from the two nullable/defaulted `audit_log` columns and the guard trigger of 0010.
+**PostgreSQL schema and migrations.** One linear chain, single head `0016`: 0001 relational foundation, 0002 outbox, 0003 catalogue, 0004 ingestion, 0005 outbox uuid, 0006 job retryability, 0007 catalogue attributes, 0008 enrichment suggestions, 0009 embeddings + search (main's chain ends here), 0010 admin accounts (also adds `audit_log.outcome/detail` and the append-only guard), 0011 enquiries, 0012 semantic embeddings (legacy, see above), 0013 action executions, 0014 customer memory, 0015 customer sessions, 0016 anonymous merge ledger and optional exchange replay hash. 0010-0016 only add tables or nullable columns, apart from the two nullable/defaulted `audit_log` columns and the guard trigger of 0010.
 
 **Safe upgrade of an existing database** (never against production or a shared database without the approval in section 5):
 1. Take a verified backup (`pg_dump -Fc`) and restore it into a scratch database first.
 2. `python scripts/check_migration_stamp.py` (read-only). Exit 3 means the database carries the pre-consolidation numbering: do not stamp, do not upgrade; recreate a disposable database, or restore into a new one.
-3. `alembic current` must print `0009` (or later). `alembic upgrade head` applies 0010-0015 in one pass; each step has a downgrade, but `0010` drops `audit_log.outcome/detail` data and every downgrade drops customer-owned tables, so rollback means restoring the backup, not downgrading.
+3. `alembic current` must print `0009` (or later). `alembic upgrade head` applies 0010-0016 in one pass; each step has a downgrade, but `0010` drops `audit_log.outcome/detail` data, `0016` refuses downgrade with merge evidence, and other downgrades drop customer-owned tables, so rollback means restoring the backup, not downgrading.
 4. Run `python scripts/embedding_backfill.py --kind product --limit N` (and `variant`) until `last_id` is empty; search stays lexical until vectors exist.
 
 **Known limitations.** Freshness is verified per candidate (about two reads per vector candidate; fine at the current catalogue size). `POST /v1/search/hybrid` has no relevance gate, so an off-topic query still returns the nearest products (the GET path gates them). Only one model and one index version are searchable at a time; switching means a new index version plus a backfill.
+
+### 3.12 WhatsApp bridge (accepted, optional, off by default; owner decision 2026-11-06)
+
+`WHATSAPP_BRIDGE_ENABLED=false` keeps the `wa.me` link flow unchanged. When `true`, a self-hosted Node/Baileys bridge (`apps/whatsapp-bridge`, linked-device, no Meta Business Platform) publishes chats to the Redis stream `wa:inbound`; a Python consumer (`whatsapp/`) stores each message once (migration 0019), links it to an enquiry by `Ref`, marks the enquiry `contacted` on a staff reply, and answers with reviewed templates. **Reply automation stays on this bridge** (the Cloud API is the official fallback if the number is restricted). Boundaries: the bridge owns no SQL or business logic; `/send` refuses chats without a customer message in the last 24 hours, so the bot never starts a conversation; automatic replies never state an order is confirmed (a staff button does); the WhatsApp assistant is model-driven (`whatsapp/assistant.py`, prompts in `whatsapp/templates/assistant.yaml`): a model reads the scrubbed message and recent chat, chooses search/order/details/reply/handoff, and code grounds it (products, prices, stock and links come from the database; the enquiry goes through the website's validating `create_enquiry`; nothing is placed until the customer confirms a summary; replies with unknown links are dropped). Outside development customer text goes only through the gateway's no-training chain (`LLM_PRODUCTION_CHAIN`, section 3.6 gate); with no chain, or on any model failure, the holding reply is sent and a person follows up; voice notes are transcribed only by a declared self-hosted or no-training endpoint and the audio is discarded; Baileys auth state is file-based by default or an encrypted PostgreSQL table with its own role (migration 0020). Retention 12 months with a deletion command. Operations: `OPERATIONS.md`, `LAUNCH_RUNBOOK.md` section 6, `DEPLOYMENT_VALIDATION.md`. Known limits and shortcuts are listed in `OPERATIONS.md`. Nothing is deployed or enabled.
 
 ## 4. Phased roadmap and acceptance gates
 
@@ -280,7 +305,7 @@ Operations workstreams #103 (CI images and security scans), #104 (environments),
 | `docs/phase-1-one-source-ingestion.md` | Ingestion states, rules and security model. |
 | `README.md`, `DEPLOYMENT.md`, `OPERATIONS.md`, `LAUNCH_RUNBOOK.md`, `CLAUDE.md` | Setup, deploy and operations. Updated only when their commands, variables or procedures actually change. |
 
-## Appendix A. Product quality control pipeline and MCP connector (carried over)
+## Appendix A. Product quality control pipeline (carried over)
 
 > Carried over unchanged from branch `docs/staging-first-release-workflow` during the staging-integration consolidation. It was written against an older numbering of this document (it was section 9.1 there); the content is current, only its heading numbers are not.
 
@@ -319,60 +344,5 @@ AI may assist only where it adds value:
 
 AI suggestions remain drafts. AI must not replace deterministic validation or silently change a product.
 
-### Controlled MCP business connector — future Phase 5/6
-
-An MCP server may later expose a small set of approved business tools to an admin AI assistant. MCP is an integration boundary, not a reason to expose MongoDB directly.
-
-```text
-Admin AI
-   -> MCP server
-   -> authenticated FastAPI business tool
-   -> authorization and validation
-   -> MongoDB/provider action
-   -> audit event
-```
-
-Start with read-only tools:
-
-```text
-list_failed_imports()
-find_missing_images()
-find_duplicate_candidates()
-get_import_job_summary()
-```
-
-Only later add approval-required proposal/mutation tools:
-
-```text
-propose_product_correction()
-propose_description_update()
-approve_staged_product()
-retry_failed_job()
-```
-
-Every mutation must follow:
-
-```text
-AI suggestion
-    -> human review
-    -> explicit approval
-    -> backend validation
-    -> state change
-    -> audit log
-```
-
-MCP requirements:
-
-- No direct database credentials or unrestricted queries.
-- Server-side authentication and per-tool authorization.
-- Read-only default and least-privilege scopes.
-- Idempotency for retryable actions.
-- Clear confirmation for every mutation.
-- Provider and database errors returned safely.
-- Full actor, tool, target, before/after, and timestamp audit data.
-- Separate admin/demo MCP credentials and environments.
-
 - Deterministic product quality checks.
 - Quality status, rule failures, and revalidation path.
-- Read-only MCP admin tools, followed by approval-gated proposal tools only after the underlying workflows are stable.
-- MCP mutation tools before read-only tools, authorization, human approval, and audit logging are independently verified.

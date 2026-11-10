@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -11,6 +13,7 @@ from routes.enrichment_routes import router as enrichment_router
 from routes.event_routes import router as event_router
 from routes.enquiry_routes import admin_router as enquiry_admin_router, router as enquiry_router
 from routes.action_routes import router as action_router
+from routes.whatsapp_routes import admin_router as whatsapp_admin_router, pairing_router as whatsapp_pairing_router, public_router as whatsapp_public_router
 from routes.assistant_routes import router as assistant_router
 from routes.customer_auth_routes import router as customer_auth_router
 from routes.memory_routes import router as memory_router
@@ -23,13 +26,16 @@ from observability.request_log import RequestLogMiddleware
 from observability.tracing import configure_exporters
 from security.admin_auth import legacy_key_enabled, legacy_key_expiry
 from security.rate_limit import RateLimitMiddleware
+from whatsapp import config as wa_config
 from workers.queues import close_queue_pool, worker_is_alive
+
+logger = logging.getLogger("elegance.main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("Starting up...")
+    logger.info("Starting up...")
     configure_exporters()  # no-op unless OTEL_ENABLED and an OTLP endpoint are set
     # PostgreSQL holds the catalogue, staged products and ingestion jobs, so it is required: a missing
     # DATABASE_URL is a configuration error and stops startup. A configured but unreachable database
@@ -38,10 +44,10 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("DATABASE_URL is required: the catalogue runs on PostgreSQL")
     await connect_to_postgres()
     if legacy_key_enabled():
-        print(f"WARNING: the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
+        logger.warning(f"the legacy shared ADMIN_API_KEY is accepted until {legacy_key_expiry().isoformat()}; migrate to individual admin accounts")
     yield
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await close_queue_pool()
     await close_redis()
     await close_postgres()
@@ -88,6 +94,9 @@ def create_app() -> FastAPI:
     app.include_router(suggestion_router)
     app.include_router(enquiry_router)
     app.include_router(enquiry_admin_router)
+    app.include_router(whatsapp_public_router)
+    app.include_router(whatsapp_admin_router)
+    app.include_router(whatsapp_pairing_router)
     app.include_router(auth_router)
     app.include_router(accounts_router)
     app.include_router(audit_router)
@@ -109,6 +118,8 @@ def create_app() -> FastAPI:
             "postgres": "connected",
             "redis": await _optional_status(redis_configured(), redis_is_ready),
             "worker": await _optional_status(redis_configured(), worker_is_alive, "alive", "not_seen"),
+            # Optional like Redis: a misconfigured bridge is reported but never makes the API unready.
+            "whatsapp": "disabled" if not wa_config.is_enabled() else "misconfigured" if wa_config.misconfiguration() else "enabled",
         }
 
     return app

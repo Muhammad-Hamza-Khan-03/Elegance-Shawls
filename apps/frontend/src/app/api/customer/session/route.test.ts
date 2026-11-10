@@ -51,6 +51,7 @@ describe('customer session route', () => {
     const response = await POST(exchangeRequest({ id_token: ID_TOKEN }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(sessionCookie(response)).toBe(SESSION_TOKEN);
     expect(response.headers.get('set-cookie')).toMatch(/HttpOnly/i);
     expect(response.headers.get('set-cookie')).toMatch(/SameSite=lax/i);
@@ -69,6 +70,7 @@ describe('customer session route', () => {
     for (const body of [{ id_token: ID_TOKEN, customer_id: 'victim' }, {}, { id_token: 'x'.repeat(4097) }]) {
       const response = await POST(exchangeRequest(body));
       expect(response.status).toBe(400);
+      expect(response.headers.get('cache-control')).toBe('no-store');
       expect(response.headers.get('set-cookie')).toBeNull();
     }
     expect(fetchMock).not.toHaveBeenCalled();
@@ -105,6 +107,7 @@ describe('customer session route', () => {
       const text = await response.text();
       expect(response.status).toBe(status);
       expect(JSON.parse(text)).toEqual({ detail });
+      expect(response.headers.get('cache-control')).toBe('no-store');
       expect(text).not.toContain('Traceback');
       expect(text).not.toContain(ID_TOKEN);
       expect(text).not.toContain(SESSION_TOKEN);
@@ -163,8 +166,10 @@ describe('customer session route', () => {
     const response = await DELETE(signOutRequest(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ authenticated: false });
     expect(response.headers.get('set-cookie')).toMatch(new RegExp(`${CUSTOMER_SESSION_COOKIE}=;.*Max-Age=0`, 'i'));
+    expect(response.headers.get('set-cookie')).toMatch(/HttpOnly/i);
     expect(fetchMock.mock.calls[0][0].toString()).toBe(`${BACKEND}/v1/customer/auth/logout`);
     expect(fetchMock.mock.calls[0][1].method).toBe('POST');
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get('X-Customer-Session')).toBe(SESSION_TOKEN);
@@ -189,17 +194,38 @@ describe('customer session route', () => {
       fetchMock.mockResolvedValue(json({ authenticated: true, expires_at: expiresAt }));
       const res = await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`));
       expect(await res.json()).toEqual({ authenticated: true });
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(res.headers.get('set-cookie')).toBeNull();
       expect(fetchMock.mock.calls[0][0]).toBe(`${BACKEND}/v1/customer/auth/me`);
       expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'X-Customer-Session': SESSION_TOKEN });
     });
 
-    it('is false without a cookie (no upstream call), for a rejected session, and when the backend is down', async () => {
-      expect(await (await GET(me())).json()).toEqual({ authenticated: false });
+    it('is false without a cookie (no upstream call), for a revoked session, and when the backend is down', async () => {
+      const absent = await GET(me());
+      expect(await absent.json()).toEqual({ authenticated: false });
+      expect(absent.headers.get('cache-control')).toBe('no-store');
       expect(fetchMock).not.toHaveBeenCalled();
       fetchMock.mockResolvedValueOnce(json({ detail: 'x' }, 401));
-      expect(await (await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`))).json()).toEqual({ authenticated: false });
+      const revoked = await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`));
+      expect(await revoked.json()).toEqual({ authenticated: false });
+      expect(revoked.headers.get('set-cookie')).toMatch(/Max-Age=0/i);
       fetchMock.mockRejectedValueOnce(new Error('down'));
       expect(await (await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`))).json()).toEqual({ authenticated: false });
+    });
+
+    it('fails closed on unexpected successful backend responses without exposing their content', async () => {
+      for (const upstream of [
+        new Response(null, { status: 204 }),
+        json({ authenticated: false, secret: SESSION_TOKEN }),
+        json({ unexpected: true, secret: SESSION_TOKEN }),
+        new Response(`<script>${SESSION_TOKEN}</script>`, { status: 200 }),
+      ]) {
+        fetchMock.mockResolvedValueOnce(upstream);
+        const response = await GET(me(`${CUSTOMER_SESSION_COOKIE}=${SESSION_TOKEN}`));
+        expect(await response.json()).toEqual({ authenticated: false });
+        expect(response.headers.get('cache-control')).toBe('no-store');
+        expect(response.headers.get('set-cookie')).toBeNull();
+      }
     });
   });
 });

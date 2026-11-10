@@ -18,6 +18,8 @@ def _config(monkeypatch):
     monkeypatch.setattr(settings, "llm_chain_default", "fake/a,fake/b,fake/c")
     monkeypatch.setattr(settings, "llm_production_chain", "fake/paid")
     monkeypatch.setattr(settings, "llm_free_tier_providers", "groq,gemini,openrouter")
+    monkeypatch.setattr(settings, "llm_provider_training_policies", "fake=no_training")
+    monkeypatch.setattr(settings, "llm_provider_control_records", "")
     monkeypatch.setattr(settings, "llm_max_attempts", 3)
     monkeypatch.setattr(settings, "llm_timeout_seconds", 0.2)
 
@@ -76,6 +78,20 @@ def test_personal_data_never_reaches_free_tier_providers(monkeypatch):
     with pytest.raises(PersonalDataPolicyError):
         run(gateway(completion=spy).complete(MESSAGES, personal=True))
     assert seen == []
+
+
+def test_personal_data_allows_training_enabled_provider_only_with_controls(monkeypatch):
+    controls = {"trainer": {"assistant": {field: True for field in {
+        "disclosure_consent", "retention_deletion", "residency_security", "provider_terms",
+        "data_classification", "opt_out_deletion", "audit_evidence", "rollback_disable",
+    }}}}
+    monkeypatch.setattr(settings, "llm_production_chain", "trainer/model")
+    monkeypatch.setattr(settings, "llm_provider_training_policies", "trainer=may_train")
+    monkeypatch.setattr(settings, "llm_provider_control_records", controls)
+    async def completion(model, messages, timeout):
+        return ProviderReply("ok")
+    result = run(gateway(completion=completion).complete(MESSAGES, personal=True, use_case="assistant"))
+    assert result.model == "trainer/model"
 
 
 def test_personal_data_uses_only_the_production_chain(monkeypatch):

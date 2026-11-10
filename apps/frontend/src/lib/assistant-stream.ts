@@ -1,7 +1,7 @@
 // M3-S2 client for POST /v1/assistant/stream (via the same-origin proxy). Server output is untrusted: frames, ordering and
 // every action proposal are re-checked here (mirroring the backend action kernel's allowlist), and nothing is executed here (M3-S3: only a user-confirmed call in assistant-actions.ts does that).
-export const ACTIONS = ['show_product', 'add_to_cart', 'start_whatsapp_enquiry'] as const;
-export const EXECUTABLE: readonly string[] = ['add_to_cart', 'start_whatsapp_enquiry'];
+export const ACTIONS = ['show_products', 'open_product', 'apply_filters', 'add_to_cart', 'start_whatsapp_order'] as const;
+export const EXECUTABLE: readonly string[] = ['add_to_cart', 'start_whatsapp_order'];
 export const REASONS = [
   'ok', 'invalid_proposal', 'missing_context', 'unknown_action', 'permission_denied', 'invalid_idempotency_key', 'invalid_params',
   'invalid_quantity', 'invalid_currency', 'idempotency_conflict', 'product_not_found', 'product_unavailable', 'stale_revision',

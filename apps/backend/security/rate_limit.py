@@ -10,6 +10,7 @@ from configuration.config import settings
 from database.redis_client import get_redis
 
 logger = logging.getLogger("elegance.rate_limit")
+_WINDOW_SECONDS = 60.0
 _REDIS_RETRY_AFTER_FAILURE_SECONDS = 10.0
 
 
@@ -31,6 +32,7 @@ class RateLimitMiddleware:
         self.app = app
         self.requests: dict[str, deque[float]] = defaultdict(deque)
         self._redis_down_until = 0.0
+        self._next_sweep = monotonic() + _WINDOW_SECONDS
 
     async def _hit_redis(self, key: str, limit: int) -> bool | None:
         """True = allowed, False = limited, None = Redis unavailable (use the fallback)."""
@@ -48,8 +50,19 @@ class RateLimitMiddleware:
             return None
         return count <= limit
 
+    def _sweep(self, now: float) -> None:
+        """Drop keys with no request in the last window, so distinct clients cannot grow memory without bound."""
+        self._next_sweep = now + _WINDOW_SECONDS
+        for key in [k for k, b in self.requests.items() if not b or b[-1] <= now - _WINDOW_SECONDS]:
+            del self.requests[key]
+
     def _hit_local(self, key: str, limit: int) -> bool:
         now = monotonic()
+        if now >= self._next_sweep:
+            self._sweep(now)
+        if key not in self.requests and len(self.requests) >= settings.local_rate_limit_max_keys:
+            oldest_key = min(self.requests, key=lambda candidate: self.requests[candidate][-1])
+            del self.requests[oldest_key]
         bucket = self.requests[key]
         while bucket and bucket[0] <= now - 60:
             bucket.popleft()

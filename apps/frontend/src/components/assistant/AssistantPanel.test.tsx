@@ -37,7 +37,7 @@ describe('AssistantTurn', () => {
   it('a rejected or param-less suggestion never becomes a control', () => {
     const html = render(run([start, card,
       { seq: 2, type: 'proposal', action_type: 'add_to_cart', idempotency_key: KEY, decision: { outcome: 'rejected', reason: 'stale_price', replayed: false } },
-      validated(3, 'start_whatsapp_enquiry', false)]));
+      validated(3, 'start_whatsapp_order', false)]));
     expect(html).toContain('not accepted, so nothing was done');
     expect(html).not.toContain('stale_price');
     expect(html).not.toContain('Add to cart');
@@ -45,7 +45,7 @@ describe('AssistantTurn', () => {
   });
 
   it('offers one explicit confirm control for a validated enquiry that carries params', () => {
-    const html = render(run([start, card, validated(2, 'start_whatsapp_enquiry', false), { ...validated(3, 'start_whatsapp_enquiry'), params: { items: [params] } } as AssistantEvent]));
+    const html = render(run([start, card, validated(2, 'start_whatsapp_order', false), { ...validated(3, 'start_whatsapp_order'), params: { items: [params] } } as AssistantEvent]));
     expect(html.match(/Confirm: start WhatsApp enquiry/g)).toHaveLength(1);
     expect(html).toContain('Nothing is sent until you open WhatsApp');
   });

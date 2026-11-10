@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping, Protocol
 
+from schemas.action_schema import normalize_action
+
 KERNEL_VERSION = 2  # 2: non-proposal and malformed state reject (invalid_proposal, invalid_state) instead of raising
 SUPPORTED_CURRENCIES = frozenset({"PKR"})
 MAX_QUANTITY = 1000  # same bound as POST /v1/enquiries
@@ -213,7 +215,7 @@ def validate(proposal: ActionProposal, state: CatalogueState, ledger: Idempotenc
         ctx = proposal.context
         base.update(session_ref=hashlib.sha256(ctx.session_id.encode()).hexdigest()[:16], has_user=ctx.user_id is not None)
         try:
-            action = ActionType(proposal.action_type) if isinstance(proposal.action_type, str) else None
+            action = ActionType(normalize_action(proposal.action_type)) if isinstance(proposal.action_type, str) else None
         except ValueError:
             action = None
         if action is None:

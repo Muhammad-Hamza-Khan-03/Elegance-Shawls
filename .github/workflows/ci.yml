@@ -25,13 +25,35 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: apps/frontend/coverage
+          retention-days: 7
       - run: npm audit --audit-level=high
       - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
           NEXT_PUBLIC_SITE_URL: https://store.example.invalid
           NEXT_PUBLIC_WHATSAPP_NUMBER: "923001234567"
+
+  whatsapp-bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/whatsapp-bridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/whatsapp-bridge/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --audit-level=high
 
   backend:
     runs-on: ubuntu-latest
@@ -46,7 +68,15 @@ jobs:
           cache: pip
           cache-dependency-path: apps/backend/requirements*.txt
       - run: pip install -r requirements-dev.txt pip-audit
-      - run: pytest -q
+      - run: pytest -q --cov --cov-report=term-missing --cov-report=xml
+      - run: coverage report --include='utils/pagination.py,security/admin_auth.py' --fail-under=85
+      - run: coverage report --fail-under=55
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage.xml
+          retention-days: 7
       - run: python -m compileall -q .
       - run: pip-audit -r requirements.txt
 
@@ -67,16 +97,24 @@ jobs:
       - run: pytest -q -m integration
 
   evals:
-    # Recorded responses only: pull requests never spend live LLM quota. Suites without data report
-    # "not evaluated", which does not fail here but does block `--release-ready`.
+    # No live LLM quota is ever spent. Suites run the production parser/matcher or score recorded responses. Suites of features
+    # that are not scheduled in evals/release_profile.yaml are advisory; scheduled ones block. Release readiness stays an explicit
+    # gate (`run_evals.py --release-ready`) and is expected to be false until reviewed evidence and an owner approval are recorded.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7          # shallow on purpose: nothing may depend on git history
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install pyyaml==6.0.3
-      - run: python evals/run_evals.py --json evals-report.json
+      - run: pip install -r apps/backend/requirements-dev.txt
+      - name: Frozen evaluation artifacts match their SHA-256 manifest
+        run: python evals/artifact_manifest.py
+      - name: Offline eval tests (gate semantics, release profile consistency, runners; deterministic, no network)
+        run: pytest -q evals/tests apps/backend/tests/test_evals_runner.py
+      - name: Eval run (production parser and matcher; scheduled features block, others are advisory)
+        run: python evals/run_evals.py --json evals-report.json
+      - name: Deterministic retrieval gate (fixture catalogue)
+        run: python evals/run_retrieval_evals.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -103,6 +141,51 @@ jobs:
         with:
           name: playwright-report
           path: apps/frontend/playwright-report
+          retention-days: 7
+
+  e2e-real-stack:
+    # Next.js -> FastAPI -> disposable PostgreSQL (pgvector). No mock API: this is the genuine end-to-end evidence.
+    # Synthetic fixtures only (apps/backend/scripts/seed_e2e.py); wa.me is intercepted, no model/provider/Redis is used.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg17
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e-throwaway
+          POSTGRES_DB: elegance_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U e2e -d elegance_e2e" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      E2E_DATABASE_URL: postgresql+asyncpg://e2e:e2e-throwaway@127.0.0.1:5432/elegance_e2e
+      E2E_DISPOSABLE_DATABASE: elegance_e2e   # explicit acknowledgement that this database may be reset (see e2e-real/isolation.cjs)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements*.txt
+      - run: pip install -r apps/backend/requirements.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: npm ci
+        working-directory: apps/frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/frontend
+      - run: npm run test:e2e:real:guard   # the isolation guard and environment allowlist are tested before any server starts
+        working-directory: apps/frontend
+      - run: npm run test:e2e:real
+        working-directory: apps/frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-real-stack
+          path: apps/frontend/playwright-report-real
           retention-days: 7
 
   containers:

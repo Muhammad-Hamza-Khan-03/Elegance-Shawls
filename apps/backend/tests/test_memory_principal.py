@@ -82,6 +82,8 @@ def _default_app() -> FastAPI:
     ("expired", FakeVerifier(principal(expires_at=NOW - timedelta(seconds=1))), TOKEN),
     ("naive expiry", FakeVerifier(principal(expires_at=datetime.now())), TOKEN),
     ("bound to another token", FakeVerifier(principal()), OTHER),
+    ("malformed token digest", FakeVerifier(principal(token_sha256=123)), TOKEN),
+    ("non-ascii token digest", FakeVerifier(principal(token_sha256="é")), TOKEN),
     ("blank session id", FakeVerifier(principal(session_id="")), TOKEN),
     ("non-uuid customer", FakeVerifier(principal(customer_id="not-a-uuid")), TOKEN),
     ("verifier error", FakeVerifier(error=True), TOKEN),
@@ -114,3 +116,13 @@ def test_real_router_is_401_by_default_without_touching_the_database():
     app.include_router(router)
     r = TestClient(app).get("/v1/me/memory", headers={SESSION_HEADER: TOKEN})
     assert r.status_code == 401
+
+
+def test_verifier_construction_failure_is_the_same_401(monkeypatch):
+    def broken():
+        raise RuntimeError("configuration unavailable")
+
+    monkeypatch.setattr("security.customer_session.build_session_verifier", broken)
+    r = TestClient(_default_app()).get("/who", headers={SESSION_HEADER: TOKEN})
+    assert r.status_code == 401
+    assert r.json() == {"detail": "Customer authentication is required"}

@@ -56,7 +56,10 @@ ALIASES = {"shawal": "shawl", "shal": "shawl", "شال": "shawl", "اسٹول": 
 FILLER = set("or a an the in of for some something any and with me show everything all i want need looking find please "
              "colour color rang ka ki ke se say ko mein hai کا کی کے رنگ سے میں "
              "mujhe chahiye chahiyen chahiya dikhao dikhaiye dikhayen dikha ek koi aur liye show مجھے ایک چاہیے چاہئے "
-             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch like love prefer adore really pasand favourite favorite پسند what about how do does you have has got can could would there is are it them those these that this ones also only just more other another else instead".split())
+             "دکھائیں دکھاؤ دکھائیے کوئی اور لیے کے لیے کچھ kuch like love prefer adore really pasand favourite favorite پسند what about how do does you have has got can could would there is are it them those these that this ones also only just more other another else instead "
+             # chat filler seen in real WhatsApp use: quantity words, greetings, "how many / kitni ... hain", thanks
+             "one two three four five six seven eight nine ten hi hello hey salam salaam assalam alaikum walaikum aoa u ur mean total many much number count "
+             "kitni kitne kitna ho yes ok okay thanks thank shukriya ji haan".split())
 # Words that tell us the customer is shopping even when no colour/price is named (used to trust semantic neighbours).
 SHOPPING_WORDS = (set(CANONICAL) | set(SYNONYMS) | set(LOCAL_COLOURS) | set(ALIASES.values()) | set(ALIASES) |
                   {"shawl", "shawls", "stole", "stoles", "scarf", "scarves", "wrap", "dupatta", "garam", "sardi", "sardiyon", "halka", "garmi",

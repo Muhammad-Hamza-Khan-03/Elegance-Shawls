@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Package, LayoutDashboard, ShoppingBag, ClipboardCheck } from 'lucide-react';
+import { LogOut, Package, LayoutDashboard, ShoppingBag, ClipboardCheck, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AdminSearch } from '@/components/admin/AdminSearch';
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/staging', label: 'Staged products', icon: ClipboardCheck },
   { href: '/admin/enquiries', label: 'Enquiries', icon: ShoppingBag },
+  { href: '/admin/whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ];
 
 export const AdminShell = ({ children, account }: { children: ReactNode; account?: AdminIdentity }) => {
