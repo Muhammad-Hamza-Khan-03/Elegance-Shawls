@@ -2,7 +2,7 @@
 
   DATABASE_URL=postgresql+asyncpg://... ENVIRONMENT=development python scripts/seed_e2e.py
 
-The fixtures encode the cases the specs assert: an in-stock brown stole under 4000, a brown shawl over budget, an
+The fixtures encode the cases the specs assert: an in-stock brown stole under 4000, a brown stole over 4000, a brown shawl over budget, an
 out-of-stock stole, a one-unit variant (stock revalidation) and a draft product that must never be public.
 """
 import asyncio
@@ -30,6 +30,7 @@ def product(slug, name, category, material, colour, price, stock, status="active
 
 FIXTURES = [
     product("e2e-brown-pashmina-stole", "Brown Pashmina Stole", "stoles", "Pashmina blend", "Brown", 3500, 5),
+    product("e2e-brown-jamawar-stole", "Brown Jamawar Stole", "stoles", "Jamawar wool", "Brown", 4500, 3),   # over the 4000 budget: makes the budget filter discriminating
     product("e2e-brown-wool-shawl", "Brown Wool Shawl", "shawls", "Merino wool", "Brown", 5200, 3),
     product("e2e-maroon-silk-stole", "Maroon Silk Stole", "stoles", "Silk blend", "Maroon", 2900, 0),
     product("e2e-ivory-merino-shawl", "Ivory Merino Shawl", "shawls", "Merino wool", "Ivory", 4200, 8),

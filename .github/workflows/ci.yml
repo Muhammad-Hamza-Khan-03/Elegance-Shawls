@@ -159,6 +159,7 @@ jobs:
           --health-cmd "pg_isready -U e2e -d elegance_e2e" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       E2E_DATABASE_URL: postgresql+asyncpg://e2e:e2e-throwaway@127.0.0.1:5432/elegance_e2e
+      E2E_DISPOSABLE_DATABASE: elegance_e2e   # explicit acknowledgement that this database may be reset (see e2e-real/isolation.cjs)
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -175,6 +176,8 @@ jobs:
       - run: npm ci
         working-directory: apps/frontend
       - run: npx playwright install --with-deps chromium
+        working-directory: apps/frontend
+      - run: npm run test:e2e:real:guard   # the isolation guard and environment allowlist are tested before any server starts
         working-directory: apps/frontend
       - run: npm run test:e2e:real
         working-directory: apps/frontend

@@ -1,12 +1,20 @@
 import { expect, test } from '@playwright/test';
-import { API, WEB } from './helpers';
+import { API, WEB, adminLogin } from './helpers';
 
-test('admin proxy: no cookie, a forged cookie or a foreign origin never reaches the backend', async ({ request }) => {
+test('admin proxy: no cookie or a forged cookie never reaches the backend', async ({ request }) => {
   expect((await request.get(`${WEB}/api/admin/products`)).status()).toBe(401);
   const forged = await request.get(`${WEB}/api/admin/products`, { headers: { cookie: 'es_admin_session=es1.forged-token-value' } });
   expect(forged.status()).toBe(401);
-  const foreign = await request.post(`${WEB}/api/admin/products`, { headers: { origin: 'https://evil.example', cookie: 'es_admin_session=es1.forged-token-value' }, data: {} });
-  expect([401, 403]).toContain(foreign.status());
+  const forgedWrite = await request.post(`${WEB}/api/admin/products`, { headers: { origin: WEB, cookie: 'es_admin_session=es1.forged-token-value' }, data: {} });
+  expect(forgedWrite.status()).toBe(401);
+});
+
+test('admin proxy: a VALID session is still refused on writes from a foreign or missing origin (CSRF)', async ({ page }) => {
+  await adminLogin(page);   // real session cookie in this context
+  const write = (headers: Record<string, string>) => page.request.post(`${WEB}/api/admin/products`, { headers, data: {} });
+  expect((await write({ origin: 'https://evil.example' })).status()).toBe(403);
+  expect((await write({})).status()).toBe(403);                                  // no Origin header at all
+  expect((await page.request.get(`${WEB}/api/admin/products`)).status()).toBe(200);   // reads are unaffected: the session itself is valid
 });
 
 test('backend admin routes refuse anonymous callers, a bogus session and the retired shared key', async ({ request }) => {

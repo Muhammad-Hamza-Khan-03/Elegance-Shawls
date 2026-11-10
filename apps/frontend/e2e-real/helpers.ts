@@ -18,7 +18,7 @@ export async function product(request: APIRequestContext, slug: string): Promise
 /** Signs in through the storefront's own route handler, so the HttpOnly cookie lands in this page's context. */
 export async function adminLogin(page: Page, credentials = OWNER) {
   const response = await page.request.post(`${WEB}/api/admin/session`, { headers: { origin: WEB }, data: credentials });
-  expect(response.status(), 'admin sign-in').toBeLessThan(300);
+  expect(response.status(), 'admin sign-in').toBe(200);
 }
 
 /** Calls a backend route as an individual account (used to create other-role accounts and read audit data). */
