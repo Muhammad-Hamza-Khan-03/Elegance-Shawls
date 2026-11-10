@@ -10,13 +10,16 @@ Suites (thresholds.yaml) guard features (release_profile.yaml). Statuses: pass |
 - A missing/empty dataset or a suite without a scorer is "not evaluated" and never passes a release gate.
 - A suite is REQUIRED when its feature is scheduled in the release profile. A failing required suite exits 1. Failures in suites of
   unscheduled features are reported as advisory and do not block unrelated development (--strict makes them block).
-- --release-ready (exit 3 while not ready) additionally needs: every required suite passing on `reviewed` evidence (synthetic data
-  never qualifies), every scheduled feature to have suites, and a recorded owner approval in the profile.
-Exit codes: 0 ok, 1 a required threshold failed, 2 usage/configuration error, 3 not release-ready.
+- --release-ready (exit 3 while not ready) additionally needs, all VERIFIED rather than declared (attestation.py): every required
+  suite passing on a dataset with a signed independent held-out review record and no leakage, every scheduled feature to have suites,
+  an unchanged artifact manifest (thresholds and profile included) and a signed owner approval of exactly this candidate. The
+  verification keys come from EVAL_REVIEWER_KEY / EVAL_OWNER_KEY in the environment; without them the gate stays closed.
+Exit codes: 0 ok, 1 a required threshold failed, 2 usage/configuration error (including manifest drift), 3 not release-ready.
 """
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +28,9 @@ from types import SimpleNamespace
 import yaml
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import artifact_manifest  # noqa: E402
+import attestation  # noqa: E402
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -103,12 +109,14 @@ def _check(metrics: dict[str, float], limits: dict) -> list[str]:
     return failures
 
 
-def evaluate(root: Path, thresholds: dict, profile: dict | None = None) -> list[dict]:
+def evaluate(root: Path, thresholds: dict, profile: dict | None = None, env: dict | None = None) -> list[dict]:
+    env = os.environ if env is None else env
     required = _required_suites(thresholds, profile)
     results = []
     for name, suite in thresholds["suites"].items():
-        base = {"suite": name, "feature": suite.get("feature"), "evidence": suite.get("evidence", "synthetic"),
-                "source": suite.get("source", "recorded"), "required": name in required}
+        review = attestation.review_problems(root, name, suite, env)   # derived, never declared in configuration
+        base = {"suite": name, "feature": suite.get("feature"), "evidence": "reviewed" if not review else "unverified",
+                "evidence_problems": review, "source": suite.get("source", "recorded"), "required": name in required}
         examples = load_jsonl(root / suite["dataset"])
         if not examples:
             results.append({**base, "status": "not_evaluated", "examples": 0, "metrics": {}, "failures": ["no dataset"]})
@@ -144,25 +152,50 @@ def _required_suites(thresholds: dict, profile: dict | None) -> set[str]:
     return {name for name, suite in thresholds["suites"].items() if suite.get("feature") in scheduled}
 
 
+def _is_limit(limit) -> bool:
+    return isinstance(limit, dict) and len(limit) == 1 and set(limit) <= {"min", "max"} \
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in limit.values())
+
+
 def profile_problems(thresholds: dict, profile: dict) -> list[str]:
-    """Configuration errors: the profile and the thresholds must describe the same suites and features."""
-    problems, listed = [], set()
+    """Configuration errors: strict shape, and the profile and thresholds must describe the same suites and features.
+    Unknown keys are errors so a flag the gate does not read (a self-declared `evidence`, `approval`...) can never look meaningful."""
+    problems, listed, owners = [], set(), {}
+    problems += [f"profile: unknown key {k} (approval and evidence are signed records, see attestation.py)"
+                 for k in profile if k not in {"features", "other_settings"}]
     for fname, feature in profile["features"].items():
-        for suite in feature.get("suites", []):
+        problems += [f"feature {fname}: unknown key {k}" for k in feature if k not in {"scheduled", "suites", "settings"}]
+        if not isinstance(feature.get("scheduled"), bool):
+            problems.append(f"feature {fname}: scheduled must be a true/false boolean, got {feature.get('scheduled')!r}")
+        for key in ("suites", "settings"):
+            if not isinstance(feature.get(key), list) or not all(isinstance(i, str) for i in feature[key]):
+                problems.append(f"feature {fname}: {key} must be a list of names")
+        for setting in feature.get("settings") or []:
+            if owners.setdefault(setting, fname) != fname:
+                problems.append(f"setting {setting} is listed under both {owners[setting]} and {fname}")
+        for suite in feature.get("suites") or []:
             listed.add(suite)
             if suite not in thresholds["suites"]:
                 problems.append(f"feature {fname} lists unknown suite {suite}")
             elif thresholds["suites"][suite].get("feature") != fname:
                 problems.append(f"suite {suite} says feature {thresholds['suites'][suite].get('feature')}, profile lists it under {fname}")
     problems += [f"suite {n} is not listed under any feature" for n in thresholds["suites"] if n not in listed]
+    for name, suite in thresholds["suites"].items():
+        problems += [f"suite {name}: unknown key {k}" + (" (evidence is derived from signed attestations, not declared)" if k == "evidence" else "")
+                     for k in suite if k not in {"dataset", "source", "feature", "metrics"}]
+        if suite.get("source") not in {"code", "recorded"}:
+            problems.append(f"suite {name}: source must be code or recorded")
+        if not isinstance(suite.get("metrics"), dict) or not suite["metrics"] or not all(_is_limit(v) for v in suite["metrics"].values()):
+            problems.append(f"suite {name}: metrics must map names to exactly one numeric min or max")
     return problems
 
 
-def release_blockers(results: list[dict], profile: dict | None) -> list[str]:
-    """Why the intended release is not evidence-complete (empty list = ready). Never inferred from the environment."""
-    if profile is None:
+def release_blockers(results: list[dict], profile: dict | None, root: Path | None = None, env: dict | None = None) -> list[str]:
+    """Why the intended release is not evidence-complete (empty list = ready). Never inferred from the environment or declared in YAML."""
+    if profile is None or root is None:
         return ["no release profile: the intended release configuration is unknown"]
-    blockers = []
+    env = os.environ if env is None else env
+    blockers = [f"artifact integrity: {p}" for p in artifact_manifest.verify(root)]
     for fname, feature in profile["features"].items():
         if feature.get("scheduled") and not feature.get("suites"):
             blockers.append(f"feature {fname} is scheduled but has no evaluation suite")
@@ -172,10 +205,8 @@ def release_blockers(results: list[dict], profile: dict | None) -> list[str]:
         if r["status"] != "pass":
             blockers.append(f"suite {r['suite']}: {r['status']}")
         elif r["evidence"] != "reviewed":
-            blockers.append(f"suite {r['suite']}: dataset is {r['evidence']}, release needs reviewed evidence")
-    approval = profile.get("approval") or {}
-    if not (approval.get("recorded") and approval.get("reference")):
-        blockers.append("no recorded owner release approval (profile approval.recorded / reference)")
+            blockers.append(f"suite {r['suite']}: no verified independent held-out review ({'; '.join(r['evidence_problems'])})")
+    blockers += [f"owner approval: {p}" for p in attestation.approval_problems(root, env)]
     return blockers
 
 
@@ -202,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print("configuration error:", problem)
         return 2
+    if args.root == HERE and (drift := artifact_manifest.verify(HERE)):
+        for problem in drift:
+            print("configuration error: frozen artifact:", problem)
+        return 2
     results = evaluate(args.root, thresholds, profile)
     for r in results:
         detail = ", ".join(f"{k}={v:.3f}" for k, v in r["metrics"].items()) or "-"
@@ -210,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         for failure in r["failures"]:
             print(f"    - {failure}")
     failed = [r["suite"] for r in results if r["status"] == "fail" and (r["required"] or args.strict)]
-    blockers = release_blockers(results, profile)
+    blockers = release_blockers(results, profile, args.root)
     release_ready = not failed and not blockers
     print(f"\nrelease_ready={str(release_ready).lower()}")
     for blocker in blockers:

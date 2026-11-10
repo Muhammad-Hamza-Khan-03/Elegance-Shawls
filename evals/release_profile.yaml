@@ -6,11 +6,8 @@
 #   release readiness. Turning a feature on is therefore only possible together with its evaluations.
 # - `settings` lists the backend settings that switch the feature on. tests/test_release_profile.py fails if a setting that is on
 #   by default (config defaults, Dockerfile, compose) belongs to an unscheduled feature, or if a new feature flag is not classified.
-# - release_ready also needs a recorded owner approval (docs/ELEGANCE_AI_COMMERCE_ARCHITECTURE.md section 5). It stays false until
-#   `approval.recorded` is set, in a reviewed change, with the reference of the approval evidence.
-approval:
-  recorded: false
-  reference: null
+# - release_ready also needs a SIGNED owner approval of this exact candidate (evals/approval.json, verified with EVAL_OWNER_KEY;
+#   attestation.py). There is no approval flag here and unknown keys are rejected.
 
 features:
   catalogue_search:            # deterministic parser + matcher behind /v1/search; always on

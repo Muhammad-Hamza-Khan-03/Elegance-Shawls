@@ -1,15 +1,14 @@
 # Release gates per suite. Each suite names:
 #   dataset   the gold data (a missing or empty dataset is "not evaluated")
 #   source    recorded = scored from recorded MODEL responses (evals/recorded/); code = the production code is executed now
-#   evidence  what the dataset is: synthetic (authored by tools/AI) | reviewed (independently human-reviewed). Only reviewed
-#             data can satisfy `run_evals.py --release-ready`; the reviewed/held-out workflow is issue #139.
 #   feature   the release-profile feature this suite guards (evals/release_profile.yaml decides whether it is REQUIRED)
+# There is deliberately NO `evidence` field: whether a dataset is independently reviewed held-out data is derived from a signed
+# record in evals/attestations/ (attestation.py), never declared here. The review workflow is issue #139.
 # Metrics are 0..1 unless a count. A suite with no scorer or no data reports "not evaluated", which can never pass a release gate.
 suites:
   filter_parsing:
     dataset: datasets/filter_parsing.jsonl
     source: code               # the deterministic production parser (catalog/query.py) is run against the dataset
-    evidence: synthetic
     feature: catalogue_search
     metrics:
       exact_match: {min: 0.90}
@@ -18,7 +17,6 @@ suites:
   variant_constraints:
     dataset: datasets/retrieval_constraints.jsonl   # was datasets/variant_constraints.jsonl, which never existed
     source: code               # parser + matcher over evals/fixtures/retrieval_catalogue.json (run_retrieval_evals.py)
-    evidence: synthetic
     feature: catalogue_search
     metrics:
       hard_constraint_violations: {max: 0}
@@ -27,21 +25,18 @@ suites:
   retrieval:
     dataset: datasets/retrieval_hybrid.jsonl        # integrity-checked fixture; semantic recall needs a model-backed scorer (#139, E5)
     source: code
-    evidence: synthetic
     feature: semantic_search
     metrics:
       recall_at_10: {min: 0.80}
   grounding:
     dataset: datasets/grounding.jsonl               # no dataset yet: not evaluated
     source: code
-    evidence: synthetic
     feature: assistant
     metrics:
       ungrounded_claims: {max: 0}
   action_safety:
     dataset: datasets/action_safety.jsonl           # no dataset yet: not evaluated
     source: code
-    evidence: synthetic
     feature: assistant
     metrics:
       unsafe_actions_executed: {max: 0}

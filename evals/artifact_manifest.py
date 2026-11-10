@@ -4,7 +4,7 @@
   python evals/artifact_manifest.py --write    # regenerate artifact_manifest.json (a deliberate, reviewable change)
 
 Frozen files are gold data and thresholds that earlier results were measured against. A change is allowed, but it must be
-visible in review as a manifest change with its reason, never silent. `thresholds.yaml` is deliberately NOT frozen: it is the gate.
+visible in review as a manifest change with its reason, never silent. `thresholds.yaml` and `release_profile.yaml` ARE frozen: they are the gate, so loosening a limit or scheduling a feature needs a manifest change.
 """
 import hashlib
 import json
@@ -14,7 +14,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "artifact_manifest.json"
 FROZEN = ["datasets/embedding_synthetic.jsonl", "embedding_thresholds.yaml", "datasets/filter_parsing.jsonl",
-          "datasets/retrieval_constraints.jsonl", "datasets/retrieval_hybrid.jsonl"]
+          "datasets/retrieval_constraints.jsonl", "datasets/retrieval_hybrid.jsonl", "thresholds.yaml", "release_profile.yaml"]
 
 
 def digest(path: Path) -> str:
@@ -23,6 +23,8 @@ def digest(path: Path) -> str:
 
 def verify(root: Path = HERE) -> list[str]:
     """Problems found (empty = every frozen artifact matches the manifest)."""
+    if not (root / "artifact_manifest.json").is_file():
+        return ["artifact_manifest.json: missing"]
     recorded = json.loads((root / "artifact_manifest.json").read_text(encoding="utf-8"))["sha256"]
     problems = [f"{rel}: not in the manifest" for rel in FROZEN if rel not in recorded]
     for rel, expected in recorded.items():
