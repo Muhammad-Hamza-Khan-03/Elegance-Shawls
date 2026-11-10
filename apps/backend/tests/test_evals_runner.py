@@ -10,9 +10,8 @@ spec = importlib.util.spec_from_file_location("run_evals", EVALS / "run_evals.py
 run_evals = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_evals)
 
-PROFILE = {"approval": {"recorded": True, "reference": "owner-approval-test"},
-           "features": {"f": {"scheduled": True, "suites": ["filter_parsing"], "settings": []}}}
-THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "feature": "f", "evidence": "reviewed", "source": "recorded", "metrics": {
+PROFILE = {"features": {"f": {"scheduled": True, "suites": ["filter_parsing"], "settings": []}}}
+THRESHOLDS = {"suites": {"filter_parsing": {"dataset": "datasets/filter_parsing.jsonl", "feature": "f", "source": "recorded", "metrics": {
     "exact_match": {"min": 0.9}, "constraint_precision": {"min": 0.9}, "constraint_recall": {"min": 0.9}}}}}
 
 
@@ -40,8 +39,8 @@ def test_shipped_filter_parsing_runs_the_real_parser_and_synthetic_data_is_not_r
     result = results["filter_parsing"]
     assert result["examples"] >= 10 and result["source"] == "code" and result["required"] is True
     assert result["status"] == "pass" and result["metrics"]["exact_match"] >= 0.90   # the production parser, executed now
-    assert result["evidence"] == "synthetic"                                         # ...on data that cannot qualify for release
-    assert "dataset is synthetic" in " ".join(run_evals.release_blockers(list(results.values()), profile))
+    assert result["evidence"] == "unverified"                                        # ...on data with no signed independent review
+    assert "no verified independent held-out review" in " ".join(run_evals.release_blockers(list(results.values()), profile, EVALS))
 
 
 
@@ -62,9 +61,10 @@ def test_empty_dataset_is_not_evaluated(tmp_path):
     assert run_evals.evaluate(root, THRESHOLDS)[0]["status"] == "not_evaluated"
 
 
-def test_passing_suite_is_release_ready(tmp_path):
-    root = workspace(tmp_path, EX, GOOD)
-    assert run_evals.main(["--root", str(root), "--release-ready"]) == 0
+def test_passing_suite_alone_is_not_release_ready(tmp_path):
+    root = workspace(tmp_path, EX, GOOD)       # passes, but nothing signs its dataset or approves the candidate (see test_attestation.py)
+    assert run_evals.main(["--root", str(root)]) == 0
+    assert run_evals.main(["--root", str(root), "--release-ready"]) == 3
 
 
 def test_metric_below_threshold_turns_the_run_red(tmp_path):
