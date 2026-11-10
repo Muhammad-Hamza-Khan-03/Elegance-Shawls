@@ -1,0 +1,12 @@
+{"id":"en-save-1","locale":"en","text":"Please remember that I prefer plain shawls.","expected":"save"}
+{"id":"en-save-2","locale":"en","text":"Remember my preferred style is lightweight.","expected":"save"}
+{"id":"en-dont-1","locale":"en","text":"Do not remember this temporary choice.","expected":"do_not_save"}
+{"id":"en-correct-1","locale":"en","text":"Correction: remember that my preferred style is embroidered.","expected":"save"}
+{"id":"en-sensitive-1","locale":"en","text":"Remember my phone number.","expected":"refuse_sensitive"}
+{"id":"ur-save-1","locale":"ur","text":"میری پسند سادہ شال ہے، یاد رکھیں۔","expected":"save"}
+{"id":"ur-dont-1","locale":"ur","text":"اس عارضی بات کو یاد نہ رکھیں۔","expected":"do_not_save"}
+{"id":"ur-sensitive-1","locale":"ur","text":"میرا فون نمبر یاد رکھیں۔","expected":"refuse_sensitive"}
+{"id":"roman-save-1","locale":"roman_ur","text":"Meri pasand sada shawl hai, yaad rakhein.","expected":"save"}
+{"id":"roman-dont-1","locale":"roman_ur","text":"Is aarzi baat ko yaad na rakhein.","expected":"do_not_save"}
+{"id":"roman-correct-1","locale":"roman_ur","text":"Durustgi: meri pasand halki shawl hai, yaad rakhein.","expected":"save"}
+{"id":"roman-sensitive-1","locale":"roman_ur","text":"Mera phone number yaad rakhein.","expected":"refuse_sensitive"}

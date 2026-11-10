@@ -14,7 +14,7 @@ from tests.integration.conftest import alembic_config
 EXPECTED_TABLES = {
     "customers", "customer_identities", "conversations", "messages", "tool_calls", "events", "audit_log", "outbox",
     "products", "variants", "ingestion_jobs", "staged_products", "staged_product_audit",
-    "admin_accounts", "admin_sessions", "enquiries",
+    "admin_accounts", "admin_sessions", "enquiries", "whatsapp_contacts", "whatsapp_messages", "whatsapp_auth_entries", "variant_image_embeddings",
 }
 EXPECTED_INDEXES = {
     "ix_events_type_created_at", "ix_events_customer_id_created_at", "ix_events_session_id_created_at",
@@ -36,7 +36,10 @@ def run(factory, work):
     return asyncio.run(go())
 
 
-def test_migration_is_reversible(pg_url, migrated_url):
+def test_migration_is_reversible(pg_url, migrated_url, pg_engine_factory):
+    # The migration contract intentionally refuses to erase memory/consent rows.
+    # Invoke the disposable integration fixture so synthetic rows from earlier
+    # tests are cleaned before this structural downgrade/upgrade check.
     config = alembic_config(pg_url)
     command.downgrade(config, "base")
     command.upgrade(config, "head")

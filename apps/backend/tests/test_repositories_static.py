@@ -12,7 +12,7 @@ def tree(path: Path) -> ast.AST:
 
 def test_the_repositories_package_has_the_expected_modules():
     assert {p.name for p in REPO_FILES} == {"__init__.py", "products.py", "staged.py", "jobs.py", "attributes.py", "enrichment.py", "embeddings.py",
-                                            "admin.py", "enquiries.py", "hybrid.py", "action_executions.py", "memory.py", "customer_auth.py"}
+                                            "admin.py", "enquiries.py", "hybrid.py", "action_executions.py", "memory.py", "customer_auth.py", "whatsapp.py", "image_match.py"}
 
 
 def test_repositories_do_not_depend_on_mongo():
@@ -121,6 +121,7 @@ def test_a_stale_env_file_with_retired_mongo_keys_does_not_break_settings(monkey
     from configuration.config import settings as settings_class
 
     env = tmp_path / ".env"
-    env.write_text("MONGODB_URI=ignored\nMONGO_DB_NAME=ignored\nADMIN_API_KEY=k\n")
+    env.write_text(chr(10).join(("MONGODB_URI=ignored", "MONGO_DB_NAME=ignored", "ADMIN_API_KEY=k", "")))
+    monkeypatch.delenv("ADMIN_API_KEY", raising=False)
     loaded = type(settings_class)(_env_file=env)
     assert loaded.admin_api_key == "k" and not hasattr(loaded, "MONGODB_URI")

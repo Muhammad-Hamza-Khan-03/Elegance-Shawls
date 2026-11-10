@@ -159,10 +159,10 @@ def test_outside_development_only_a_no_training_provider_is_used_and_personal_da
     gateway = StubGateway("Ok.")
     with_llm(monkeypatch, gateway)
     ask(client, "red shawl, mail jane@example.com")
-    assert gateway.calls[-1] == {"personal": False}                       # test env is "development"
+    assert gateway.calls[-1] == {"personal": False, "use_case": "assistant"}  # test env is "development"
     monkeypatch.setattr(settings, "environment", "production")
     ask(client, "red shawl, mail jane@example.com")
-    assert gateway.calls[-1] == {"personal": True}                        # gateway then refuses free tiers
+    assert gateway.calls[-1] == {"personal": True, "use_case": "assistant"}   # gateway then refuses free tiers
     sent = gateway.prompts[-1][1]["content"]
     assert "jane@example.com" not in sent and "red shawl" in sent
 
@@ -187,3 +187,29 @@ def test_every_card_carries_its_catalogue_link_picture_and_colour_and_its_own_va
     assert len(cards) == 3 and {p["params"]["product_id"] for p in proposals} == in_stock           # one per buyable card, none invented, none for sold out
     assert all(p["decision"]["outcome"] == "validated" for p in proposals)
     assert len({p["idempotency_key"] for p in proposals}) == len(proposals)
+
+
+def said(events):
+    return "".join(d["delta"] for e, d in events if e == "text")
+
+
+def test_how_many_questions_are_counted_from_the_database_not_searched(client):
+    # "store" must not be spell-corrected into "stole", and "how many" is not a product word
+    assert "3 shawls in stock" in said(ask(client, "how many shawls are in store"))          # Ruby, Crimson, Navy; the sold-out Rose is not counted
+    assert "2 shawls in stock (in red)" in said(ask(client, "how many red shawls do you have"))
+    assert "2 shawls in stock (at most PKR 2,000)" in said(ask(client, "how many shawls under 2000"))
+    assert "3 shawls in stock" in said(ask(client, "kitni shawls hain"))
+    nothing = said(ask(client, "how many green shawls"))
+    assert "could not find any" in nothing and not [e for e, _ in ask(client, "how many shawls") if e in ("product", "proposal")]
+
+
+def test_total_alone_after_a_count_question_is_still_a_count(client):
+    assert "3 shawls in stock" in said(ask(client, "i mean total"))
+    assert not [e for e, _ in ask(client, "total 5000") if e == "text" and "currently have" in said(ask(client, "total 5000"))]
+
+
+@pytest.mark.parametrize("text", ["?", "hi", "thanks", "hello there"])
+def test_a_message_with_nothing_to_search_asks_a_question_and_lists_no_products(client, text):
+    events = ask(client, text)
+    assert not [e for e, _ in events if e in ("product", "proposal")]
+    assert "tell me a little more" in said(events).lower()

@@ -47,3 +47,19 @@ class SuggestionList(BaseModel):
     items: list[SuggestionOut]
     generated_at: datetime
     engine_version: str
+    feature_flag: str = "m4b_explainable_recommendations"
+    experiment_arm: str = "control"
+    request_id: str = ""
+
+
+class SuggestionImpressionIn(BaseModel):
+    recommendation_id: UUID
+    product_id: UUID
+    variant_id: UUID | None = None
+    request_id: str
+    position: int
+    context: str
+    experiment_arm: str
+    preference_version: int = 0
+    catalogue_revision: int
+    source_memory_ids: tuple[UUID, ...] = ()

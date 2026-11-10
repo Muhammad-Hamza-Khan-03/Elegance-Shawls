@@ -18,14 +18,17 @@ const clearCookie = (response: NextResponse) => {
   return response;
 };
 
-const errorResponse = (detail: string, status: number) => NextResponse.json({ detail }, { status });
+const noStore = { 'cache-control': 'no-store' };
+const errorResponse = (detail: string, status: number) => NextResponse.json({ detail }, { status, headers: noStore });
 
 export async function GET(request: Request) {
   const target = backend('/v1/customer/auth/me');
   const token = readCustomerSession(request);
-  if (!target || !looksLikeCustomerSessionToken(token)) return NextResponse.json({ authenticated: false }, { headers: { 'cache-control': 'no-store' } });
+  if (!target || !looksLikeCustomerSessionToken(token)) return NextResponse.json({ authenticated: false }, { headers: noStore });
   const upstream = await fetch(target, { headers: { 'X-Customer-Session': token }, cache: 'no-store' }).catch(() => null);
-  return NextResponse.json({ authenticated: upstream?.ok === true }, { headers: { 'cache-control': 'no-store' } });
+  if (upstream?.status === 401) return clearCookie(NextResponse.json({ authenticated: false }, { headers: noStore }));
+  const body = upstream?.status === 200 ? await upstream.json().catch(() => null) : null;
+  return NextResponse.json({ authenticated: body?.authenticated === true }, { headers: noStore });
 }
 
 export async function POST(request: Request) {
@@ -68,7 +71,7 @@ export async function POST(request: Request) {
   const expiresMs = Date.parse(expiresAt);
   if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) return errorResponse('Sign-in is temporarily unavailable.', 503);
 
-  const response = NextResponse.json({ authenticated: true, expiresAt: Math.floor(expiresMs / 1000) });
+  const response = NextResponse.json({ authenticated: true, expiresAt: Math.floor(expiresMs / 1000) }, { headers: noStore });
   response.cookies.set(CUSTOMER_SESSION_COOKIE, sessionToken, {
     ...customerCookieOptions,
     maxAge: Math.max(1, Math.floor((expiresMs - Date.now()) / 1000)),
@@ -93,5 +96,5 @@ export async function DELETE(request: Request) {
     }
   }
 
-  return clearCookie(NextResponse.json({ authenticated: false }));
+  return clearCookie(NextResponse.json({ authenticated: false }, { headers: noStore }));
 }

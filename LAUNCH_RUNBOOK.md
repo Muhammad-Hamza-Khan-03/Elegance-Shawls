@@ -54,3 +54,19 @@ Use a server-side Quill proxy/session so the browser never receives a backend cr
 ## Rollback
 
 If a repository-controlled failure appears, stop further deployment, restore the previous frontend and backend image tags together, verify readiness, and preserve logs. Do not roll back or delete database data unless a verified restore is explicitly required.
+
+## 6. WhatsApp automation (optional; skip entirely to stay in link mode)
+
+Decision recorded: reply automation stays on the unofficial bridge (owner approval, 2026-11-06); the Cloud API remains the official fallback if the number is ever restricted. Do not enable until every box is checked.
+
+- [ ] Stage 2 VPS runs the production `compose.yaml` with `--profile whatsapp` (Redis with `noeviction`, bridge, consumer); the bridge is on `data` and `whatsapp_egress` only, never `web`, no published port.
+- [ ] Migrations 0019 and 0020 applied after a verified backup; `ALEMBIC_ALLOW_WHATSAPP_DATA_LOSS` unset.
+- [ ] `WHATSAPP_BRIDGE_TOKEN`, `REDIS_PASSWORD` set; if `WHATSAPP_AUTH_STORE=postgres`: role script run, `WHATSAPP_AUTH_ENCRYPTION_KEY` stored in the secret manager (not in backups).
+- [ ] Privacy policy published with the order-chat wording (owner/legal review of `apps/frontend/src/app/privacy/page.tsx`, including current Pakistani data-protection requirements) before the first customer chat is stored.
+- [ ] Urdu templates (`apps/backend/whatsapp/templates/replies.yaml`) reviewed by a native speaker.
+- [ ] Monitoring wired (`scripts/whatsapp_monitor.py --check` on a schedule, alert on non-zero) and retention purge scheduled monthly.
+- [ ] Rollout on a throwaway number first; then the shop number with `WHATSAPP_REPLY_ALLOWLIST` = staff numbers for at least a week; only then clear the allowlist.
+- [ ] Shop phone is used daily (WhatsApp unlinks companion devices after 14 days of primary-phone inactivity) and staff know typing in a chat silences the bot there for 12 hours.
+- [ ] Emergency off rehearsed: `WHATSAPP_BRIDGE_ENABLED=false` then `docker compose --profile whatsapp up -d`, and removing the device under Linked Devices.
+- [ ] Read "WhatsApp: known limits and deliberate shortcuts" in `OPERATIONS.md` and accept each item.
+- [ ] `WHATSAPP_ASSISTANT_ENABLED` and `WHATSAPP_VOICE_ENABLED` stay off until the ASR endpoint is self-hosted and declared and the owner has approved each.

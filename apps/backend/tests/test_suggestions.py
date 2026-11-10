@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from suggestions.engine import MemoryFact, ProductFact, VariantFact, build_suggestions
 from routes.suggestion_routes import router
+from suggestions.experiment import assign_arm
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc)
 USER = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -43,7 +44,8 @@ def test_reason_contains_stable_code_text_memory_provenance_product_evidence_pol
     assert candidate.reason.code == "explicit_colour_match"
     assert candidate.reason.text == "Matches your explicit colour preference."
     assert candidate.reason.source_memory_ids == (MEMORY,)
-    assert candidate.reason.source_provenance == ("memory-page-7",)
+    assert candidate.reason.source_provenance == (f"memory:{MEMORY}",)
+    assert "memory-page-7" not in str(candidate)
     assert candidate.reason.product_evidence.product_id == PRODUCT
     assert candidate.reason.product_evidence.product_revision == 4
     assert candidate.reason.product_evidence.variant_id == VARIANT
@@ -133,3 +135,8 @@ def test_route_requires_server_principal():
     app = FastAPI()
     app.include_router(router)
     assert TestClient(app).get("/v1/me/suggestions").status_code == 401
+
+
+def test_synthetic_experiment_assignment_is_stable_and_disabled_is_control():
+    assert assign_arm("synthetic-subject-1", True) == assign_arm("synthetic-subject-1", True)
+    assert assign_arm("synthetic-subject-1", False) == "control"

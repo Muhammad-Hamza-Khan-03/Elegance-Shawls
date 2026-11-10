@@ -1,5 +1,5 @@
 """Customer principal/session seam for /v1/me/memory (M4-S2). The verifier is absent unless customer authentication is enabled and
-fully configured (security/customer_session.py), and then every request is refused with 401. Nothing here issues, stores or parses
+fully configured (security/customer_session.py); otherwise every request is refused with 401. Nothing here issues, stores or parses
 credentials.
 
 Integration contract for a verifier: given the opaque token presented in the `X-Customer-Session` header, return a `CustomerPrincipal`
@@ -8,6 +8,8 @@ otherwise None. `token_sha256` must be the SHA-256 hex of the presented token (s
 request: the token is only a lookup key, and no id, header, query, cookie or body field is accepted as a customer identifier.
 """
 import hashlib
+import hmac
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,8 +35,11 @@ class CustomerSessionVerifier(Protocol):
 
 def get_session_verifier() -> CustomerSessionVerifier | None:
     """The server-side session verifier when customer authentication is fully configured; otherwise None, which refuses everyone."""
-    from security.customer_session import build_session_verifier  # deferred: security.customer_session imports this module
-    return build_session_verifier()
+    try:
+        from security.customer_session import build_session_verifier  # deferred: security.customer_session imports this module
+        return build_session_verifier()
+    except Exception:  # construction failure must have the same closed result as a missing verifier
+        return None
 
 
 def _deny() -> HTTPException:
@@ -47,7 +52,8 @@ def _valid(p: object, token: str, now: datetime) -> bool:
         isinstance(p, CustomerPrincipal)
         and isinstance(p.customer_id, uuid.UUID)
         and isinstance(p.session_id, str) and bool(p.session_id)
-        and p.token_sha256 == hashlib.sha256(token.encode()).hexdigest()
+        and isinstance(p.token_sha256, str) and re.fullmatch(r"[0-9a-f]{64}", p.token_sha256) is not None
+        and hmac.compare_digest(p.token_sha256, hashlib.sha256(token.encode()).hexdigest())
         and isinstance(p.expires_at, datetime) and p.expires_at.tzinfo is not None and p.expires_at > now
     )
 

@@ -44,7 +44,8 @@ pytest -q -m integration                      # Testcontainers: PostgreSQL+pgvec
 alembic upgrade head | downgrade base         # needs DATABASE_URL; migrations live in apps/backend/migrations
 arq workers.settings.WorkerSettings           # Redis/arq worker for new AI workloads only
 python scripts/llm_smoke.py --fake            # LLM gateway smoke test, no keys
-python evals/run_evals.py [--release-ready]   # from the repo root; recorded responses, "not evaluated" blocks release
+python evals/run_evals.py [--release-ready]   # from the repo root; runs the production parser/matcher + recorded suites; required suites come from evals/release_profile.yaml; release also needs signed review records and a signed owner approval (EVAL_REVIEWER_KEY / EVAL_OWNER_KEY, evals/attestation.py); none exist, so it stays blocked
+pytest -q evals/tests apps/backend/tests/test_evals_runner.py   # gate semantics, profile consistency, frozen-artifact manifest (CI `evals` job)
 python evals/run_retrieval_evals.py           # Phase 1 deterministic retrieval/constraint gate (offline; not model evidence, does not change release_ready)
 docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait   # local Postgres + Redis (internal network)
 ```
@@ -117,7 +118,7 @@ Audit every local/remote ref and every worktree by SHA, ancestry, tree/patch equ
 
 For a branch proven merged, superseded, or obsolete, create a durable `archive/reconciliation/<date>-<source>` ref first, verify that the archive SHA equals the source SHA and is reachable from the remote where possible, then remove only a clean inactive worktree and its source branch non-forcibly. Keep detached QA worktrees and untracked evidence until their owner confirms they are disposable. Record every archive/removal decision in a durable reconciliation artifact. Prune only stale worktree metadata; never use broad `git clean`.
 
-`integration` is the canonical integration/development source of truth (it was named `staging-integration` until 2026-11-06; the old name was retired after the owner-approved migration, so any remaining mention is historical). The release hierarchy is always `feature/fix/ai -> integration -> staging -> main`.
+`integration` is the canonical integration/development source of truth (it was named `staging-integration` until 2026-11-06). `staging-integration` is retained only as a locked, read-only legacy branch holding the history of 2026-11-06..2026-11-10; never open a PR against it, and any remaining mention of it is historical. The release hierarchy is always `feature/fix/ai -> integration -> staging -> main`.
 
 `integration` is the development source of truth; `staging` is the release-candidate source of truth; `main` is the production source of truth.
 

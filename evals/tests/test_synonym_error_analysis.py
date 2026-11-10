@@ -3,7 +3,6 @@ import hashlib
 import importlib.util
 import json
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -16,6 +15,9 @@ spec.loader.exec_module(sea)
 
 THR = yaml.safe_load((EVALS / "embedding_thresholds.yaml").read_text(encoding="utf-8"))
 SCRIPT = (EVALS / "run_synonym_error_analysis.py").read_text(encoding="utf-8")
+manifest_spec = importlib.util.spec_from_file_location("artifact_manifest", EVALS / "artifact_manifest.py")
+artifact_manifest = importlib.util.module_from_spec(manifest_spec)
+manifest_spec.loader.exec_module(artifact_manifest)
 ALIASES = sea.load_aliases()
 EXPECTED = {
     "flower pattern": ("motif", "floral"), "goat-hair fabric": ("material", "pashmina"),
@@ -138,12 +140,5 @@ def test_no_network_provider_app_or_secret_use():
 
 
 def test_thresholds_and_gold_files_unchanged():
-    # compare to the pinned base commit tree when git history is available; otherwise rely on the pinned fixture hash
-    base = subprocess.run(["git", "-C", str(EVALS), "rev-parse", "--verify", "-q", "c71ef03^{commit}"],
-                          capture_output=True, text=True)
-    if base.returncode:
-        pytest.skip("base commit unavailable")
-    for rel in ("embedding_thresholds.yaml", "thresholds.yaml", "datasets/embedding_synthetic.jsonl",
-                "datasets/filter_parsing.jsonl", "datasets/retrieval_constraints.jsonl", "datasets/retrieval_hybrid.jsonl"):
-        diff = subprocess.run(["git", "-C", str(EVALS), "diff", "--quiet", "c71ef03", "--", rel])
-        assert diff.returncode == 0, rel
+    # deterministic: SHA-256 manifest of the frozen artifacts, identical to the former c71ef03 tree (thresholds.yaml is the gate, not frozen)
+    assert artifact_manifest.verify() == []

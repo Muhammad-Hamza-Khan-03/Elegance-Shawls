@@ -64,7 +64,7 @@ http.createServer((request, response) => {
       response.end(sse([
         ['start', { protocol: 1, session_id: req.session_id, idempotency_key: req.idempotency_key, context: req.context }],
         ['text', { delta: 'Here is a shawl. ' }], ['product', { product_id: AP, name: 'Pashmina Shawl', revision: 1, price: 3500, currency: 'PKR', slug: assistantProduct.slug, image: 'https://placehold.co/600x800/d8c0a8/2f241f?text=Pashmina', color: 'Ivory' }],
-        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_enquiry', { items: [params] }), ['done', { events: 5 }],
+        proposal(1, 'add_to_cart', params), proposal(2, 'start_whatsapp_order', { items: [params] }), ['done', { events: 5 }],
       ]));
     });
   }
@@ -84,12 +84,32 @@ http.createServer((request, response) => {
       actionLog.executions += 1;
       entry.executed = true;
       const items = rows.map((r) => ({ product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity, slug: assistantProduct.slug }));
-      const result = req.action_type === 'start_whatsapp_enquiry' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
+      const result = req.action_type === 'start_whatsapp_order' ? { reference: 'ES-GOLD42', items, total: 3500, currency: 'PKR' } : { items };
       done.set(key, result);
       response.end(JSON.stringify({ status: 'executed', action_type: req.action_type, replayed: false, result }));
     });
   }
   if (request.url === '/__last-enquiry') return response.end(JSON.stringify(globalThis.lastEnquiry ?? null));
+  // WhatsApp bridge admin API (fake): `/__whatsapp-disabled?on=1` flips it to the 503 whatsapp_disabled answer.
+  if (request.url?.startsWith('/__whatsapp-disabled')) { globalThis.waDisabled = request.url.endsWith('on=1'); if (!globalThis.waDisabled) globalThis.wa = undefined; return response.end('{}'); }   // on=0 also resets pairing state, so each Playwright project starts clean
+  if ((request.url?.startsWith('/v1/admin/whatsapp') || /^\/v1\/admin\/enquiries\/[^/]+\/whatsapp/.test(request.url ?? '')) && request.headers['x-admin-session'] === SESSION) {
+    if (globalThis.waDisabled) { response.statusCode = 503; return response.end(JSON.stringify({ detail: { code: 'whatsapp_disabled' } })); }
+    const wa = (globalThis.wa ??= { paired: false, pairing: null, linked: false });
+    const path = request.url.split('?')[0];
+    if (path === '/v1/admin/whatsapp/status') return response.end(JSON.stringify({ state: wa.paired ? 'connected' : 'needs_pairing', number: wa.paired ? '923001234567' : null, last_event_at: '2026-11-06T14:05:00Z', stream_lag: 0, dead_letters: 1, alerts: ['dead_letters: 1 entries in wa:dead'], ingested_last_hour: 4, linked_by_reference: 3, linked_by_staff: 1, median_contact_seconds: 600 }));
+    if (path === '/v1/admin/whatsapp/pairing') {
+      if (request.method === 'POST') wa.pairing = { qr: 'mock-qr-payload', code: null, expires_at: '2026-11-06T14:07:00Z' };
+      if (request.method === 'DELETE') { wa.paired = false; wa.pairing = null; }
+      if (request.method === 'GET' && wa.pairing && (wa.polls = (wa.polls ?? 0) + 1) >= 2) { wa.paired = true; wa.pairing = null; }
+      return response.end(JSON.stringify({ state: wa.paired ? 'connected' : wa.pairing ? 'pairing' : 'needs_pairing', number: wa.paired ? '923001234567' : null, pairing: wa.pairing }));
+    }
+    if (path === '/v1/admin/whatsapp/unlinked') return response.end(JSON.stringify({ items: wa.linked ? [] : [{ id: 'c1', phone: '+923009999999', display_name: 'Sana', last_seen_at: '2026-11-06T14:00:00Z' }], next_cursor: null }));
+    if (path === '/v1/admin/whatsapp/link' && request.method === 'POST') { wa.linked = true; return response.end(JSON.stringify({ reference: 'ES-MOCK42', link_source: 'staff' })); }
+    if (path.endsWith('/whatsapp/message') && request.method === 'POST') { globalThis.lastStatusMessage = true; return response.end(JSON.stringify({ sent: true })); }
+    if (path.endsWith('/whatsapp')) return response.end(JSON.stringify({ reference: 'ES-MOCK42', status: 'contacted', items: [
+      { id: 'm1', sent_by: 'customer', type: 'text', text: 'Ref: ES-MOCK42', sent_at: '2026-11-06T14:05:00Z' },
+      { id: 'm2', sent_by: 'bot', type: 'text', text: 'Thank you for your enquiry ES-MOCK42.', sent_at: '2026-11-06T14:05:10Z' }] }));
+  }
   if (request.url?.startsWith('/v1/admin/enquiries') && request.headers['x-admin-session'] === SESSION) {
     return response.end(JSON.stringify(request.url.toUpperCase().includes('REFERENCE=ES-NOPE22') ? [] : [enquiry]));
   }
@@ -102,6 +122,10 @@ http.createServer((request, response) => {
     if (request.url === '/v1/admin/auth/logout') return response.end(JSON.stringify({ ok: true }));
   }
   if (request.url === '/health/' || request.url === '/ready/') return response.end(JSON.stringify({ status: 'ready' }));
+  if (request.url === '/products/slug/unavailable-product') {
+    response.statusCode = 503;
+    return response.end(JSON.stringify({ detail: 'Service unavailable' }));
+  }
   if (request.url?.startsWith('/products/slug/')) {
     const product = [...products, assistantProduct].find((item) => item.slug === decodeURIComponent(request.url.split('/').pop() || ''));
     response.statusCode = product ? 200 : 404;
@@ -110,4 +134,4 @@ http.createServer((request, response) => {
   if (request.url?.startsWith('/products/')) return response.end(JSON.stringify({ items: products, next_cursor: null }));
   response.statusCode = 404;
   response.end(JSON.stringify({ detail: 'Not found' }));
-}).listen(4100, '127.0.0.1');
+}).listen(Number(process.env.MOCK_API_PORT || 4100), '127.0.0.1');

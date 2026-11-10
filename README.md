@@ -21,6 +21,16 @@ This repository contains the customer-facing storefront and the backend product 
 - *Ordering model:* WhatsApp-first purchase intent flow
 - *Ops posture:* health checks, readiness checks, CI, deployment docs, and operations runbooks
 
+## Current milestone status (reviewed 2026-11-09)
+
+This README is for developers, operators, and collaborators who need a short orientation. Evidence below is repository/QA context, not a production-release claim. At this review, `origin/staging-integration` is `63f1730663114d31085967ae01a05687bd614979`, `origin/staging` is `e5c04c8d4097a46adf9fecf00baddd15cc860fc2`, and `origin/main` is `283b27eee90533435ef3b2e28e6a3823ee1c5d23`.
+
+Independent QA recorded M4 `119 passed, 29 deselected`, migration promotion `23 passed, 2 warnings`, and targeted migration suites `70 passed`. Local disposable Redis/arq synthetic verification passed: Redis was healthy at `127.0.0.1:6380`, backend readiness at `127.0.0.1:18000` reported database/PostgreSQL, Redis, and worker connected, and the synthetic job completed `queued → deferred → queued → complete` on attempt 2. Groq smoke was bounded synthetic-only (two calls); no secrets or API-key values are recorded.
+
+**EmbeddingGemma 2 candidate (verified, local-only):** `google/embeddinggemma-2`, Hugging Face revision `f9972ac22e696a105c482202646979e33e4b5a1e`, tree SHA-256 `8338594ef62c913285891b775b6c3084e518001f499c1f97df61904c57ad708b`, weights SHA-256 `197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79`, 768-dimensional CPU runtime. Retrieval evidence is overall recall `0.9973`, MRR `0.9706`, synonym recall/MRR `1.0`, hard-constraint violations `0`, and reproducibility Jaccard `1.0`. QA evidence: Gemma/contract `35 passed, 1 skipped`; evaluation `14 passed`; embedding integration `21 passed`; schema integration `6 passed`; compileall/diff-check passed; disposable database backfill `8/8`, idempotent rerun, and semantic retrieval passed. This is a verified candidate for local search only—not hosted activation, memory extraction, deployment, or production approval.
+
+**Deferred or blocked:** deployment, production/provider activation, credentialing, and `release_ready` remain blocked. Hosted/live-proxy verification, evaluation provenance, external observability, provider/privacy approvals, backup activation, and the approved E5 runtime/backfill remain outside the verified boundary. EmbeddingGemma is local-only search evidence, not memory-extraction or production approval. See [`docs/m4-contract.md`](./docs/m4-contract.md), [`docs/m4-batch-c-provider-privacy-decision.md`](./docs/m4-batch-c-provider-privacy-decision.md), and [`docs/m4-batch-c-promotion-packet.md`](./docs/m4-batch-c-promotion-packet.md).
+
 ## Quick links
 
 - [Architecture overview](#architecture-overview)
@@ -261,13 +271,61 @@ Set `LOCAL_ENV_FILE=/path/to/apps/backend/.env` to also load provider keys, `LLM
 
 Starts a pgvector Postgres container (data kept in a docker volume), runs migrations, creates the owner account (`owner@elegance.local`), seeds a synthetic 36-product catalogue (`scripts/seed_local.py`, development only), then runs the API on :8000 (CORS allows `localhost`/`127.0.0.1` on :3000 and :3001, because Next moves to 3001 when 3000 is busy) and the storefront with the assistant enabled (`NEXT_PUBLIC_ASSISTANT_ENABLED=1`).
 
+### Try the WhatsApp automation locally (no WhatsApp account)
+
+Everything WhatsApp is off by default. To see it working on your machine, add `WHATSAPP_LOCAL=1` to the one-command store. It starts Redis, the WhatsApp consumer and a **fake bridge** (`apps/whatsapp-bridge/dev/fake-bridge.mjs`) that stands in for WhatsApp; nothing reaches a real number. Docker, Node 22 and `npm ci` in `apps/frontend` are needed.
+
+```bash
+cd apps/backend && . .venv/bin/activate
+WHATSAPP_LOCAL=1 ADMIN_ACCOUNT_PASSWORD='choose-a-long-passphrase' bash scripts/dev_local.sh
+# if 55432 / 3000 are taken or you already have an `elegance-local-db` container you want to keep:
+#   LOCAL_DB_CONTAINER=elegance-wa-demo-db LOCAL_DB_PORT=56432 LOCAL_FRONTEND_PORT=3010
+```
+
+Then, with the storefront on `http://localhost:3000` (or your `LOCAL_FRONTEND_PORT`):
+
+1. **Pair.** Sign in at `/admin/login` (`owner@elegance.local`), open **WhatsApp**, press **Connect WhatsApp**. A QR appears and the fake bridge "scans" it after about six seconds: the card turns to *Connected as +923001234567*.
+2. **Make an enquiry.** On the storefront add something in stock to the cart and press *Send cart on WhatsApp* (this issues the `ES-XXXXXX` reference; the wa.me tab can be closed). The reference also shows under **Enquiries**.
+3. **Be the customer.** Open `http://127.0.0.1:3600/sim`. Paste the cart message (or just `Ref: ES-XXXXXX`) and send: the bot replies with the order summary and asks for Name, City and Address. Reply `Name: ...`, `City: ...`, `Address: ...` lines to see the details saved.
+4. **Be the shop.** Type in the *Shop phone* box: the enquiry becomes `contacted` and the bot stays silent in that chat for 12 hours. On **Enquiries** press *Show WhatsApp chat* to see the timeline and the *Send "order confirmed"* / *"dispatched"* buttons.
+5. **Other things to try.** A message with no reference (appears under *Unlinked chats* with a manual link), `red shawl under 4000` (catalogue assistant: real products, prices and links, no LLM), a voice note (the "audio" is the text you type, the fake ASR returns it), a price or stock change in the catalogue before step 3 (the bot states the change and confirms nothing).
+6. **Look at the plumbing.** `python scripts/whatsapp_monitor.py` (metrics) and `python scripts/whatsapp_monitor.py --check` (alerts) work against the local Redis and database.
+
+Ctrl-C stops the API, storefront, consumer and fake bridge; the database and Redis containers keep their data (`docker stop elegance-local-redis <your-db-container>` to stop them). To try the **real** bridge on a throwaway number instead, run `node src/main.mjs` in `apps/whatsapp-bridge` with the same Redis and token, in place of the fake one (see `OPERATIONS.md`).
+
+#### Real voice notes on the real bridge (optional)
+
+The fake bridge fakes transcription. With the real bridge, a voice note needs a real **self-hosted** speech-to-text server; without one the bot replies "I could not read that voice note, please type" instead of staying silent. Example with the open-source Speaches (faster-whisper) image, run by you:
+
+```bash
+docker run -d --name elegance-local-asr -p 127.0.0.1:8001:8000 -v elegance-asr-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:latest-cpu
+curl -X POST localhost:8001/v1/models/Systran/faster-whisper-small      # downloads the model once (about 500 MB)
+```
+
+Then start the bridge with `WHATSAPP_VOICE_ENABLED=true` and the consumer with `WHATSAPP_VOICE_ENABLED=true WHATSAPP_ASR_URL=http://127.0.0.1:8001/v1/audio/transcriptions WHATSAPP_ASR_MODEL=Systran/faster-whisper-small WHATSAPP_ASR_PRIVACY=self_hosted` (the privacy class is your declaration that audio stays on your machine). Voice notes are used for browsing only: a negated ("not red") or two-price request asks the customer to repeat it.
+
+#### Photos: "find similar products" (optional, self-hosted)
+
+A customer's photo is held in the bridge's memory for a few minutes, embedded by a **local CLIP model** (`clip-ViT-B-32`, 512 dimensions) and matched against your catalogue's image vectors in PostgreSQL (pgvector); the closest in-stock products come back with prices and links. The photo is never stored and never leaves your machine. It needs about 1.5 GB of free RAM, so do not run it next to heavy containers.
+
+```bash
+pip install -r requirements-local-e5.txt pillow          # CPU torch first, see that file
+# fetch the CLIP model yourself once (the code never downloads weights), e.g. with huggingface-cli to a directory, then pin it:
+python -m embeddings.providers.local_e5 /path/to/clip-ViT-B-32      # prints the revision digest
+export IMAGE_MATCH_MODEL_PATH=/path/to/clip-ViT-B-32 IMAGE_MATCH_MODEL_REVISION=<digest>
+alembic upgrade head                                               # migration 0021
+python scripts/image_embedding_backfill.py                         # embeds catalogue images (https, allowlisted hosts only); resumable
+```
+
+Then start the bridge with `WHATSAPP_IMAGE_ENABLED=true` and the consumer with `WHATSAPP_IMAGE_ENABLED=true IMAGE_MATCH_MODEL_PATH=... IMAGE_MATCH_MODEL_REVISION=...`. `IMAGE_MATCH_MIN_SIMILARITY` (default 0.8; on the seeded catalogue a phone-style copy of a product scored 0.92-0.97, other products 0.64-0.73 and a flat unrelated colour 0.76, so keep it above about 0.8 and re-tune on real photos) and `IMAGE_MATCH_MAX_RESULTS` (3) tune it. The seeded local catalogue uses random stock photos, so matches there prove the wiring only; judge quality on your real product images.
+
 ### Semantic search, assistant wording, voice and customer sign-in (all optional)
 
 - **Semantic search.** `pip install -r requirements-local-e5.txt` (CPU torch first, see the file), `python scripts/fetch_e5_model.py`, then `dev_local.sh` embeds the catalogue and `/v1/search` and the assistant rank with `intfloat/multilingual-e5-base` (keyword search stays the fallback). Choice and eval numbers: `docs/qa/local-e5-evaluation-manifest.md` on branch `ai/local-e5-v2-evidence` (recall@10 0.954; Roman Urdu 0.892 on that small, easy set). A larger set (`evals/roman_urdu_retrieval_eval.py`, 362 labelled English / Roman Urdu / Urdu queries, synthetic and unreviewed) puts raw E5 at 0.57 recall@10 on Roman Urdu, keyword search at 0.78, and the real pipeline (query parser, then colour filter, then E5) at 0.94. Sets written after tuning started score 0.94 and 0.89; the first time the weak cases (no product word, misspellings) were scored on queries not yet seen, the pipeline got 0.70, so expect 0.7-0.9 on real traffic, not 0.94. Off-topic queries (no shopping word) keep semantic neighbours only within `SEMANTIC_MAX_DISTANCE` (default 0.18); 0% of the off-topic probes returned products. Misspelt product, fabric and season words are corrected as search terms only; a misspelt colour is never turned into a filter.
-- **LLM wording.** `ASSISTANT_LLM=true` plus `LLM_CHAIN_DEFAULT` (for example `groq/...`, `gemini/...`, `ollama/qwen2.5`) and that provider's key. The model only writes the reply text; products, prices and cart suggestions still come from the database and the action kernel. Any failure falls back to fixed sentences. Outside `ENVIRONMENT=development` the assistant sends customer text only to `LLM_PRODUCTION_CHAIN` (no-training providers; free tiers such as Groq/Gemini free are refused), after scrubbing emails, URLs and long numbers; with no such chain it silently uses the fixed sentences. In development the free `LLM_CHAIN_DEFAULT` is allowed so you can try real models.
+- **LLM wording.** `ASSISTANT_LLM=true` plus `LLM_CHAIN_DEFAULT` (for example `groq/...`, `gemini/...`, `ollama/qwen2.5`) and that provider's key. The model only writes the reply text; products, prices and cart suggestions still come from the database and the action kernel. Any failure falls back to fixed sentences. Outside `ENVIRONMENT=development` the assistant sends customer text only to `LLM_PRODUCTION_CHAIN` after the use-case provider gate; training-enabled providers require the complete independently verified control record, while free tiers remain refused. In development the free `LLM_CHAIN_DEFAULT` is allowed so you can try real models.
 - **Voice.** The Speak button uses the browser's speech recognition (Chrome sends audio to its speech service) and only fills the message box. Spoken queries pass the voice bridge: uncertain or negated speech asks the customer to repeat. Urdu-script speech is not parsed yet, so use English or Roman Urdu wording.
 - **Assistant UI.** The storefront shows a "Shopping concierge" panel (launcher at the bottom right, full-screen on mobile; `NEXT_PUBLIC_ASSISTANT_ENABLED=1`; hidden on `/admin` and `/cart`). Answers come from the real backend stream; each product card shows its picture, colour and price, links to the product, and has an "Add to cart" that asks first ("Yes, add") and is checked on the server again before the cart changes. The design comes from the `feat/elegance-assistant-ui-ai-sdk-clean` preview, rebuilt on this project's validated stream (no AI SDK dependency).
-- **Memory in the assistant.** For a signed-in customer who opted in, saved `favourite_colour` and `budget_max_pkr` only re-order results the assistant already found (never filter), and it says so ("Using your saved preference ..."). A colour named in the query wins. The assistant saves nothing itself: only an explicit "remember ..." / "yaad rakho ..." produces a Save card, and the memory API still applies consent, validation and audit. Saved values enter an LLM prompt only if every model in the personal chain is declared `no_training` or `self_hosted` in `LLM_PROVIDER_TRAINING_POLICIES` (and then via `LLM_PRODUCTION_CHAIN`); otherwise they stay out.
+- **Memory in the assistant.** For a signed-in customer who opted in, saved `favourite_colour` and `budget_max_pkr` only re-order results the assistant already found (never filter), and it says so ("Using your saved preference ..."). A colour named in the query wins. The assistant saves nothing itself: only an explicit "remember ..." / "yaad rakho ..." produces a Save card, and the memory API still applies consent, validation and audit. Saved values enter an LLM prompt only if every model in the personal chain clears the use-case gate; training-enabled models require `LLM_PROVIDER_CONTROL_RECORDS` and the memory consent gate.
 - **Customer sign-in and memory.** Create a Google OAuth web client, set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and the five `CUSTOMER_AUTH_*` values in `apps/backend/.env.example`; `/account` then offers sign-in and leads to `/memory`.
 
 ## Local AI platform services (optional)

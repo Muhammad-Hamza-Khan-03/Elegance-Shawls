@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /apps/frontend
+    target-branch: integration
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
     groups:
@@ -9,8 +10,10 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: pip
     directory: /apps/backend
+    target-branch: integration
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
+    target-branch: integration
     schedule: { interval: monthly }
