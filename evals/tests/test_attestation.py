@@ -467,3 +467,96 @@ def test_blocker_report_survives_odd_characters(monkeypatch, capsys):
     monkeypatch.setattr(attestation, "approval_problems", lambda root, env: ["approval.json: bad\ud800name"])
     assert run_evals.main(["--release-ready"]) == 3
     assert "bad\\ud800name" in capsys.readouterr().out
+
+
+# ---- follow-up to the QA of #201: separators, falsy duplicate keys, special config files, surviving mutations ----
+
+@pytest.mark.parametrize("separator", ["‌", "​", "‍", "­", "⁠", "﻿", "‎"])
+def test_invisible_character_used_as_a_word_separator_is_still_a_leak(root, separator):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "black stole under 3500"}\n')
+    (root / "datasets/train.jsonl").write_text(json.dumps({"id": "t", "query": f"black{separator}stole under 3500"}, ensure_ascii=False) + "\n")
+    assert attestation.leakage(root, "datasets/held.jsonl"), repr(separator)
+
+
+def test_the_urdu_zero_width_non_joiner_separator_is_a_leak_in_both_directions(root):
+    (root / "datasets/held.jsonl").write_text(json.dumps({"id": "h", "query": "شال‌سیاہ"}, ensure_ascii=False) + "\n")
+    (root / "datasets/train.jsonl").write_text(json.dumps({"id": "t", "query": "شال سیاہ"}, ensure_ascii=False) + "\n")
+    assert attestation.leakage(root, "datasets/held.jsonl")
+    (root / "datasets/held.jsonl").write_text(json.dumps({"id": "h", "query": "شال سیاہ"}, ensure_ascii=False) + "\n")
+    (root / "datasets/train.jsonl").write_text(json.dumps({"id": "t", "query": "شال‌سیاہ"}, ensure_ascii=False) + "\n")
+    assert attestation.leakage(root, "datasets/held.jsonl")
+
+
+def test_reviewer_equal_to_author_across_an_invisible_separator_is_not_independent(root):
+    write_record(root / "attestations/s.json", review_payload(root, author="Ali Khan", reviewer="Ali‌Khan"), REVIEWER)
+    assert "not independent" in " ".join(attestation.review_problems(root, "s", SUITE, ENV))
+
+
+@pytest.mark.parametrize("name", ["notes.md", "notes.yml", "notes.yaml", "notes.txt", "notes.csv", "notes.tsv", "NOTES.MD"])
+def test_every_scanned_text_suffix_is_scanned_by_whole_words(root, name):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    (root / f"datasets/{name}").write_text("customers ask for a Brown   Stole quite often\n")
+    assert [x.split(":")[0] for x in attestation.leakage(root, "datasets/held.jsonl")] == [f"datasets/{name}"]
+
+
+def test_text_files_match_whole_words_only_but_prose_in_datasets_does_block(root):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "red"}\n')
+    (root / "datasets/README.md").write_text("A credit card is not a colour.\n")
+    assert attestation.leakage(root, "datasets/held.jsonl") == []             # "red" inside "credit" is not a match
+    (root / "datasets/README.md").write_text("The red shawls are popular.\n")
+    assert attestation.leakage(root, "datasets/held.jsonl")                   # documented: prose in datasets/ can block a legitimate query
+
+
+def test_three_words_under_an_unlisted_key_count_but_two_do_not(root):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown pashmina stole"}\n')
+    (root / "datasets/train.jsonl").write_text('{"sentence": "brown pashmina stole"}\n')
+    assert attestation.leakage(root, "datasets/held.jsonl")
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "pashmina stole"}\n')
+    (root / "datasets/train.jsonl").write_text('{"sentence": "pashmina stole"}\n')
+    assert attestation.leakage(root, "datasets/held.jsonl") == []
+
+
+def test_case_folding_not_lowercasing_and_uppercase_json(root):
+    (root / "datasets/held.jsonl").write_text(json.dumps({"id": "h", "query": "STRASSE SHAWL"}) + "\n")
+    (root / "datasets/DATA.JSON").write_text(json.dumps({"rows": [{"query": "straße shawl"}]}))
+    assert [x.split(":")[0] for x in attestation.leakage(root, "datasets/held.jsonl")] == ["datasets/DATA.JSON"]
+
+
+def test_symlinked_directories_are_followed_once_and_loops_terminate(root):
+    (root / "datasets/a").mkdir()
+    (root / "datasets/a/leak.jsonl").write_text('{"query": "brown stole"}\n')
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "brown stole"}\n')
+    (root / "datasets/b").symlink_to(root / "datasets/a", target_is_directory=True)
+    (root / "datasets/a/up").symlink_to(root / "datasets", target_is_directory=True)        # a loop back to the parent
+    (root / "datasets/self").symlink_to(root / "datasets", target_is_directory=True)
+    found = attestation.leakage(root, "datasets/held.jsonl")
+    assert len(found) == 1, found                                                                # one real file, reported once
+    assert len(attestation._dataset_files(root / "datasets")) == len({p.resolve() for p in attestation._dataset_files(root / "datasets")})   # each real file once
+
+
+@pytest.mark.parametrize("text", ["0: a\n0: b\n", "false: a\nfalse: b\n", "'': a\n'': b\n", "null: a\nnull: b\n", "k: 1\nk: 2\n", "outer:\n  0: a\n  0: b\n"])
+def test_duplicate_yaml_keys_are_rejected_even_when_falsy(text):
+    with pytest.raises(yaml.YAMLError):
+        yaml.load(text, Loader=run_evals._StrictLoader)
+    assert yaml.load("a: 1\nb: 2\n", Loader=run_evals._StrictLoader) == {"a": 1, "b": 2}
+
+
+@pytest.mark.parametrize("kind", ["dir", "fifo"])
+def test_thresholds_or_profile_that_is_not_a_regular_file_is_exit_2_not_a_hang(tmp_path, kind):
+    import os
+    (tmp_path / "release_profile.yaml").write_text("features: {}\n")
+    target = tmp_path / "thresholds.yaml"
+    target.mkdir() if kind == "dir" else os.mkfifo(target)
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+    target.rmdir() if kind == "dir" else target.unlink()
+    (tmp_path / "thresholds.yaml").write_text("suites: {}\n")
+    target = tmp_path / "release_profile.yaml"
+    target.unlink()
+    target.mkdir() if kind == "dir" else os.mkfifo(target)
+    assert run_evals.main(["--root", str(tmp_path)]) == 2
+
+
+def test_invisible_separator_inside_a_scanned_text_file_is_a_leak(root):
+    (root / "datasets/held.jsonl").write_text('{"id": "h", "query": "black stole under 3500"}\n')
+    (root / "datasets/notes.md").write_text("people search black‌stole under 3500 often\n")
+    assert attestation.leakage(root, "datasets/held.jsonl")

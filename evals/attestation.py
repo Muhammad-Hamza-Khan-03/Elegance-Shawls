@@ -15,11 +15,16 @@ Identity limits: `author` and `reviewer` are free text INSIDE the signed payload
 wrote them, not that they name different people, nor that either name is real. The independence check compares the two strings as
 skeletons (NFKD, invisible and combining characters dropped, case folded, listed look-alike letters mapped to Latin, punctuation and
 whitespace collapsed), so "Alice" and "Alice." or "Alіce" (Cyrillic i) are the same; "Alice" and "Alice B." pass as different.
-Real independence rests on who holds the reviewer key and on the human review workflow (#139), not on this code.
+Names that differ only by a Devanagari-style vowel sign, or that are both pure punctuation, compare equal (the check then
+refuses: fail closed); look-alike letters outside the small table pass as different. Real independence rests on who holds the reviewer key and on the human review workflow (#139), not on this code.
 
 Leakage limits: every string under the keys in QUERY_FIELDS (any depth, lists included), and any other string of three or more
 words, is reduced to the same skeleton and compared with the attested dataset's, across every `.jsonl`, `.ndjson` and `.json` file
 below datasets/ (symlinked directories followed once) and, by whole-word containment, every `.txt .csv .tsv .yaml .yml .md` file.
+Invisible (format) characters are read both ways, as nothing ("bro<ZWSP>wn" = "brown") and as a space ("black<ZWNJ>stole" = "black
+stole"); a match on either reading counts. Every file with a scanned suffix below datasets/ is read, so prose there (a README.md
+that mentions a query word) can block a legitimate release, and a stray non-UTF-8 or non-JSON `.json` file blocks it too: keep
+datasets/ for data. Symlinked directories are followed with no size or depth cap (a symlink to `/` would effectively hang the check).
 NOT detected: paraphrases and translations/transliterations; one- or two-word strings under keys outside QUERY_FIELDS; look-alike
 letters outside the small built-in table; files with other extensions; anything outside datasets/ (recorded/, fixtures/, code,
 vocabularies). It is a best-effort guard against accidental reuse, not proof of independence.
@@ -86,10 +91,12 @@ JSON_SUFFIXES = {".jsonl", ".ndjson", ".json"}
 TEXT_SUFFIXES = {".txt", ".csv", ".tsv", ".yaml", ".yml", ".md"}
 
 
-def _skeleton(text: str) -> str:
+def _skeleton(text: str, join: bool = True) -> str:
     """Comparison form of a query or a person's name: NFKD, invisible (Cf) and combining (Mn/Me) characters dropped, all decimal
     digits as ASCII, case folded, listed look-alike letters mapped to Latin, punctuation and whitespace collapsed."""
-    text = "".join(c for c in unicodedata.normalize("NFKD", text) if unicodedata.category(c) not in {"Cf", "Mn", "Me"})
+    # invisible (Cf) characters are dropped (join=True: "bro<ZWSP>wn" -> "brown") or read as a separator (join=False: "black<ZWNJ>stole" -> "black stole")
+    text = "".join(("" if join else " ") if unicodedata.category(c) == "Cf" else c
+                   for c in unicodedata.normalize("NFKD", text) if unicodedata.category(c) not in {"Mn", "Me"})
     text = "".join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in text)
     return re.sub(r"[\W_]+", " ", text.casefold().translate(_LOOKALIKES)).strip()
 
@@ -97,8 +104,9 @@ def _skeleton(text: str) -> str:
 def _walk(value, found: set[str], in_field: bool = False) -> None:
     """Collect skeletons of strings under a QUERY_FIELDS key (any depth, lists included) and of any other string with 3+ words."""
     if isinstance(value, str):
-        if (q := _skeleton(value)) and (in_field or len(q.split()) >= 3):
-            found.add(q)
+        for q in {_skeleton(value), _skeleton(value, join=False)}:      # both readings of invisible characters
+            if q and (in_field or len(q.split()) >= 3):
+                found.add(q)
     elif isinstance(value, list):
         for item in value:
             _walk(item, found, in_field)
@@ -153,8 +161,9 @@ def leakage(root: Path, dataset: str) -> list[str]:
         if suffix in JSON_SUFFIXES:
             hits = held & queries(other)
         else:
-            body = f" {_skeleton(other.read_text(encoding='utf-8'))} "
-            hits = {q for q in held if f" {q} " in body}
+            text = other.read_text(encoding="utf-8")
+            bodies = [f" {_skeleton(text, join)} " for join in (True, False)]
+            hits = {q for q in held if any(f" {q} " in body for body in bodies)}
         leaked += [f"{other.relative_to(root)}: {q!r}" for q in sorted(hits)]
     return leaked
 
@@ -177,7 +186,7 @@ def review_problems(root: Path, suite: str, suite_cfg: dict, env: dict) -> list[
         problems.append("dataset content differs from the attested sha256")
     if payload["split"] != "held_out":
         problems.append(f"split is {payload['split']!r}, release evidence must be held_out")
-    if _skeleton(payload["author"]) == _skeleton(payload["reviewer"]):
+    if any(_skeleton(payload["author"], join) == _skeleton(payload["reviewer"], join) for join in (True, False)):
         problems.append("reviewer is the dataset author, review is not independent")
     if not problems:
         try:
