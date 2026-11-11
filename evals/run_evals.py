@@ -38,9 +38,12 @@ class _StrictLoader(yaml.SafeLoader):
 
 
 def _reject_duplicates(loader, node, deep=False):
-    keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
-    if duplicate := next((k for k in keys if keys.count(k) > 1), None):
-        raise yaml.constructor.ConstructorError(None, None, f"duplicate key {duplicate!r}", node.start_mark)
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in seen:     # a membership test, so falsy keys (0, false, "", null) are caught too
+            raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", node.start_mark)
+        seen.add(key)
     return yaml.SafeLoader.construct_mapping(loader, node, deep)
 
 
@@ -269,11 +272,13 @@ def main(argv: list[str] | None = None) -> int:
         print("live mode is not available yet: no parser prompt exists. Pull requests use recorded responses.")
         return 2
     profile_path = args.profile or args.root / "release_profile.yaml"
-    if not profile_path.is_file():   # never lenient: deleting the profile must not weaken the gate
-        print(f"configuration error: release profile missing ({profile_path})")
-        return 2
+    thresholds_path = args.thresholds or args.root / "thresholds.yaml"
+    for path in (profile_path, thresholds_path):
+        if not path.is_file():   # never lenient: a missing file, or a FIFO/device in its place, must not weaken the gate or hang it
+            print(f"configuration error: {path.name} missing or not a regular file ({path})")
+            return 2
     try:
-        thresholds = yaml.load((args.thresholds or args.root / "thresholds.yaml").read_text(encoding="utf-8"), Loader=_StrictLoader)
+        thresholds = yaml.load(thresholds_path.read_text(encoding="utf-8"), Loader=_StrictLoader)
         profile = yaml.load(profile_path.read_text(encoding="utf-8"), Loader=_StrictLoader)
         if not (isinstance(thresholds, dict) and isinstance(thresholds.get("suites"), dict)
                 and all(isinstance(x, dict) for x in thresholds["suites"].values())
