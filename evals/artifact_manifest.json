@@ -7,6 +7,7 @@
     "datasets/retrieval_constraints.jsonl": "b12fbddb401a4a387a0e61dfa58f4466e009329fa437641680848beacfd10c2a",
     "datasets/retrieval_hybrid.jsonl": "2e6f421f66c9fd923738cb758df243b17693096d4dd8d353837a5605f59a040e",
     "thresholds.yaml": "adc1a1a9f3566fe7285741adce0ceedde19cfc89a0de6105158fec9a9d26a620",
-    "release_profile.yaml": "9bffeb02cfd1519bc31187e7bf96678d96103a65d3c8eaa6145ad8f6ee478fe1"
+    "release_profile.yaml": "9bffeb02cfd1519bc31187e7bf96678d96103a65d3c8eaa6145ad8f6ee478fe1",
+    "provenance.yaml": "69b3e39c08241025e83b475afd9cdade7f0847d2132b939c33d6757f2c2c5ee9"
   }
 }

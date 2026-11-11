@@ -14,7 +14,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "artifact_manifest.json"
 FROZEN = ["datasets/embedding_synthetic.jsonl", "embedding_thresholds.yaml", "datasets/filter_parsing.jsonl",
-          "datasets/retrieval_constraints.jsonl", "datasets/retrieval_hybrid.jsonl", "thresholds.yaml", "release_profile.yaml"]
+          "datasets/retrieval_constraints.jsonl", "datasets/retrieval_hybrid.jsonl", "thresholds.yaml", "release_profile.yaml", "provenance.yaml"]
 
 
 def digest(path: Path) -> str:
