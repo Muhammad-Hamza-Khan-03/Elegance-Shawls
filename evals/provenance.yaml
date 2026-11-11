@@ -1,0 +1,68 @@
+# Provenance of every evaluation dataset (issue #139). Checked by `python evals/provenance.py` and evals/tests/test_provenance.py.
+# This file DESCRIBES data; it never upgrades it. Only a signed review record plus the release gate (attestation.py) can make
+# data count as release evidence. See the vocabulary and rules at the top of evals/provenance.py.
+# Changing a dataset requires changing its sha256 here on purpose, in the same reviewed change.
+schema: 1
+min_n: 30            # cohorts with fewer scored queries are flagged low-n in reports (convention agreed with the owner 2026-11-12)
+datasets:
+  datasets/roman_urdu_queries.jsonl:
+    origin: synthetic_generator
+    review: unreviewed
+    split: mixed
+    sha256: f7783379728434359ddd3eae9818659405ff9662c6f048b308481ca8e596bb78
+    note: >-
+      310 rows are written by evals/make_roman_urdu_queries.py from vocabulary tables that overlap the production parser
+      (circular); 52 rows carry heldout (true = 32, "v3" = 20) and are hand-written phrasing by the same author. All rows are
+      synthetic and reviewed=false. No real customer query is included.
+  datasets/embedding_synthetic.jsonl:
+    origin: synthetic_ai_authored
+    review: unreviewed
+    split: unsplit
+    sha256: c5382437d5bad1ee823b9286fe163e4bc69b11162bdcbdb152ba4b283ab78b96
+    note: Frozen v1 fixture authored by an AI assistant with a one-off generator (its own meta row says so). Fictional catalogue; no real products or customers.
+  datasets/embedding_synthetic_v2.jsonl:
+    origin: synthetic_ai_authored
+    review: owner_statement_unsigned
+    split: unsplit
+    sha256: a8511afd90b58e0bb82d4c15de5081ab20de92268c0449138f9610fbf054bdac
+    reviewer: repository owner
+    review_date: "2026-10-30"
+    review_scope: >-
+      the 16 original synonym-cohort queries only (5 scored, 11 excluded), as recorded in the file's own provenance block. The en,
+      ur and roman_ur cohorts of this file were NOT reviewed. No external reviewer, no signed record.
+    note: v2 copies the v1 records and the 48 en/ur/roman_ur queries byte for byte; only the synonym cohort was revised.
+  datasets/filter_parsing.jsonl:
+    origin: synthetic_unrecorded
+    review: unreviewed
+    split: unsplit
+    sha256: d021ab12244f78ff56d8fe7685e01334e857ad2b30369e72af213cbe38cb78de
+    note: Frozen gold data for the deterministic parser (artifact_manifest.json). Author not recorded in the file. Known label gap fp-005 (evals/KNOWN_DATASET_ISSUES.md).
+  datasets/retrieval_constraints.jsonl:
+    origin: synthetic_unrecorded
+    review: unreviewed
+    split: unsplit
+    sha256: b12fbddb401a4a387a0e61dfa58f4466e009329fa437641680848beacfd10c2a
+    note: Frozen constraint queries over the fixture catalogue evals/fixtures/retrieval_catalogue.json. Author not recorded in the file.
+  datasets/retrieval_hybrid.jsonl:
+    origin: synthetic_unrecorded
+    review: unreviewed
+    split: unsplit
+    sha256: 2e6f421f66c9fd923738cb758df243b17693096d4dd8d353837a5605f59a040e
+    note: Frozen integrity fixture (6 rows) for the hybrid retrieval check; semantic recall is not scored from it.
+  datasets/memory_extraction_synthetic.jsonl:
+    origin: synthetic_unrecorded
+    review: unreviewed
+    split: unsplit
+    sha256: 238f9f1d1b8ae9a51bd9d7633a9038a86359a59004496765d9a8f8c1af3ccabf
+    note: Synthetic memory-extraction examples (12 rows). Author not recorded in the file.
+  datasets/voice_urdu.jsonl:
+    origin: unknown
+    review: owner_statement_unsigned
+    split: unsplit
+    sha256: f797982627cf01ef7c73ef23620257736da98b4980c771460965b00398f3fb97
+    reviewer: repository owner
+    review_date: "2026-11-12"
+    review_scope: >-
+      all 6 rows. The owner stated in the 2026-11-12 working session that they reviewed them. There is no signed record; whether
+      the reviewer is independent of the author and qualified in Urdu is not established here.
+    note: Six Urdu transcripts with expected price/negation, pinned by datasets/voice_urdu.sha256. Origin of the transcripts is not recorded.
