@@ -68,6 +68,7 @@ test('RBAC: a viewer can read but is refused every write, and the refusal is aud
   expect(audit.status()).toBe(200);
   const denials = ((await audit.json()).items as { actor_id: string; outcome: string; action: string; detail: { status: number } | null }[])
     .filter((row) => row.actor_id === viewerId && row.outcome === 'denied');
-  expect(denials.length).toBeGreaterThanOrEqual(2);                 // the product write and the account listing
+  // exactly the two refused requests, each recorded once (neither endpoint has path parameters, so template naming is not exercised), as 403, against this viewer
+  expect(denials.map((row) => row.action).sort()).toEqual(['GET /v1/admin/accounts', 'POST /products/admin/']);
   for (const row of denials) expect(row.detail?.status).toBe(403);
 });
