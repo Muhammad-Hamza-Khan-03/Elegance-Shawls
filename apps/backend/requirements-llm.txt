@@ -7,4 +7,4 @@
 -r requirements.txt
 litellm==1.106.6
 # Optional Langfuse tracing (observability/langfuse_client.py); audited clean with pip-audit at 5.0.4.
-langfuse==5.0.4
+langfuse==5.2.0
