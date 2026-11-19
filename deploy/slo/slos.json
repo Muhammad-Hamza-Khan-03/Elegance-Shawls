@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "note": "Targets are proposals for the owner to confirm; they are not measured guarantees. Measure first (issue #86), then tighten.",
+  "objectives": [
+    { "name": "storefront-products-list", "path": "/products/?limit=20", "p95_ms": 800, "max_error_rate": 0.01 },
+    { "name": "catalogue-search", "path": "/v1/search", "method": "POST", "body": { "q": "brown stole under 4000", "limit": 10 }, "p95_ms": 1200, "max_error_rate": 0.01 },
+    { "name": "readiness", "path": "/ready/", "p95_ms": 300, "max_error_rate": 0.001 }
+  ]
+}

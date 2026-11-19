@@ -92,6 +92,10 @@ The repository cannot verify any of these; each is a separate decision.
 3. **Separately authorize scheduling and production activation**: choosing the scheduler and host, the alert channel for non-zero exits and for `check-freshness`, the first production backup, the first drill against it, and recording the evidence. Agents and CI never run backups against production.
 4. Until 1-3 are done and a drill on a real off-server copy has passed, no document may claim backups exist.
 
+## Service level objectives and load smoke
+
+`deploy/slo/slos.json` holds proposed objectives (p95 latency and error rate) for the public read paths; they are proposals to confirm after measuring (issue #86), not guarantees. `node deploy/slo/load_smoke.mjs <api-base-url> [requests] [concurrency]` runs a dependency-free load smoke against them (read-only public endpoints only; exit 1 when an objective is missed). Run it against local or staging, never as a stress test against production. It is not a replacement for k6 or a capacity study; its own logic is tested with `node --test deploy/slo/load_smoke.test.mjs`. Nothing here is scheduled or wired to alerts.
+
 ## Incident response
 
 Incident owner: the repository owner, who receives watchdog and backup alerts.
