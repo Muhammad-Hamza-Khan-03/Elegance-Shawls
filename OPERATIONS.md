@@ -26,6 +26,8 @@ It alerts once when a problem starts and once when it recovers. It covers: any p
 
 Logs: Caddy writes JSON access logs with the `X-Admin-Key`, `X-Admin-Session`, `X-Internal-API-Token`, `Cookie`, `Authorization` and `Set-Cookie` headers removed and adds an `X-Request-ID`. The backend logs one JSON line per request (request ID, method, path, status, duration) and never logs headers, query strings, bodies or client addresses. Operators read them with `docker compose logs proxy backend`. Configure Docker's log rotation (`max-size`, `max-file`) or ship logs to central storage, and restrict access to the host. Never log `X-Admin-Key`, `X-Admin-Session`, admin passwords, database credentials, customer WhatsApp messages, addresses or payment details.
 
+Error capture (issue #146): unhandled backend exceptions and storefront error boundaries (`src/app/error.tsx`, `global-error.tsx`) call a reporter hook that is a no-op until one is installed (`observability.errors.set_reporter`, `src/lib/report-error.ts`). Reports carry only request ID, route template, status, exception type and `RELEASE_SHA`; never the message, query string, headers or body. No provider is chosen or configured.
+
 ## Backup and restore
 
 **Status: code foundation built (M1-S5, issue #105); nothing is activated.** No backup has ever run against a shared or production database, no off-server destination exists, nothing is scheduled, and no restore has been drilled outside disposable test containers. Treat the "encrypted backup", "pre-launch backup" and "isolated restore drill" launch items as **still open** until the owner steps below are done and evidence is recorded.
