@@ -73,6 +73,12 @@ async def optional_principal(request: Request) -> CustomerPrincipal | None:
         return None
 
 
+def in_rollout(session_id: str) -> bool:
+    """Sticky bucket 0-99 from the session id, so one visitor never flips between the demo and the grounded assistant."""
+    bucket = int.from_bytes(hashlib.sha256(session_id.encode()).digest()[:4], "big") % 100
+    return bucket < settings.assistant_rollout_percent
+
+
 async def catalogue_session():
     """A DB session only when the assistant is grounded in the live catalogue; the scripted demo needs none."""
     if not settings.assistant_catalogue:

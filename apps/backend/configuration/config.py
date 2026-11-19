@@ -26,6 +26,8 @@ class settings(BaseSettings):
 
     # Assistant answers from the live catalogue (parser + search) instead of the scripted demo. ASSISTANT_CATALOGUE=true.
     assistant_catalogue: bool = False
+    # Percentage of anonymous sessions that get the grounded assistant while ASSISTANT_CATALOGUE is on (sticky per session id). 100 = everyone (unchanged behaviour); 0 = nobody.
+    assistant_rollout_percent: int = Field(default=100, ge=0, le=100)
     # Let the LLM gateway (LLM_CHAIN_DEFAULT) write the assistant's wording. It never picks products, prices or actions.
     assistant_llm: bool = False
     # Semantic neighbours of a query with no shopping word (shawl/colour/season...) are dropped beyond this cosine distance.

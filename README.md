@@ -205,6 +205,7 @@ Backend environment variables:
 | `ENVIRONMENT` | Runtime environment label | `development` |
 | `PUBLIC_RATE_LIMIT_PER_MINUTE` | Public route request limit | `120` |
 | `ASSISTANT_CATALOGUE` | `true` makes `/v1/assistant/stream` answer from the live catalogue (parser + search); default is the scripted demo | `false` |
+| `ASSISTANT_ROLLOUT_PERCENT` | 0-100: share of sessions (sticky per session id) that get the grounded assistant while `ASSISTANT_CATALOGUE=true`; the rest get the scripted demo | `100` |
 | `ADMIN_RATE_LIMIT_PER_MINUTE` | Admin route request limit | `60` |
 
 ### 3) Start the backend
