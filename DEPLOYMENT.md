@@ -12,6 +12,7 @@ Set these values in the deployment platform's encrypted secret/environment store
 | `NEXT_PUBLIC_API_URL` | frontend | Public HTTPS backend origin; baked into the frontend build |
 | `NEXT_PUBLIC_SITE_URL` | frontend | Canonical public HTTPS storefront origin; baked into the frontend build |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | frontend | International digits only, without `+` or spaces |
+| `IMAGE_ALLOWED_HOSTS` | frontend (build time) | Comma-separated hostnames allowed for remote product images, e.g. `cdn.example.com,*.shopify.com` (include the API host if it serves images). Restricts Next.js image optimisation and the CSP `img-src`. **Unset keeps any HTTPS host allowed** so existing catalogues keep rendering; set it once the real image hosts are inventoried (#80). Invalid entries are ignored. |
 | `POSTGRES_ADMIN_*`, `POSTGRES_APP_*`, `POSTGRES_BACKUP_*`, `POSTGRES_DB` | postgres (compose) | Separate random passwords for the bootstrap superuser, the application role and the read-only backup role; see `.env.example` |
 | `SITE_DOMAIN`, `API_DOMAIN` | proxy (compose) | Public hostnames Caddy serves and obtains certificates for |
 | `INTERNAL_API_TOKEN` | backend + frontend server | Matching random secret. The storefront server sends it on its own reads so server-rendered pages, which all reach the API from one address, are not limited as one client. It only bypasses the public rate limit (never admin routes) and grants no data access. Never expose it through `NEXT_PUBLIC_*`. Unset means no exemption. |
