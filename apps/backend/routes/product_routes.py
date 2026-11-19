@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from catalog.similar import MAX_CANDIDATES, rank_similar
 from database.pg import get_pg_session
 from events.recorder import log_listing
 from repositories import Conflict, InvalidDraft, NotFound
@@ -133,6 +134,15 @@ async def get_product_by_slug(slug: str, session: AsyncSession = Depends(get_pg_
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+
+@router.get("/slug/{slug}/similar", response_model=list[ProductResponseSchema])
+async def get_similar_products(slug: str, limit: int = Query(default=4, ge=1, le=12), session: AsyncSession = Depends(get_pg_session)):
+    """Deterministic "more like this": same category ranked by shared colours and material. Read-only, no model."""
+    product = await repo.get_public_product_by_slug(session, slug)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return rank_similar(product, await repo.similar_candidates(session, product, MAX_CANDIDATES), limit)
 
 
 @admin_router.post("/", response_model=ProductResponseSchema, status_code=201)

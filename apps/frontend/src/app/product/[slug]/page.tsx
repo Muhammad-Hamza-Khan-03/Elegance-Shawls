@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ProductExperience } from '@/components/product/ProductExperience';
+import { SimilarProducts } from '@/components/product/SimilarProducts';
 import { Metadata } from 'next';
 import { absoluteUrl } from '@/lib/site';
 import { markdownToPlainText } from '@/lib/markdown';
@@ -56,8 +57,10 @@ export default async function ProductDetailPage({
     },
   };
 
+  const similar = await api.getSimilarProducts(product.slug);
   return <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
     <ProductExperience product={product} siteUrl={process.env.NEXT_PUBLIC_SITE_URL || ''} whatsappNumber={process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || ''} />
+    <SimilarProducts products={similar} />
   </>;
 }

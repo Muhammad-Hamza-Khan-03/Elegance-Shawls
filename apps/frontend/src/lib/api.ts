@@ -204,6 +204,18 @@ export const api = {
     return mapBackendProduct(await handleResponse(response));
   },
 
+  // GET /products/slug/:slug/similar. Best effort: an extra section must never break the product page, so any failure is an empty list.
+  getSimilarProducts: async (slug: string, limit = 4): Promise<Product[]> => {
+    try {
+      const response = await fetch(`${getApiUrl()}/products/slug/${encodeURIComponent(slug)}/similar?limit=${limit}`, { headers: apiHeaders(), signal: AbortSignal.timeout(PRODUCT_TIMEOUT_MS) });
+      if (!response.ok) return [];
+      const items: unknown = await response.json();
+      return Array.isArray(items) ? items.map(mapBackendProduct) : [];
+    } catch {
+      return [];
+    }
+  },
+
   // Current published state for checkout: null when the product is not
   // published; throws when the catalogue cannot be reached, so callers block handoff.
   getPublishedProduct: async (slug: string): Promise<Product | null> => {

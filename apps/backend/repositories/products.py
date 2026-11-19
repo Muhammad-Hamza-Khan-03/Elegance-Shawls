@@ -285,3 +285,10 @@ async def search_batch(session: AsyncSession, q: ParsedQuery, after: Key | None,
         stmt = stmt.where(tuple_(Product.created_at, Product.id) < tuple_(*after))
     stmt = stmt.order_by(Product.created_at.desc(), Product.id.desc()).limit(n)
     return list((await session.execute(stmt)).scalars())
+
+
+async def similar_candidates(session: AsyncSession, product: Product, limit: int) -> list[Product]:
+    """Newest active products of the same category (bounded scan); ranking happens in catalog.similar."""
+    stmt = (select(Product).where(Product.status == "active", Product.category == product.category, Product.id != product.id)
+            .order_by(Product.created_at.desc(), Product.id.desc()).limit(limit))
+    return list((await session.execute(stmt)).scalars())
