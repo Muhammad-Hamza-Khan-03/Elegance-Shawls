@@ -73,6 +73,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
   }, [product]);
 
   const handleOrderClick = async (event: MouseEvent<HTMLAnchorElement>) => {
+    track({ type: 'click', payload: { target: 'whatsapp_order', product_id: product.id } });
     if (Date.now() - verifiedAtRef.current <= CART_VERIFICATION_TTL_MS) return;
     event.preventDefault();
     try {
