@@ -936,3 +936,22 @@ class VariantEmbedding(_EmbeddingColumns, Base):
     )
     variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+
+
+class VoiceJob(Base):
+    """One voice request (issue #111). Holds a reference to the clip, never audio bytes; see voice/retention.py."""
+
+    __tablename__ = "voice_jobs"
+    __table_args__ = (
+        CheckConstraint("status in ('queued','done','failed')", name="status"),
+        CheckConstraint("duration_ms between 1 and 30000", name="duration_ms"),
+        Index("ix_voice_jobs_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    audio_ref: Mapped[str | None] = mapped_column(Text)
+    audio_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
