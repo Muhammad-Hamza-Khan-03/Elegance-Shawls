@@ -47,6 +47,7 @@ python scripts/llm_smoke.py --fake            # LLM gateway smoke test, no keys
 python evals/run_evals.py [--release-ready]   # from the repo root; runs the production parser/matcher + recorded suites; required suites come from evals/release_profile.yaml; release also needs signed review records and a signed owner approval (EVAL_REVIEWER_KEY / EVAL_OWNER_KEY, evals/attestation.py); none exist, so it stays blocked
 pytest -q evals/tests apps/backend/tests/test_evals_runner.py   # gate semantics, profile consistency, frozen-artifact manifest (CI `evals` job)
 python evals/provenance.py && python evals/report.py --check   # dataset provenance (origin/review/split, hash-bound) and the offline-reproducible cohort report with n, intervals and low-n flags (issue #139)
+python evals/review.py --help                # human-review workflow tooling (export packet / check / agree / sign with the reviewer key); evals/review/README.md. No dataset has been reviewed with it; intake of real queries (evals/intake.py) is BLOCKED
 python evals/run_retrieval_evals.py           # Phase 1 deterministic retrieval/constraint gate (offline; not model evidence, does not change release_ready)
 docker compose --env-file .env.ai -f compose.ai.yaml up -d --wait   # local Postgres + Redis (internal network)
 ```
