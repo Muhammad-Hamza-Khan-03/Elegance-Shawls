@@ -26,13 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scanners: vuln,secret,misconfig
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+      # Official image instead of trivy-action: the action's binary download step failed on the runner.
+      - run: >
+          docker run --rm -v "$PWD:/src" aquasec/trivy:0.65.0 fs
+          --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 /src
 
   sbom:
     runs-on: ubuntu-latest
