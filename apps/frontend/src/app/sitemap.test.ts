@@ -23,7 +23,8 @@ describe('sitemap backend availability', () => {
     const { default: sitemap } = await import('./sitemap');
     const entries = await sitemap();
 
-    expect(entries).toHaveLength(7);
+    expect(entries).toHaveLength(9);
+    expect(entries.map((entry) => entry.url)).toEqual(expect.arrayContaining(['https://store.example.invalid/faq', 'https://store.example.invalid/size-guide']));
     expect(entries.map((entry) => entry.url)).toContain('https://store.example.invalid/products');
   });
 
