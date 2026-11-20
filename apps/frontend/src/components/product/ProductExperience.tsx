@@ -13,6 +13,7 @@ import { firstParagraph } from '@/lib/markdown';
 import { MarkdownText } from '@/components/common/MarkdownText';
 import { CART_VERIFICATION_TTL_MS } from '@/lib/cart';
 import { installFlushOnHide, track } from '@/lib/tracker';
+import { WishlistButton } from '@/components/product/WishlistButton';
 import { toast } from 'sonner';
 import {
   buildSingleProductMessage,
@@ -206,6 +207,7 @@ export function ProductExperience({ product, siteUrl, whatsappNumber }: ProductE
               <button type="button" disabled className="rounded-full bg-[#8b817c] px-8 py-4 text-center text-sm font-semibold text-white">Order unavailable</button>
             )}
           </div>
+          <WishlistButton slug={product.slug} />
 
           {(configurationError || orderError) && <p role="alert" className="text-center text-sm text-red-700">{configurationError || orderError}</p>}
           {cartLine && <p className="text-center text-sm text-[#6f625a]">This variant is already in your cart. Use the cart page to adjust quantity across products.</p>}
