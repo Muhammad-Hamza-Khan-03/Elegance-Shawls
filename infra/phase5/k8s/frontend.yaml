@@ -7,6 +7,8 @@ spec:
   template:
     metadata: { labels: { app: frontend } }
     spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+      volumes: [{ name: tmp, emptyDir: {} }]
       containers:
         - name: frontend
           image: ghcr.io/OWNER/elegance-frontend:REPLACE_WITH_SHA
@@ -17,7 +19,8 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 768Mi }
-          securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true }
+          securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
 ---
 apiVersion: v1
 kind: Service

@@ -7,6 +7,7 @@ Decisions and reasons:
 - Plain Kubernetes manifests, not a Helm chart: they parse without a templating engine, so they can at least be syntax-checked offline. Convert to Helm only once `helm lint` is available.
 - Image names use the placeholder `ghcr.io/OWNER/...:REPLACE_WITH_SHA`. Publishing images to GHCR is an activation that is not approved (see `docs/roadmap/completion-ledger.md`).
 - No secret values anywhere. Secrets are referenced by name (`secretKeyRef`); real values come from SOPS-encrypted files the owner creates (`.sops.yaml` states the intended rule only).
+- Containers run read-only with a writable `/tmp` emptyDir and uid 10001; whether each image works that way (for example Next.js cache writes) is **not verified** and may need more emptyDir mounts.
 - Single node, no HA: matches one VPS. Stateful Postgres in the cluster is deliberately not included; use the existing compose Postgres or a managed one until backups (#105) are activated.
 
 Contents:
