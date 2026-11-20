@@ -1,0 +1,12 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: elegance-staging, namespace: argocd }
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Muhammad-Hamza-Khan-03/Elegance-Shawls.git
+    targetRevision: staging
+    path: infra/phase5/k8s
+  destination: { server: https://kubernetes.default.svc, namespace: elegance }
+  # No automated sync: a promotion PR to staging is reviewed, then a human syncs. Add `automated` only with owner approval.
+  syncPolicy: { syncOptions: [CreateNamespace=true] }

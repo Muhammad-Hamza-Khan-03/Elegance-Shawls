@@ -1,0 +1,13 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: elegance, namespace: elegance }
+spec:
+  rules:
+    - host: shop.example.invalid   # replace with the real storefront host
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: frontend, port: { number: 3000 } } } }
+    - host: api.example.invalid    # replace with the real API host
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: backend, port: { number: 8000 } } } }

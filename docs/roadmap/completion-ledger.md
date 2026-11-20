@@ -2,7 +2,7 @@
 
 "Code 100%" is defined here, not by a percentage. A phase's code is complete when every row tagged **CODE-TODO** is **CODE-DONE**. Every other row carries its reason and is not claimed done.
 
-Tags (DECIDED-SKIP: a considered decision not to build, with the reason in the row):
+Tags (DECIDED-SKIP: a considered decision not to build, with the reason in the row; DRAFT-UNVALIDATED: written but not checked with its real tool):
 
 - **CODE-DONE**: present on `integration` (presence confirmed by grep on 2026-11-19; per-row test coverage is not re-verified here).
 - **CODE-TODO**: buildable offline, free, with fakes or synthetic data, behind a default-off flag where it changes behaviour.
@@ -79,7 +79,8 @@ Standing limits: `release_ready=false`, E5 canonical, no deployment, no activati
 
 | Item | Tag | Reason / note |
 |---|---|---|
-| Ansible, k3s, OpenTofu, Helm, Argo CD, SOPS | BLOCKED-APPROVAL | Cannot be validated without infrastructure; unvalidated manifests would be unverified claims |
+| Draft Ansible, k3s manifests, OpenTofu, Argo CD, SOPS rule (`infra/phase5/`) | DRAFT-UNVALIDATED (merged once PR lands) | Written without the real tools; only syntax and no-secrets are checked (`test_phase5_draft.py`); plain manifests, not Helm; not wired to CI, never applied |
+| Validating, applying and operating the Phase 5 stack (helm lint, kubectl, tofu plan, k3s on a VPS, Argo CD sync) | BLOCKED-APPROVAL | Needs the tools, a VPS and owner approval |
 | SLO dashboards, alerts, k6 load tests | BLOCKED-APPROVAL | Needs a running environment (#86) |
 | Nightly eval pipeline, weekly drift report | BLOCKED-APPROVAL | Scheduling is activation |
 | Runbooks, postmortem template | CODE-DONE (merged); further runbooks need a real environment | `docs/runbooks/postmortem-template.md` |
