@@ -74,6 +74,7 @@ services:
         NEXT_PUBLIC_API_URL: ${API_URL:?Set API_URL}
         NEXT_PUBLIC_SITE_URL: ${SITE_URL:?Set SITE_URL}
         NEXT_PUBLIC_WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:?Set WHATSAPP_NUMBER}
+        IMAGE_ALLOWED_HOSTS: ${IMAGE_ALLOWED_HOSTS:-}
     image: elegance-frontend:${APP_VERSION:-local}
     restart: unless-stopped
     environment:
