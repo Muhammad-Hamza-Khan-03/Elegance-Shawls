@@ -1,0 +1,31 @@
+# Baseline host hardening for the single VPS. Not run or linted; review before use.
+- hosts: vps
+  become: true
+  tasks:
+    - name: Disable SSH password login and root login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?{{ item.key }}"
+        line: "{{ item.key }} {{ item.value }}"
+      loop:
+        - { key: PasswordAuthentication, value: "no" }
+        - { key: PermitRootLogin, value: "no" }
+      notify: restart ssh
+    - name: Install ufw and unattended-upgrades
+      ansible.builtin.apt:
+        name: [ufw, unattended-upgrades]
+        state: present
+        update_cache: true
+    - name: Allow only SSH, HTTP and HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: ["22", "80", "443"]
+    - name: Enable firewall with default deny
+      community.general.ufw:
+        state: enabled
+        policy: deny
+  handlers:
+    - name: restart ssh
+      ansible.builtin.service: { name: ssh, state: restarted }
