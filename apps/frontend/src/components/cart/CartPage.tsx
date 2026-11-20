@@ -9,6 +9,7 @@ import { useCart } from '@/components/cart/CartProvider';
 import { api } from '@/lib/api';
 import { CART_VERIFICATION_TTL_MS, CartIssue, CartItem, buildCartCheckoutUrl, getCartSummary, reconcileCartItems } from '@/lib/cart';
 import { StaleCartError, createEnquiry } from '@/lib/enquiry';
+import { track } from '@/lib/tracker';
 import { formatCurrency } from '@/lib/whatsapp';
 
 const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
@@ -78,6 +79,7 @@ export const CartPage = () => {
     try {
       const reference = await createEnquiry(items);
       const url = buildCartCheckoutUrl(items, whatsappNumber, { siteUrl, reference });
+      track({ type: 'click', payload: { target: 'whatsapp_cart', lines: items.length } });
       if (tab) tab.location.href = url;
       else window.location.assign(url);
       setHandoff({ busy: false, error: null });
