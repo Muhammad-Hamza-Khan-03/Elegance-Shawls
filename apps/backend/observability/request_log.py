@@ -5,6 +5,7 @@ import sys
 import uuid
 from time import perf_counter
 
+from observability.errors import capture_exception
 from observability.tracing import context_from_traceparent, current_ids, set_attrs, span
 
 logger = logging.getLogger("elegance.access")
@@ -57,6 +58,11 @@ class RequestLogMiddleware:
                 trace_id, span_id = current_ids()
                 try:
                     await self.app(scope, receive, send_with_request_id)
+                except Exception as exc:
+                    # Route template (e.g. /products/{id}) when routed, so IDs stay out of reports.
+                    route = getattr(scope.get("route"), "path", None) or scope["path"]
+                    capture_exception(exc, request_id=request_id, route=route)
+                    raise
                 finally:
                     set_attrs(current, **{"http.status_code": status})
         finally:
